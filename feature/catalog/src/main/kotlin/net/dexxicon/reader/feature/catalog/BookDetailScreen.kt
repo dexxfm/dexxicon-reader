@@ -146,7 +146,7 @@ private fun DetailContent(
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                AssistChip(onClick = {}, label = { Text(s.format.name.lowercase()) })
+                AssistChip(onClick = {}, label = { Text(formatLabel(detail)) })
             }
         }
 
@@ -190,7 +190,7 @@ private fun DetailContent(
         Spacer(Modifier.height(20.dp))
         Text("Details", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(4.dp))
-        MetaRow("Format", s.format.name.lowercase())
+        MetaRow("Format", formatLabel(detail))
         MetaRow("Series", s.series?.let {
             buildString {
                 append(it)
@@ -207,6 +207,10 @@ private fun DetailContent(
         MetaRow("File size", detail.fileSizeBytes?.let(::formatFileSize))
     }
 }
+
+/** The file's extension (`epub`, `cbz`, `m4b`…), falling back to the content-type name. */
+private fun formatLabel(detail: BookDetail): String =
+    detail.fileExtension?.takeIf { it.isNotBlank() } ?: detail.summary.format.name.lowercase()
 
 private fun formatFileSize(bytes: Long): String = when {
     bytes >= 1_000_000_000 -> "%.1f GB".format(bytes / 1_000_000_000.0)

@@ -20,6 +20,7 @@ import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.fileExtension
 import net.dexxicon.reader.feature.catalog.navigation.BookDetailRoute
 import javax.inject.Inject
 
@@ -78,6 +79,8 @@ class BookDetailViewModel @Inject constructor(
             coverUrl = coverUrl,
             format = format,
         ),
+        fileExtension = localPath?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
+            ?: format.fileExtension,
         fileSizeBytes = totalBytes,
         acquisitions = localPath?.let {
             listOf(

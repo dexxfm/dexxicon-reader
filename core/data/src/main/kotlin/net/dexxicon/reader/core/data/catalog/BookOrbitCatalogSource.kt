@@ -79,6 +79,7 @@ class BookOrbitCatalogSource @Inject constructor(
             pageCount = book.pageCount,
             narrators = book.narrators,
             categories = book.genres,
+            fileExtension = fileExtensionOf(file?.format, file?.filename),
             fileSizeBytes = file?.sizeBytes,
             audio = book.audioMetadata?.takeIf { summary.format == ContentFormat.AUDIOBOOK }?.let { am ->
                 AudiobookInfo(
@@ -119,6 +120,12 @@ class BookOrbitCatalogSource @Inject constructor(
         BookSort.RECENT -> listOf(BookOrbitSort("addedAt", "desc"))
         BookSort.TITLE -> listOf(BookOrbitSort("title", "asc"))
         BookSort.SERIES -> listOf(BookOrbitSort("seriesName", "asc"))
+    }
+
+    /** Best-effort file extension: the server's `format` field, else the filename's suffix. */
+    private fun fileExtensionOf(format: String?, filename: String?): String? {
+        format?.trim()?.lowercase()?.takeIf { it.isNotBlank() }?.let { return it }
+        return filename?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
     }
 
     private fun formatOf(format: String?): ContentFormat = when (format?.lowercase()) {

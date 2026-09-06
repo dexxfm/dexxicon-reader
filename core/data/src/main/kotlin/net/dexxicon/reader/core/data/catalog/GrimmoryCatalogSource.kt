@@ -103,6 +103,10 @@ class GrimmoryCatalogSource @Inject constructor(
             pageCount = book.metadata.pageCount,
             narrators = listOfNotNull(book.metadata.narrator?.takeIf { it.isNotBlank() }),
             categories = book.metadata.categories,
+            fileExtension = book.primaryFile?.let { f ->
+                f.extension?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+                    ?: f.bookType?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
+            },
             fileSizeBytes = book.primaryFile?.fileSizeKb?.let { it * 1024 },
             audio = if (isAudio && audioMeta != null) {
                 AudiobookInfo(

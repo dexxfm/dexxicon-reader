@@ -42,6 +42,8 @@ data class BookDetail(
     val narrators: List<String> = emptyList(),
     val categories: List<String> = emptyList(),
     val acquisitions: List<Acquisition> = emptyList(),
+    /** The primary file's extension, lower-case, no dot (e.g. `epub`, `cbz`, `m4b`). */
+    val fileExtension: String? = null,
     val fileSizeBytes: Long? = null,
     /** Populated for [ContentFormat.AUDIOBOOK] — chapters + total duration. */
     val audio: AudiobookInfo? = null,
