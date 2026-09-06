@@ -71,6 +71,9 @@ class AddEditServerViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(AddEditServerUiState(editingId = serverId))
     val uiState: StateFlow<AddEditServerUiState> = _uiState.asStateFlow()
 
+    /** Kept across the browser round-trip so the exchange still has the PKCE state. */
+    private var pendingHandshake: OidcHandshake? = null
+
     init {
         if (serverId != null) {
             viewModelScope.launch {
@@ -131,7 +134,10 @@ class AddEditServerViewModel @Inject constructor(
         _uiState.update { it.copy(sso = SsoState.Discovering) }
         viewModelScope.launch {
             when (val result = oidcAuthenticator.beginHandshake(candidateServer())) {
-                is Outcome.Success -> _uiState.update { it.copy(sso = SsoState.Ready(result.value)) }
+                is Outcome.Success -> {
+                    pendingHandshake = result.value
+                    _uiState.update { it.copy(sso = SsoState.Ready(result.value)) }
+                }
                 is Outcome.Failure -> _uiState.update {
                     it.copy(sso = SsoState.Error(result.error.message ?: "SSO is not available"))
                 }
@@ -139,21 +145,30 @@ class AddEditServerViewModel @Inject constructor(
         }
     }
 
+    /** The handshake to launch the browser with; null if discovery hasn't run. */
+    fun handshakeForAuthorization(): OidcHandshake? = pendingHandshake
+
     fun onAuthorizing() = _uiState.update { it.copy(sso = SsoState.Authorizing) }
 
-    fun onAuthorizeCancelled() = _uiState.update { it.copy(sso = SsoState.Idle) }
+    fun onAuthorizeCancelled() = _uiState.update {
+        if (it.sso is SsoState.Exchanging) it else it.copy(sso = SsoState.Idle)
+    }
 
     fun onAuthorizeFailed(message: String) =
         _uiState.update { it.copy(sso = SsoState.Error(message)) }
 
     /** Step 2 of SSO: exchange the browser code, save the server, finish. */
     fun completeSso(
-        handshake: OidcHandshake,
         redirectUri: String,
         code: String,
         codeVerifier: String,
+        nonce: String,
         onSaved: () -> Unit,
     ) {
+        val handshake = pendingHandshake ?: run {
+            _uiState.update { it.copy(sso = SsoState.Error("Sign-in state was lost — try again")) }
+            return
+        }
         _uiState.update { it.copy(sso = SsoState.Exchanging) }
         viewModelScope.launch {
             val result = oidcAuthenticator.completeAndSave(
@@ -164,10 +179,13 @@ class AddEditServerViewModel @Inject constructor(
                 redirectUri = redirectUri,
                 code = code,
                 codeVerifier = codeVerifier,
-                nonce = null,
+                nonce = nonce,
             )
             when (result) {
-                is Outcome.Success -> onSaved()
+                is Outcome.Success -> {
+                    pendingHandshake = null
+                    onSaved()
+                }
                 is Outcome.Failure -> _uiState.update {
                     it.copy(sso = SsoState.Error(result.error.message ?: "Sign-in failed"))
                 }

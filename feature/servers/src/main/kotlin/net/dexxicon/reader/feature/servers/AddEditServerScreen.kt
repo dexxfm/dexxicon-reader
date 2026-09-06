@@ -69,22 +69,17 @@ fun AddEditServerScreen(
     val authFlow = remember { OidcAuthFlow(context) }
     DisposableEffect(Unit) { onDispose { authFlow.dispose() } }
 
-    val ssoReady = state.sso as? SsoState.Ready
-
     val authLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
-        val handshake = ssoReady?.handshake
         when (val parsed = authFlow.parseResult(result.data)) {
-            is OidcAuthResult.Code -> if (handshake != null) {
-                viewModel.completeSso(
-                    handshake = handshake,
-                    redirectUri = OIDC_REDIRECT_URI,
-                    code = parsed.code,
-                    codeVerifier = parsed.codeVerifier,
-                    onSaved = onDone,
-                )
-            }
+            is OidcAuthResult.Code -> viewModel.completeSso(
+                redirectUri = OIDC_REDIRECT_URI,
+                code = parsed.code,
+                codeVerifier = parsed.codeVerifier,
+                nonce = parsed.nonce,
+                onSaved = onDone,
+            )
             is OidcAuthResult.Failed -> viewModel.onAuthorizeFailed(parsed.message)
             OidcAuthResult.Cancelled -> viewModel.onAuthorizeCancelled()
         }
@@ -124,9 +119,9 @@ fun AddEditServerScreen(
                 state = state.sso,
                 onDiscover = viewModel::discoverSso,
                 onSignIn = {
-                    ssoReady?.let {
+                    viewModel.handshakeForAuthorization()?.let { handshake ->
                         viewModel.onAuthorizing()
-                        authLauncher.launch(authFlow.authorizationIntent(it.handshake))
+                        authLauncher.launch(authFlow.authorizationIntent(handshake))
                     }
                 },
                 onCancel = viewModel::onAuthorizeCancelled,

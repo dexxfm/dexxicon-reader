@@ -2,6 +2,8 @@ package net.dexxicon.reader.core.serverapi.oidc
 
 import kotlinx.serialization.Serializable
 import retrofit2.http.Body
+import retrofit2.http.Field
+import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Url
@@ -37,10 +39,23 @@ interface OidcApi {
     @POST
     suspend fun bookorbitState(@Url url: String): OidcStateResponse
 
+    /** BookOrbit `/api/v1/auth/oidc/callback` — JSON body. */
     @POST
-    suspend fun exchange(
+    suspend fun exchangeJson(
         @Url url: String,
         @Body body: OidcExchangeRequest,
+    ): net.dexxicon.reader.core.serverapi.auth.LoginResponse
+
+    /** Grimmory/BookLore `/api/v1/auth/oidc/mobile/callback` — form-encoded, snake_case. */
+    @FormUrlEncoded
+    @POST
+    suspend fun exchangeForm(
+        @Url url: String,
+        @Field("code") code: String,
+        @Field("code_verifier") codeVerifier: String,
+        @Field("redirect_uri") redirectUri: String,
+        @Field("nonce") nonce: String,
+        @Field("state") state: String,
     ): net.dexxicon.reader.core.serverapi.auth.LoginResponse
 }
 

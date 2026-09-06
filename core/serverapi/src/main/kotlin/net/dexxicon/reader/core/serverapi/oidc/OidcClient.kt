@@ -40,18 +40,26 @@ class OidcClient @Inject constructor(
 
     /** Exchanges the browser's auth code for a native session. */
     suspend fun exchange(
-        server: Server,
-        exchangeUrl: String,
+        handshake: OidcHandshake,
         code: String,
         codeVerifier: String,
         redirectUri: String,
-        state: String?,
-        nonce: String?,
+        nonce: String,
     ): Outcome<NativeSession> = runCatching {
-        val response = api.exchange(
-            exchangeUrl,
-            OidcExchangeRequest(code, codeVerifier, redirectUri, nonce, state),
-        )
+        val response = when (handshake.serverType) {
+            ServerType.BOOKORBIT -> api.exchangeJson(
+                handshake.exchangeUrl,
+                OidcExchangeRequest(code, codeVerifier, redirectUri, nonce, handshake.state),
+            )
+            else -> api.exchangeForm(
+                url = handshake.exchangeUrl,
+                code = code,
+                codeVerifier = codeVerifier,
+                redirectUri = redirectUri,
+                nonce = nonce,
+                state = handshake.state,
+            )
+        }
         val token = response.accessToken
             ?: return Outcome.Failure(DexxiconError.Parse("OIDC exchange returned no token"))
         Outcome.Success(
@@ -115,7 +123,13 @@ class OidcClient @Inject constructor(
     }
 
     private fun Throwable.toFailure(): Outcome<Nothing> = when (this) {
-        is HttpException -> Outcome.Failure(DexxiconError.Network("Server returned HTTP ${code()}"))
+        is HttpException -> {
+            val detail = runCatching { response()?.errorBody()?.string() }.getOrNull()
+                ?.take(160)?.takeIf { it.isNotBlank() }
+            Outcome.Failure(
+                DexxiconError.Network("SSO exchange failed (HTTP ${code()})${detail?.let { " — $it" } ?: ""}"),
+            )
+        }
         is IOException -> Outcome.Failure(DexxiconError.Network(message ?: "Network error"))
         else -> Outcome.Failure(DexxiconError.Unknown(message, this))
     }

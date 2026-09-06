@@ -32,16 +32,14 @@ class OidcAuthenticator @Inject constructor(
         redirectUri: String,
         code: String,
         codeVerifier: String,
-        nonce: String?,
+        nonce: String,
     ): Outcome<Server> = withContext(io) {
         when (
             val exchange = oidcClient.exchange(
-                server = pendingServer,
-                exchangeUrl = handshake.exchangeUrl,
+                handshake = handshake,
                 code = code,
                 codeVerifier = codeVerifier,
                 redirectUri = redirectUri,
-                state = handshake.state,
                 nonce = nonce,
             )
         ) {
