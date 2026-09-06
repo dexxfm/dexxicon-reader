@@ -105,17 +105,26 @@ class GrimmoryCatalogSource @Inject constructor(
         )
     }
 
-    private fun GrimmoryBook.toSummary(server: Server) = BookSummary(
-        id = id.toString(),
-        serverId = server.id,
-        title = metadata.title ?: "Untitled",
-        authors = metadata.authors,
-        series = metadata.seriesName,
-        seriesIndex = metadata.seriesNumber,
-        coverUrl = server.resolve("/api/v1/media/book/$id/cover"),
-        format = formatOf(primaryFile?.bookType, primaryFile?.extension),
-        shelfId = libraryId?.toString(),
-    )
+    private fun GrimmoryBook.toSummary(server: Server): BookSummary {
+        val format = formatOf(primaryFile?.bookType, primaryFile?.extension)
+        // Audiobooks are served from a separate cover route; the generic one 404s.
+        val coverPath = if (format == ContentFormat.AUDIOBOOK) {
+            "/api/v1/media/book/$id/audiobook-cover"
+        } else {
+            "/api/v1/media/book/$id/cover"
+        }
+        return BookSummary(
+            id = id.toString(),
+            serverId = server.id,
+            title = metadata.title ?: "Untitled",
+            authors = metadata.authors,
+            series = metadata.seriesName,
+            seriesIndex = metadata.seriesNumber,
+            coverUrl = server.resolve(coverPath),
+            format = format,
+            shelfId = libraryId?.toString(),
+        )
+    }
 
     // BookLore sort: comma-separated keys, '-' prefix = descending.
     private fun sortKey(sort: BookSort): String = when (sort) {
