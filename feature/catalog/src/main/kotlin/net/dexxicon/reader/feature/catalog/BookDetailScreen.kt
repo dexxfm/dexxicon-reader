@@ -157,20 +157,46 @@ private fun DetailContent(
             Text("  Download (coming soon)")
         }
 
-        detail.description?.takeIf { it.isNotBlank() }?.let {
-            Spacer(Modifier.height(20.dp))
-            Text("About", style = MaterialTheme.typography.titleMedium)
-            Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
-        }
+        Spacer(Modifier.height(20.dp))
+        Text("About", style = MaterialTheme.typography.titleMedium)
+        val description = detail.description?.takeIf { it.isNotBlank() }
+        Text(
+            description ?: "No description available.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (description != null) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.padding(top = 4.dp),
+        )
 
         Spacer(Modifier.height(20.dp))
+        Text("Details", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(4.dp))
+        MetaRow("Format", s.format.name.lowercase())
+        MetaRow("Series", s.series?.let {
+            buildString {
+                append(it)
+                s.seriesIndex?.let { n -> append(" #${n.toString().removeSuffix(".0")}") }
+            }
+        })
+        MetaRow("Narrator", detail.narratorLine.takeIf { it.isNotBlank() })
         MetaRow("Publisher", detail.publisher)
         MetaRow("Published", detail.publishedDate)
         MetaRow("Language", detail.language)
         MetaRow("ISBN", detail.isbn)
         MetaRow("Pages", detail.pageCount?.toString())
         MetaRow("Categories", detail.categories.takeIf { it.isNotEmpty() }?.joinToString(", "))
+        MetaRow("File size", detail.fileSizeBytes?.let(::formatFileSize))
     }
+}
+
+private fun formatFileSize(bytes: Long): String = when {
+    bytes >= 1_000_000_000 -> "%.1f GB".format(bytes / 1_000_000_000.0)
+    bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
+    bytes >= 1_000 -> "%.0f KB".format(bytes / 1_000.0)
+    else -> "$bytes B"
 }
 
 @Composable

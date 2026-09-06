@@ -75,6 +75,7 @@ class BookOrbitCatalogSource @Inject constructor(
             language = book.language,
             isbn = book.isbn13 ?: book.isbn10,
             pageCount = book.pageCount,
+            narrators = book.narrators,
             categories = book.genres,
             fileSizeBytes = file?.sizeBytes,
             acquisitions = listOfNotNull(

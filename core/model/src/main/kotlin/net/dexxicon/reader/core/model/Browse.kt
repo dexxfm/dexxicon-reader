@@ -39,10 +39,13 @@ data class BookDetail(
     val language: String? = null,
     val isbn: String? = null,
     val pageCount: Int? = null,
+    val narrators: List<String> = emptyList(),
     val categories: List<String> = emptyList(),
     val acquisitions: List<Acquisition> = emptyList(),
     val fileSizeBytes: Long? = null,
 ) {
+    val narratorLine: String get() = narrators.joinToString(", ")
+
     val primaryAcquisition: Acquisition?
         get() = acquisitions.minByOrNull { it.format.priority }
 }

@@ -91,6 +91,7 @@ class GrimmoryCatalogSource @Inject constructor(
             language = book.metadata.language,
             isbn = book.metadata.isbn13 ?: book.metadata.isbn10,
             pageCount = book.metadata.pageCount,
+            narrators = listOfNotNull(book.metadata.narrator?.takeIf { it.isNotBlank() }),
             categories = book.metadata.categories,
             fileSizeBytes = book.primaryFile?.fileSizeKb?.let { it * 1024 },
             acquisitions = listOf(

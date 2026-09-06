@@ -106,6 +106,7 @@ data class GrimmoryMetadata(
     val isbn10: String? = null,
     val language: String? = null,
     val pageCount: Int? = null,
+    val narrator: String? = null,
     val authors: List<String> = emptyList(),
     val categories: List<String> = emptyList(),
 )
