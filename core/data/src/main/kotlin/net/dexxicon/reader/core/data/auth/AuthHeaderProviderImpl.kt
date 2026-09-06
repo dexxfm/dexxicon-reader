@@ -45,13 +45,13 @@ class AuthHeaderProviderImpl @Inject constructor(
         val server = serverFor(url) ?: return null
         return when (server.authMode) {
             AuthMode.BASIC -> basicHeader(server)
-            AuthMode.NATIVE -> bearerHeader(server)
+            AuthMode.NATIVE, AuthMode.OIDC -> bearerHeader(server)
         }
     }
 
     override fun refreshAuthHeader(url: HttpUrl): String? {
         val server = serverFor(url) ?: return null
-        if (server.authMode != AuthMode.NATIVE) return null
+        if (server.authMode == AuthMode.BASIC) return null
         return (runBlocking { tokenManager.forceRefresh(server) } as? Outcome.Success)
             ?.let { "Bearer ${it.value}" }
     }

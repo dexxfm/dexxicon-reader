@@ -28,6 +28,12 @@ class CredentialStore @Inject constructor(
     suspend fun getPassword(serverId: String): String? =
         get(passwordKey(serverId))
 
+    suspend fun putRefreshToken(serverId: String, token: String) =
+        put(refreshKey(serverId), token)
+
+    suspend fun getRefreshToken(serverId: String): String? =
+        get(refreshKey(serverId))
+
     suspend fun putSyncSecret(serverId: String, providerKey: String, secret: String) =
         put(syncKey(serverId, providerKey), secret)
 
@@ -55,6 +61,7 @@ class CredentialStore @Inject constructor(
     }
 
     private fun passwordKey(serverId: String) = "$serverId${DELIMITER}password"
+    private fun refreshKey(serverId: String) = "$serverId${DELIMITER}refresh"
     private fun syncKey(serverId: String, providerKey: String) =
         "$serverId${DELIMITER}sync${DELIMITER}$providerKey"
 

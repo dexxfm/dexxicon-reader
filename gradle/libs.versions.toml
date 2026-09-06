@@ -32,6 +32,8 @@ retrofitSerialization = "1.0.0"
 coil = "3.6.2"
 media3 = "1.11.0"
 readium = "3.3.0"
+appauth = "0.11.1"
+androidxBrowser = "1.10.0"
 
 junit = "4.13.2"
 androidxTestExt = "1.3.0"
@@ -91,6 +93,9 @@ retrofit-kotlinx-serialization = { module = "com.squareup.retrofit2:converter-ko
 
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
+
+appauth = { module = "net.openid:appauth", version.ref = "appauth" }
+androidx-browser = { module = "androidx.browser:browser", version.ref = "androidxBrowser" }
 
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
 media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }

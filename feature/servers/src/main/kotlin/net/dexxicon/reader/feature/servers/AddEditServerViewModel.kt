@@ -10,12 +10,15 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.ServerProber
 import net.dexxicon.reader.core.data.ServerRepository
+import net.dexxicon.reader.core.data.auth.OidcAuthenticator
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerProbeResult
 import net.dexxicon.reader.core.model.ServerType
+import net.dexxicon.reader.core.serverapi.oidc.OidcHandshake
 import net.dexxicon.reader.feature.servers.navigation.AddEditServerRoute
 import javax.inject.Inject
 
@@ -27,12 +30,12 @@ data class AddEditServerUiState(
     val password: String = "",
     val passwordTouched: Boolean = false,
     val testState: TestState = TestState.Idle,
+    val sso: SsoState = SsoState.Idle,
     val saving: Boolean = false,
     val savedType: ServerType = ServerType.GENERIC,
 ) {
     val canTest: Boolean
-        get() = baseUrl.isNotBlank() && username.isNotBlank() &&
-            (password.isNotBlank() || (editingId != null && !passwordTouched))
+        get() = baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
 
     val canSave: Boolean
         get() = displayName.isNotBlank() && testState is TestState.Success
@@ -45,10 +48,20 @@ sealed interface TestState {
     data class Failure(val message: String) : TestState
 }
 
+sealed interface SsoState {
+    data object Idle : SsoState
+    data object Discovering : SsoState
+    data class Ready(val handshake: OidcHandshake) : SsoState
+    data object Authorizing : SsoState
+    data object Exchanging : SsoState
+    data class Error(val message: String) : SsoState
+}
+
 @HiltViewModel
 class AddEditServerViewModel @Inject constructor(
     private val serverRepository: ServerRepository,
     private val serverProber: ServerProber,
+    private val oidcAuthenticator: OidcAuthenticator,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -78,7 +91,7 @@ class AddEditServerViewModel @Inject constructor(
     fun onDisplayNameChange(value: String) = _uiState.update { it.copy(displayName = value) }
 
     fun onBaseUrlChange(value: String) = _uiState.update {
-        it.copy(baseUrl = value, testState = TestState.Idle)
+        it.copy(baseUrl = value, testState = TestState.Idle, sso = SsoState.Idle)
     }
 
     fun onUsernameChange(value: String) = _uiState.update {
@@ -96,25 +109,67 @@ class AddEditServerViewModel @Inject constructor(
             when (val result = serverProber.probe(state.baseUrl, state.username, state.password)) {
                 is ServerProbeResult.Success -> _uiState.update {
                     it.copy(
-                        testState = TestState.Success(
-                            result.detectedType,
-                            result.detectedType.name.lowercase()
-                                .replaceFirstChar(Char::uppercase) + " · connected",
-                        ),
+                        testState = TestState.Success(result.detectedType, connectedLabel(result.detectedType)),
                         savedType = result.detectedType,
-                        displayName = it.displayName.ifBlank {
-                            result.serverName ?: prettyHost(state.baseUrl)
-                        },
+                        displayName = it.displayName.ifBlank { prettyHost(state.baseUrl) },
                     )
                 }
-                is ServerProbeResult.InvalidCredentials -> _uiState.update {
-                    it.copy(testState = TestState.Failure(result.message))
+                is ServerProbeResult.InvalidCredentials ->
+                    _uiState.update { it.copy(testState = TestState.Failure(result.message)) }
+                is ServerProbeResult.Unreachable ->
+                    _uiState.update { it.copy(testState = TestState.Failure(result.message)) }
+                is ServerProbeResult.NotAServer ->
+                    _uiState.update { it.copy(testState = TestState.Failure(result.message)) }
+            }
+        }
+    }
+
+    /** Step 1 of SSO: discover the provider + fetch a state token. */
+    fun discoverSso() {
+        val state = _uiState.value
+        if (state.baseUrl.isBlank()) return
+        _uiState.update { it.copy(sso = SsoState.Discovering) }
+        viewModelScope.launch {
+            when (val result = oidcAuthenticator.beginHandshake(candidateServer())) {
+                is Outcome.Success -> _uiState.update { it.copy(sso = SsoState.Ready(result.value)) }
+                is Outcome.Failure -> _uiState.update {
+                    it.copy(sso = SsoState.Error(result.error.message ?: "SSO is not available"))
                 }
-                is ServerProbeResult.Unreachable -> _uiState.update {
-                    it.copy(testState = TestState.Failure(result.message))
-                }
-                is ServerProbeResult.NotAServer -> _uiState.update {
-                    it.copy(testState = TestState.Failure(result.message))
+            }
+        }
+    }
+
+    fun onAuthorizing() = _uiState.update { it.copy(sso = SsoState.Authorizing) }
+
+    fun onAuthorizeCancelled() = _uiState.update { it.copy(sso = SsoState.Idle) }
+
+    fun onAuthorizeFailed(message: String) =
+        _uiState.update { it.copy(sso = SsoState.Error(message)) }
+
+    /** Step 2 of SSO: exchange the browser code, save the server, finish. */
+    fun completeSso(
+        handshake: OidcHandshake,
+        redirectUri: String,
+        code: String,
+        codeVerifier: String,
+        onSaved: () -> Unit,
+    ) {
+        _uiState.update { it.copy(sso = SsoState.Exchanging) }
+        viewModelScope.launch {
+            val result = oidcAuthenticator.completeAndSave(
+                pendingServer = candidateServer().copy(
+                    displayName = _uiState.value.displayName.ifBlank { prettyHost(_uiState.value.baseUrl) },
+                ),
+                handshake = handshake,
+                redirectUri = redirectUri,
+                code = code,
+                codeVerifier = codeVerifier,
+                nonce = null,
+            )
+            when (result) {
+                is Outcome.Success -> onSaved()
+                is Outcome.Failure -> _uiState.update {
+                    it.copy(sso = SsoState.Error(result.error.message ?: "Sign-in failed"))
                 }
             }
         }
@@ -125,22 +180,31 @@ class AddEditServerViewModel @Inject constructor(
         if (!state.canSave) return
         _uiState.update { it.copy(saving = true) }
         viewModelScope.launch {
-            val normalizedUrl = normalizeUrl(state.baseUrl)
-            val server = Server(
-                id = state.editingId ?: "",
-                displayName = state.displayName.trim(),
-                baseUrl = normalizedUrl,
-                type = state.savedType,
-                authMode = AuthMode.NATIVE,
-                username = state.username.trim(),
-            )
             serverRepository.save(
-                server = server,
+                server = Server(
+                    id = state.editingId ?: "",
+                    displayName = state.displayName.trim(),
+                    baseUrl = normalizeUrl(state.baseUrl),
+                    type = state.savedType,
+                    authMode = AuthMode.NATIVE,
+                    username = state.username.trim(),
+                ),
                 password = state.password.takeIf { it.isNotBlank() },
             )
             onSaved()
         }
     }
+
+    private fun candidateServer() = Server(
+        id = _uiState.value.editingId ?: "",
+        displayName = _uiState.value.displayName.trim(),
+        baseUrl = normalizeUrl(_uiState.value.baseUrl),
+        authMode = AuthMode.OIDC,
+        type = _uiState.value.savedType,
+    )
+
+    private fun connectedLabel(type: ServerType): String =
+        type.name.lowercase().replaceFirstChar(Char::uppercase) + " · connected"
 
     private fun normalizeUrl(raw: String): String {
         val trimmed = raw.trim().trimEnd('/')

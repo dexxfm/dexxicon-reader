@@ -15,8 +15,8 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Holds the live native session per server in memory, refreshing (or re-logging-in) when it
- * expires. Passwords are read from [CredentialStore] only when a fresh login is needed.
+ * Holds the live session per server in memory, refreshing (or re-authenticating) when it
+ * expires. Secrets are read from [CredentialStore] only when a fresh login is required.
  */
 @Singleton
 class TokenManager @Inject constructor(
@@ -26,9 +26,14 @@ class TokenManager @Inject constructor(
     private val sessions = ConcurrentHashMap<String, NativeSession>()
     private val locks = ConcurrentHashMap<String, Mutex>()
 
-    /** Bearer token for [server], logging in / refreshing as needed. */
+    /** Prime the cache with a freshly obtained session (e.g. right after an OIDC exchange). */
+    suspend fun seedSession(serverId: String, session: NativeSession) {
+        sessions[serverId] = session
+        session.refreshToken?.let { credentialStore.putRefreshToken(serverId, it) }
+    }
+
     suspend fun bearerToken(server: Server): Outcome<String> {
-        require(server.authMode == AuthMode.NATIVE)
+        require(server.authMode == AuthMode.NATIVE || server.authMode == AuthMode.OIDC)
 
         sessions[server.id]?.let { cached ->
             if (cached.expiresAtMillis > System.currentTimeMillis()) {
@@ -42,12 +47,10 @@ class TokenManager @Inject constructor(
                     return@withLock Outcome.Success(cached.accessToken)
                 }
             }
-            obtainSession(server).also { it.storeIfSuccess(server.id) }
-                .map { it.accessToken }
+            obtainSession(server).also { it.storeIfSuccess(server.id) }.map { it.accessToken }
         }
     }
 
-    /** Force a new session (used after a 401). */
     suspend fun forceRefresh(server: Server): Outcome<String> = lockFor(server.id).withLock {
         sessions.remove(server.id)
         obtainSession(server).also { it.storeIfSuccess(server.id) }.map { it.accessToken }
@@ -59,21 +62,37 @@ class TokenManager @Inject constructor(
 
     private suspend fun obtainSession(server: Server): Outcome<NativeSession> {
         val refreshToken = sessions[server.id]?.refreshToken
+            ?: credentialStore.getRefreshToken(server.id)
         if (refreshToken != null) {
             val refreshed = authClient.refresh(server, refreshToken)
-            if (refreshed is Outcome.Success) return refreshed
+            if (refreshed is Outcome.Success) {
+                refreshed.value.refreshToken?.let {
+                    credentialStore.putRefreshToken(server.id, it)
+                }
+                return refreshed
+            }
         }
-        val password = credentialStore.getPassword(server.id)
-            ?: return Outcome.Failure(
-                DexxiconError.Unauthorized("No stored password for ${server.displayName}"),
+
+        return when (server.authMode) {
+            AuthMode.NATIVE -> {
+                val password = credentialStore.getPassword(server.id)
+                    ?: return Outcome.Failure(
+                        DexxiconError.Unauthorized("No stored password for ${server.displayName}"),
+                    )
+                authClient.login(server, server.username, password)
+            }
+            AuthMode.OIDC -> Outcome.Failure(
+                DexxiconError.Unauthorized("Your ${server.displayName} session expired — sign in again"),
             )
-        return authClient.login(server, server.username, password)
+            AuthMode.BASIC -> Outcome.Failure(
+                DexxiconError.Unsupported("BASIC auth does not use tokens"),
+            )
+        }
     }
 
     private fun Outcome<NativeSession>.storeIfSuccess(serverId: String) {
         if (this is Outcome.Success) sessions[serverId] = value
     }
 
-    private fun lockFor(serverId: String): Mutex =
-        locks.getOrPut(serverId) { Mutex() }
+    private fun lockFor(serverId: String): Mutex = locks.getOrPut(serverId) { Mutex() }
 }

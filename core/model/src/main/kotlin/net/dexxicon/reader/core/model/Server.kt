@@ -31,7 +31,21 @@ enum class AuthMode {
 
     /** Username + password exchanged for a bearer token via the server's native API. */
     NATIVE,
+
+    /** OpenID Connect: browser auth-code + PKCE, exchanged for a native session. */
+    OIDC,
 }
+
+/** OIDC parameters discovered from a server, needed to run the browser flow. */
+data class OidcConfig(
+    /** BookOrbit only: the provider slug (`/api/v1/auth/oidc/{slug}/state`). */
+    val providerSlug: String? = null,
+    val issuerUri: String? = null,
+    val authorizationEndpoint: String? = null,
+    val clientId: String,
+    val scopes: String,
+    val providerName: String? = null,
+)
 
 enum class ServerType {
     GENERIC,

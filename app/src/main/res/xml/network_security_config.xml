@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      Self-hosted OPDS servers are frequently reached over plain HTTP on a LAN or a
+      non-standard port (e.g. Grimmory on :6060). Users type the exact scheme when adding
+      a server, so cleartext is permitted here by design.
+    -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

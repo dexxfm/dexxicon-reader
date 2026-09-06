@@ -23,6 +23,10 @@ android {
         versionCode = 5
         versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // OIDC redirect: net.dexxicon.reader://oauth2redirect  (register this in your
+        // identity provider AND the server's OIDC settings).
+        manifestPlaceholders["appAuthRedirectScheme"] = "net.dexxicon.reader"
     }
 
     buildFeatures {

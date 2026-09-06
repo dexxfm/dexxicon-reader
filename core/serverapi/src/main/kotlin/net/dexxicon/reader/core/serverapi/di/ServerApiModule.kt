@@ -7,6 +7,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
 import net.dexxicon.reader.core.network.di.DexxiconHttpClient
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
+import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -41,4 +42,9 @@ object ServerApiModule {
     @Singleton
     fun provideNativeAuthApi(retrofit: Retrofit): NativeAuthApi =
         retrofit.create(NativeAuthApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideOidcApi(retrofit: Retrofit): OidcApi =
+        retrofit.create(OidcApi::class.java)
 }
