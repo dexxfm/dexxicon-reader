@@ -7,8 +7,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.sync.KoSyncRepository
 import javax.inject.Inject
@@ -33,9 +35,13 @@ data class KoSyncServerRow(
 class KoSyncSettingsViewModel @Inject constructor(
     private val serverRepository: ServerRepository,
     private val koSync: KoSyncRepository,
+    private val progressRepository: ReadingProgressRepository,
 ) : ViewModel() {
 
     private val verifyState = MutableStateFlow<Map<String, Pair<Boolean?, Boolean>>>(emptyMap())
+
+    private val _refreshing = MutableStateFlow(false)
+    val refreshing: StateFlow<Boolean> = _refreshing
 
     val rows: StateFlow<List<KoSyncServerRow>> =
         combine(serverRepository.servers, verifyState) { servers, verify ->
@@ -67,6 +73,25 @@ class KoSyncSettingsViewModel @Inject constructor(
                 koSyncPassword = password.takeIf { it.isNotBlank() },
             )
             verify(serverId)
+        }
+    }
+
+    /**
+     * Pull-to-refresh on the Settings screen: reconcile reading progress with KOReader sync
+     * (both directions) and re-verify every configured sync account.
+     */
+    fun refreshAll() {
+        if (_refreshing.value) return
+        viewModelScope.launch {
+            _refreshing.value = true
+            runCatching { progressRepository.syncWithKoSync() }
+            val servers = serverRepository.servers.first()
+            servers.filter { !it.koSyncUsername.isNullOrBlank() }.forEach { server ->
+                setVerify(server.id, null, true)
+                val ok = runCatching { koSync.verify(server) }.getOrDefault(false)
+                setVerify(server.id, ok, false)
+            }
+            _refreshing.value = false
         }
     }
 

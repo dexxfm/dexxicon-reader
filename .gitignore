@@ -23,3 +23,6 @@ __pycache__/
 # Signing (local only)
 app/release.keystore
 keystore.properties
+
+# local scratch screenshots
+.scratch/

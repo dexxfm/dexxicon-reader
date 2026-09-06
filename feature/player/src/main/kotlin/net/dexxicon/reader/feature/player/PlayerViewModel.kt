@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
+import net.dexxicon.reader.core.datastore.PlayerPreferencesStore
 import net.dexxicon.reader.core.media.AudiobookPlayer
 import net.dexxicon.reader.core.media.PlayerUiState
 import net.dexxicon.reader.core.model.Audiobook
@@ -30,6 +31,7 @@ data class PlayerScreenState(
 class PlayerViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val progressRepository: ReadingProgressRepository,
+    private val playerPreferences: PlayerPreferencesStore,
     val player: AudiobookPlayer,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -112,4 +114,17 @@ class PlayerViewModel @Inject constructor(
     fun seekToChapter(index: Int) = player.seekToChapter(index)
     fun setSpeed(speed: Float) = player.setSpeed(speed)
     fun setSleepTimer(durationMs: Long?) = player.setSleepTimer(durationMs)
+    fun setSleepTimerEndOfChapter() = player.setSleepTimerEndOfChapter()
+
+    fun setSkipSilence(enabled: Boolean) =
+        viewModelScope.launch { playerPreferences.setSkipSilence(enabled) }
+
+    fun setSkipForwardSeconds(seconds: Int) =
+        viewModelScope.launch { playerPreferences.setSkipForwardSeconds(seconds) }
+
+    fun setSkipBackSeconds(seconds: Int) =
+        viewModelScope.launch { playerPreferences.setSkipBackSeconds(seconds) }
+
+    fun setSmartRewindSeconds(seconds: Int) =
+        viewModelScope.launch { playerPreferences.setSmartRewindSeconds(seconds) }
 }

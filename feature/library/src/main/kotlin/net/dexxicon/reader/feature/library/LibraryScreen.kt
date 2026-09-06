@@ -31,6 +31,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -60,34 +61,40 @@ fun LibraryScreen(
         val empty = state.downloads.isEmpty() &&
             state.continueReading.isEmpty() &&
             state.continueListening.isEmpty()
-        when {
-            state.loading -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                CircularProgressIndicator()
-            }
-            empty -> Box(
-                Modifier.fillMaxSize().padding(padding).padding(32.dp),
-                Alignment.Center,
-            ) {
-                Text(
-                    "Books you read or make available offline show up here.",
-                    textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            else -> LazyVerticalGrid(
-                columns = GridCells.Adaptive(112.dp),
-                modifier = Modifier.fillMaxSize().padding(padding),
-                contentPadding = PaddingValues(12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                continueShelf("Continue reading", state.continueReading, onContinue)
-                continueShelf("Continue listening", state.continueListening, onContinue)
+        PullToRefreshBox(
+            isRefreshing = state.refreshing,
+            onRefresh = viewModel::refresh,
+            modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
+            when {
+                state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+                empty -> Box(
+                    Modifier.fillMaxSize().padding(32.dp),
+                    Alignment.Center,
+                ) {
+                    Text(
+                        "Books you read or make available offline show up here.",
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                else -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(112.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    continueShelf("Continue reading", state.continueReading, onContinue)
+                    continueShelf("Continue listening", state.continueListening, onContinue)
 
-                if (state.downloads.isNotEmpty()) {
-                    fullWidthItem { SectionHeader("Downloaded") }
-                    items(state.downloads, key = { it.key }) { download ->
-                        DownloadCard(download) { onOpenBook(download.serverId, download.bookId) }
+                    if (state.downloads.isNotEmpty()) {
+                        fullWidthItem { SectionHeader("Downloaded") }
+                        items(state.downloads, key = { it.key }) { download ->
+                            DownloadCard(download) { onOpenBook(download.serverId, download.bookId) }
+                        }
                     }
                 }
             }

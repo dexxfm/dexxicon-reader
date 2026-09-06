@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.media
 
+import android.os.Bundle
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.datasource.DataSourceBitmapLoader
@@ -9,6 +10,10 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.AndroidEntryPoint
 import net.dexxicon.reader.core.network.di.DexxiconHttpClient
@@ -20,6 +25,9 @@ import javax.inject.Inject
  * Background audiobook playback. Media3 handles the media notification, lock-screen
  * controls and audio focus; the stream is fetched through the shared authenticated OkHttp
  * client so range requests carry the server's bearer token.
+ *
+ * Audio options that aren't part of the [androidx.media3.common.Player] surface (skip
+ * silence) are applied here via a custom session command from [AudiobookPlayer].
  */
 @AndroidEntryPoint
 class PlaybackService : MediaSessionService() {
@@ -29,6 +37,7 @@ class PlaybackService : MediaSessionService() {
     lateinit var okHttpClient: OkHttpClient
 
     private var mediaSession: MediaSession? = null
+    private var exoPlayer: ExoPlayer? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -47,6 +56,7 @@ class PlaybackService : MediaSessionService() {
             .setSeekForwardIncrementMs(30_000)
             .setSeekBackIncrementMs(15_000)
             .build()
+        exoPlayer = player
 
         // Route cover-art loading through the authed client too, so lock-screen/notification
         // artwork doesn't 401.
@@ -59,6 +69,7 @@ class PlaybackService : MediaSessionService() {
 
         mediaSession = MediaSession.Builder(this, player)
             .setBitmapLoader(bitmapLoader)
+            .setCallback(AudioOptionsCallback())
             .build()
     }
 
@@ -78,6 +89,37 @@ class PlaybackService : MediaSessionService() {
             release()
         }
         mediaSession = null
+        exoPlayer = null
         super.onDestroy()
+    }
+
+    private inner class AudioOptionsCallback : MediaSession.Callback {
+        private val skipSilence = SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY)
+
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+        ): MediaSession.ConnectionResult {
+            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+                .buildUpon()
+                .add(skipSilence)
+                .build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(commands)
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle,
+        ): ListenableFuture<SessionResult> {
+            if (customCommand.customAction == PlaybackCommands.SET_SKIP_SILENCE) {
+                exoPlayer?.skipSilenceEnabled = args.getBoolean(PlaybackCommands.ARG_ENABLED, false)
+                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+            }
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+        }
     }
 }

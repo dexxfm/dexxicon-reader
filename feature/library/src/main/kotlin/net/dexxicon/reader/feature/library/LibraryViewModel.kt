@@ -3,6 +3,7 @@ package net.dexxicon.reader.feature.library
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -30,6 +31,7 @@ data class LibraryUiState(
     val continueListening: List<ContinueItem> = emptyList(),
     val downloads: List<Download> = emptyList(),
     val loading: Boolean = true,
+    val refreshing: Boolean = false,
 )
 
 @HiltViewModel
@@ -38,23 +40,36 @@ class LibraryViewModel @Inject constructor(
     private val progressRepository: ReadingProgressRepository,
 ) : ViewModel() {
 
+    private val refreshing = MutableStateFlow(false)
+
     val uiState: StateFlow<LibraryUiState> =
         combine(
             downloadRepository.downloads,
             progressRepository.observeInProgress(),
-        ) { downloads, progress ->
+            refreshing,
+        ) { downloads, progress, isRefreshing ->
             val items = progress.mapNotNull { it.toContinueItem() }
             LibraryUiState(
                 continueReading = items.filter { it.format != ContentFormat.AUDIOBOOK },
                 continueListening = items.filter { it.format == ContentFormat.AUDIOBOOK },
                 downloads = downloads,
                 loading = false,
+                refreshing = isRefreshing,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 
     init {
-        // Pull any progress set from KOReader / another device into the "Continue" shelves.
-        viewModelScope.launch { runCatching { progressRepository.refreshFromKoSync() } }
+        // Reconcile progress with KOReader / other devices (both directions).
+        refresh()
+    }
+
+    fun refresh() {
+        if (refreshing.value) return
+        viewModelScope.launch {
+            refreshing.value = true
+            runCatching { progressRepository.syncWithKoSync() }
+            refreshing.value = false
+        }
     }
 
     fun remove(download: Download) {

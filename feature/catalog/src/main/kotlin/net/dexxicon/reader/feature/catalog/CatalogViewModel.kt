@@ -32,6 +32,7 @@ data class CatalogUiState(
     val books: List<BookSummary> = emptyList(),
     val loading: Boolean = true,
     val loadingMore: Boolean = false,
+    val refreshing: Boolean = false,
     val error: String? = null,
     val endReached: Boolean = false,
 )
@@ -89,6 +90,15 @@ class CatalogViewModel @Inject constructor(
         fetchPage(replace = true)
     }
 
+    /** Pull-to-refresh: re-fetch shelves and the first page without blanking the grid. */
+    fun refresh() {
+        if (_uiState.value.refreshing) return
+        nextPage = 0
+        _uiState.update { it.copy(refreshing = true, error = null, endReached = false) }
+        loadShelves()
+        fetchPage(replace = true)
+    }
+
     fun loadMore() {
         val state = _uiState.value
         if (state.loading || state.loadingMore || state.endReached ||
@@ -118,6 +128,7 @@ class CatalogViewModel @Inject constructor(
                         books = if (replace) result.value.books else it.books + result.value.books,
                         loading = false,
                         loadingMore = false,
+                        refreshing = false,
                         endReached = !result.value.hasMore,
                         error = null,
                     )
@@ -127,6 +138,7 @@ class CatalogViewModel @Inject constructor(
                 it.copy(
                     loading = false,
                     loadingMore = false,
+                    refreshing = false,
                     error = result.error.message ?: "Couldn't load the catalog",
                 )
             }

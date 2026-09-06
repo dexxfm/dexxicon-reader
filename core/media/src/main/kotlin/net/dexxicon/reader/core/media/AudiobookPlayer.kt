@@ -5,7 +5,9 @@ import android.content.Context
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
+import android.os.Bundle
 import androidx.media3.session.MediaController
+import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -18,6 +20,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.datastore.PlayerPreferences
+import net.dexxicon.reader.core.datastore.PlayerPreferencesStore
 import net.dexxicon.reader.core.model.Audiobook
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -31,6 +35,9 @@ data class PlayerUiState(
     val speed: Float = 1f,
     /** Epoch millis at which playback will pause, or null. */
     val sleepTimerEndsAt: Long? = null,
+    /** Playback will pause when the current chapter ends. */
+    val sleepAtChapterEnd: Boolean = false,
+    val options: PlayerPreferences = PlayerPreferences(),
 ) {
     val currentChapterIndex: Int get() = audiobook?.chapterIndexAt(positionMs) ?: 0
     val currentChapterTitle: String? get() = audiobook?.chapterAt(positionMs)?.title
@@ -40,6 +47,7 @@ data class PlayerUiState(
 class AudiobookPlayer @Inject constructor(
     @ApplicationContext private val context: Context,
     private val progressSink: PlaybackProgressSink,
+    private val playerPreferences: PlayerPreferencesStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -50,6 +58,17 @@ class AudiobookPlayer @Inject constructor(
     private var pollJob: Job? = null
     private var sleepJob: Job? = null
     private var current: Audiobook? = null
+    private var options: PlayerPreferences = PlayerPreferences()
+
+    init {
+        scope.launch {
+            playerPreferences.preferences.collect { prefs ->
+                options = prefs
+                _state.value = _state.value.copy(options = prefs)
+                applySkipSilence(prefs.skipSilence)
+            }
+        }
+    }
 
     private fun withController(block: (MediaController) -> Unit) {
         val existing = controller
@@ -103,16 +122,39 @@ class AudiobookPlayer @Inject constructor(
             c.setMediaItem(item, startPositionMs)
             c.prepare()
             c.play()
+            applySkipSilence(options.skipSilence)
+        }
+    }
+
+    private fun applySkipSilence(enabled: Boolean) = withController { c ->
+        runCatching {
+            c.sendCustomCommand(
+                SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY),
+                Bundle().apply { putBoolean(PlaybackCommands.ARG_ENABLED, enabled) },
+            )
         }
     }
 
     /** True if the player already holds [key]'s audiobook (so the UI can just re-attach). */
     fun isLoaded(key: String): Boolean = current?.key == key
 
-    fun playPause() = withController { if (it.isPlaying) it.pause() else it.play() }
+    fun playPause() = withController { c ->
+        if (c.isPlaying) {
+            c.pause()
+        } else {
+            val rewind = options.smartRewindSeconds * 1000L
+            if (rewind > 0L) c.seekTo((c.currentPosition - rewind).coerceAtLeast(0L))
+            c.play()
+        }
+    }
+
     fun seekTo(positionMs: Long) = withController { it.seekTo(positionMs.coerceAtLeast(0L)) }
-    fun skipForward() = withController { it.seekTo(it.currentPosition + 30_000) }
-    fun skipBack() = withController { it.seekTo((it.currentPosition - 15_000).coerceAtLeast(0L)) }
+    fun skipForward() = withController {
+        it.seekTo(it.currentPosition + options.skipForwardSeconds * 1000L)
+    }
+    fun skipBack() = withController {
+        it.seekTo((it.currentPosition - options.skipBackSeconds * 1000L).coerceAtLeast(0L))
+    }
 
     fun seekToChapter(index: Int) = withController { c ->
         current?.chapters?.getOrNull(index)?.let { c.seekTo(it.startMs) }
@@ -135,16 +177,32 @@ class AudiobookPlayer @Inject constructor(
     fun setSleepTimer(durationMs: Long?) {
         sleepJob?.cancel()
         if (durationMs == null) {
-            _state.value = _state.value.copy(sleepTimerEndsAt = null)
+            _state.value = _state.value.copy(sleepTimerEndsAt = null, sleepAtChapterEnd = false)
             return
         }
         val endsAt = System.currentTimeMillis() + durationMs
-        _state.value = _state.value.copy(sleepTimerEndsAt = endsAt)
+        _state.value = _state.value.copy(sleepTimerEndsAt = endsAt, sleepAtChapterEnd = false)
         sleepJob = scope.launch {
             delay(durationMs)
             withController { it.pause() }
             _state.value = _state.value.copy(sleepTimerEndsAt = null)
         }
+    }
+
+    /** Pause when the current chapter finishes. */
+    fun setSleepTimerEndOfChapter() {
+        sleepJob?.cancel()
+        _state.value = _state.value.copy(sleepTimerEndsAt = null, sleepAtChapterEnd = true)
+    }
+
+    fun clearSleepTimer() = setSleepTimer(null)
+
+    private fun currentChapterEndMs(positionMs: Long): Long? {
+        val a = current ?: return null
+        if (a.chapters.isEmpty()) return null
+        val idx = a.chapterIndexAt(positionMs)
+        val next = a.chapters.getOrNull(idx + 1)?.startMs
+        return next ?: a.durationMs.takeIf { it > 0 }
     }
 
     fun stop() {
@@ -171,6 +229,13 @@ class AudiobookPlayer @Inject constructor(
                     positionMs = pos,
                     durationMs = c.duration.coerceAtLeast(current?.durationMs ?: 0L),
                 )
+                if (_state.value.sleepAtChapterEnd) {
+                    val end = currentChapterEndMs(pos)
+                    if (end != null && pos >= end - 800) {
+                        c.pause()
+                        _state.value = _state.value.copy(sleepAtChapterEnd = false)
+                    }
+                }
                 sinceSave += 1000
                 if (sinceSave >= 10_000) {
                     persistPosition(pos)

@@ -1,13 +1,20 @@
 package net.dexxicon.reader.core.reader
 
 import org.readium.r2.navigator.OverflowableNavigator
+import org.readium.r2.navigator.input.DragEvent
 import org.readium.r2.navigator.input.InputListener
 import org.readium.r2.navigator.input.TapEvent
+import kotlin.math.abs
 
 /**
- * Turns a tap near the left/right edge of the page into a previous/next-page gesture, and a
- * tap in the middle into [onCenterTap] (used to toggle the reader chrome). When [enabled]
- * is false, every tap is treated as a centre tap so the reader's own controls still work.
+ * Page-turn gestures for a Readium navigator:
+ *
+ *  - **Tap** near the left/right edge → previous/next page; tap in the middle → [onCenterTap]
+ *    (toggles the reader chrome). When [enabled] is false every tap is a centre tap so the
+ *    reader's own controls still work.
+ *  - **Horizontal swipe** → previous/next page. Readium consumes horizontal drags itself in
+ *    paginated mode, so this only takes effect where it otherwise wouldn't (e.g. vertical
+ *    scroll mode), giving a consistent left/right page turn in every layout.
  */
 class EdgeTapNavigator(
     private val navigator: OverflowableNavigator,
@@ -33,7 +40,17 @@ class EdgeTapNavigator(
         }
     }
 
+    override fun onDrag(event: DragEvent): Boolean {
+        if (event.type != DragEvent.Type.End) return false
+        val width = viewWidth().takeIf { it > 0 } ?: return false
+        val dx = event.offset.x
+        val dy = event.offset.y
+        if (abs(dx) < width * SWIPE_FRACTION || abs(dx) < abs(dy) * 1.5f) return false
+        return if (dx < 0) navigator.goForward(true) else navigator.goBackward(true)
+    }
+
     private companion object {
         const val EDGE_FRACTION = 0.28f
+        const val SWIPE_FRACTION = 0.18f
     }
 }

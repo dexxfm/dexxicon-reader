@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,7 +35,10 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -75,6 +79,7 @@ fun PlayerScreen(
     var showChapters by remember { mutableStateOf(false) }
     var showSpeed by remember { mutableStateOf(false) }
     var showSleep by remember { mutableStateOf(false) }
+    var showAudioOptions by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -86,6 +91,9 @@ fun PlayerScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showAudioOptions = true }) {
+                        Icon(Icons.Filled.Tune, contentDescription = "Audio options")
+                    }
                     if (playback.audiobook?.chapters?.isNotEmpty() == true) {
                         IconButton(onClick = { showChapters = true }) {
                             Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Chapters")
@@ -177,6 +185,113 @@ fun PlayerScreen(
                         Text(label, Modifier.fillMaxWidth(), textAlign = TextAlign.Start)
                     }
                 }
+                TextButton(
+                    onClick = { viewModel.setSleepTimerEndOfChapter(); showSleep = false },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        "End of current chapter",
+                        Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Start,
+                        color = if (playback.sleepAtChapterEnd) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    if (showAudioOptions) {
+        ModalBottomSheet(onDismissRequest = { showAudioOptions = false }) {
+            AudioOptions(
+                options = playback.options,
+                onSkipSilence = viewModel::setSkipSilence,
+                onSkipForward = viewModel::setSkipForwardSeconds,
+                onSkipBack = viewModel::setSkipBackSeconds,
+                onSmartRewind = viewModel::setSmartRewindSeconds,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AudioOptions(
+    options: net.dexxicon.reader.core.datastore.PlayerPreferences,
+    onSkipSilence: (Boolean) -> Unit,
+    onSkipForward: (Int) -> Unit,
+    onSkipBack: (Int) -> Unit,
+    onSmartRewind: (Int) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 24.dp)) {
+        Text("Audio options", style = MaterialTheme.typography.titleMedium)
+
+        Row(
+            Modifier.fillMaxWidth().padding(top = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text("Skip silence", style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    "Shorten long pauses in narration",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(checked = options.skipSilence, onCheckedChange = onSkipSilence)
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 16.dp))
+
+        ChipRow(
+            label = "Skip forward",
+            values = listOf(10, 15, 30, 45, 60),
+            selected = options.skipForwardSeconds,
+            format = { "${it}s" },
+            onSelect = onSkipForward,
+        )
+        ChipRow(
+            label = "Skip back",
+            values = listOf(5, 10, 15, 30, 45),
+            selected = options.skipBackSeconds,
+            format = { "${it}s" },
+            onSelect = onSkipBack,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+        ChipRow(
+            label = "Rewind on resume",
+            values = listOf(0, 5, 10, 20, 30),
+            selected = options.smartRewindSeconds,
+            format = { if (it == 0) "Off" else "${it}s" },
+            onSelect = onSmartRewind,
+            modifier = Modifier.padding(top = 12.dp),
+        )
+    }
+}
+
+@Composable
+private fun ChipRow(
+    label: String,
+    values: List<Int>,
+    selected: Int,
+    format: (Int) -> String,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodyMedium)
+        Row(
+            Modifier.fillMaxWidth().padding(top = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            values.forEach { value ->
+                FilterChip(
+                    selected = value == selected,
+                    onClick = { onSelect(value) },
+                    label = { Text(format(value)) },
+                )
             }
         }
     }

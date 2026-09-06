@@ -31,6 +31,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
@@ -94,26 +95,33 @@ fun CatalogScreen(
                 onSort = viewModel::onSortSelected,
             )
 
-            when {
-                state.loading -> CenterBox { CircularProgressIndicator() }
-                state.error != null && state.books.isEmpty() -> CenterBox {
-                    Text(
-                        state.error ?: "",
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(32.dp),
-                    )
-                }
-                state.books.isEmpty() -> CenterBox { Text("Nothing here yet") }
-                else -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(112.dp),
-                    state = gridState,
-                    contentPadding = PaddingValues(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    items(state.books, key = { it.id }) { book ->
-                        BookCard(book) { onOpenBook(book.serverId, book.id) }
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = viewModel::refresh,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                when {
+                    state.loading -> CenterBox { CircularProgressIndicator() }
+                    state.error != null && state.books.isEmpty() -> CenterBox {
+                        Text(
+                            state.error ?: "",
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(32.dp),
+                        )
+                    }
+                    state.books.isEmpty() -> CenterBox { Text("Nothing here yet") }
+                    else -> LazyVerticalGrid(
+                        columns = GridCells.Adaptive(112.dp),
+                        state = gridState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        items(state.books, key = { it.id }) { book ->
+                            BookCard(book) { onOpenBook(book.serverId, book.id) }
+                        }
                     }
                 }
             }

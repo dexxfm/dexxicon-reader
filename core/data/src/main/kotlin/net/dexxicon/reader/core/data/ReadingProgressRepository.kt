@@ -109,11 +109,12 @@ class ReadingProgressRepository @Inject constructor(
     }
 
     /**
-     * Pull each in-progress book's position from KOReader sync and adopt it when the server's
-     * copy is newer than ours. Cheap for downloaded books (local digest); for stream-only
+     * Reconcile every in-progress book with KOReader sync **both ways**: adopt the server's
+     * position when it is newer than ours, push ours when it is newer than the server's (or
+     * the server has nothing yet). Cheap for downloaded books (local digest); for stream-only
      * books it needs the [ReadingProgress.digestUrl] captured at open time.
      */
-    suspend fun refreshFromKoSync() = withContext(io) {
+    suspend fun syncWithKoSync() = withContext(io) {
         val rows = dao.all()
         val servers = rows.map { it.serverId }.distinct()
             .mapNotNull { id -> serverRepository.get(id)?.let { id to it } }
@@ -122,18 +123,37 @@ class ReadingProgressRepository @Inject constructor(
         for (row in rows) {
             val server = servers[row.serverId] ?: continue
             if (!koSync.isConfigured(server)) continue
+            val localPercent = row.percent ?: continue
             val source = digestSourceFor(row.serverId, row.bookId, row.digestUrl) ?: continue
 
-            val remote = runCatching { koSync.pull(server, row.key, source) }.getOrNull() ?: continue
+            val remote = runCatching { koSync.pull(server, row.key, source) }.getOrNull()
+            if (remote == null) {
+                // Server has nothing (or was unreachable) — offer our position.
+                runCatching {
+                    koSync.push(server, row.key, source, localPercent.coerceIn(0.0, 1.0))
+                }
+                continue
+            }
 
             val remoteMillis = remote.timestamp.let { if (it in 1..9_999_999_999L) it * 1000 else it }
             val remotePercent = remote.percentage
-            val ahead = remotePercent - (row.percent ?: 0.0) > 0.001
-            if (remoteMillis > row.updatedAt && ahead && remotePercent in 0.0..1.0) {
-                dao.upsert(row.copy(percent = remotePercent, updatedAt = remoteMillis))
+            val remoteAhead = remotePercent - localPercent > 0.001
+            val localAhead = localPercent - remotePercent > 0.001
+
+            when {
+                remoteMillis > row.updatedAt && remoteAhead && remotePercent in 0.0..1.0 ->
+                    dao.upsert(row.copy(percent = remotePercent, updatedAt = remoteMillis))
+
+                localAhead ->
+                    runCatching {
+                        koSync.push(server, row.key, source, localPercent.coerceIn(0.0, 1.0))
+                    }
             }
         }
     }
+
+    @Deprecated("Renamed", ReplaceWith("syncWithKoSync()"))
+    suspend fun refreshFromKoSync() = syncWithKoSync()
 
     private suspend fun pushToKoSync(progress: ReadingProgress) {
         val percent = progress.percent ?: return

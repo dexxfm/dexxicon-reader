@@ -18,6 +18,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -45,12 +46,17 @@ fun SettingsScreen(
 ) {
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val koSyncRows by koSyncViewModel.rows.collectAsStateWithLifecycle()
+    val refreshing by koSyncViewModel.refreshing.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
+        PullToRefreshBox(
+            isRefreshing = refreshing,
+            onRefresh = koSyncViewModel::refreshAll,
+            modifier = Modifier.fillMaxSize().padding(padding),
+        ) {
         Column(
             Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .verticalScroll(rememberScrollState())
                 .padding(20.dp),
         ) {
@@ -110,6 +116,7 @@ fun SettingsScreen(
                 title = "Source code",
                 subtitle = "github.com/dexxfm/dexxicon-reader",
             ) {}
+        }
         }
     }
 }

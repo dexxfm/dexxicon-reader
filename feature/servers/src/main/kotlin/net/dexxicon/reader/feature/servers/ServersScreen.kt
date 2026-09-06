@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -74,23 +75,29 @@ fun ServersScreen(
             )
         },
     ) { padding ->
-        if (!state.loading && state.servers.isEmpty()) {
-            EmptyServers(Modifier.padding(padding))
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    top = padding.calculateTopPadding() + 8.dp,
-                    bottom = padding.calculateBottomPadding() + 96.dp,
-                ),
-            ) {
-                items(state.servers, key = { it.id }) { server ->
-                    ServerRow(
-                        server = server,
-                        onClick = { onOpenServer(server.id, server.displayName) },
-                        onEdit = { onEditServer(server.id) },
-                        onDelete = { viewModel.deleteServer(server.id) },
-                    )
+        PullToRefreshBox(
+            isRefreshing = state.refreshing,
+            onRefresh = viewModel::refresh,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            if (!state.loading && state.servers.isEmpty()) {
+                EmptyServers(Modifier.padding(padding))
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        top = padding.calculateTopPadding() + 8.dp,
+                        bottom = padding.calculateBottomPadding() + 96.dp,
+                    ),
+                ) {
+                    items(state.servers, key = { it.id }) { server ->
+                        ServerRow(
+                            server = server,
+                            onClick = { onOpenServer(server.id, server.displayName) },
+                            onEdit = { onEditServer(server.id) },
+                            onDelete = { viewModel.deleteServer(server.id) },
+                        )
+                    }
                 }
             }
         }

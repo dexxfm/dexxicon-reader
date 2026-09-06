@@ -14,6 +14,7 @@ dependencies {
     api(project(":core:model"))
     implementation(project(":core:common"))
     implementation(project(":core:network"))
+    implementation(project(":core:datastore"))
     api(libs.media3.exoplayer)
     api(libs.media3.session)
     api(libs.media3.common)
