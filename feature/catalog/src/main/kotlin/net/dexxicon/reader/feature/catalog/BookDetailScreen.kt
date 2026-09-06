@@ -154,6 +154,7 @@ private fun DetailContent(
         val isAudio = s.format == ContentFormat.AUDIOBOOK
         val canOpen = s.format == ContentFormat.EPUB ||
             s.format == ContentFormat.COMIC ||
+            s.format == ContentFormat.PDF ||
             s.format == ContentFormat.AUDIOBOOK
         Button(
             onClick = onRead,

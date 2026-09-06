@@ -14,6 +14,7 @@ import org.readium.r2.shared.util.asset.Asset
 import org.readium.r2.shared.util.asset.AssetRetriever
 import org.readium.r2.shared.util.http.HttpClient
 import org.readium.r2.shared.util.mediatype.MediaType
+import org.readium.adapter.pdfium.document.PdfiumDocumentFactory
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.DefaultPublicationParser
 import java.io.File
@@ -38,7 +39,7 @@ class PublicationStreamer @Inject constructor(
             context = context,
             httpClient = httpClient,
             assetRetriever = assetRetriever,
-            pdfFactory = null,
+            pdfFactory = PdfiumDocumentFactory(context),
         ),
     )
 

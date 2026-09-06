@@ -25,6 +25,7 @@ dependencies {
     api(libs.readium.shared)
     api(libs.readium.streamer)
     api(libs.readium.navigator)
+    api(libs.readium.adapter.pdfium)
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)
