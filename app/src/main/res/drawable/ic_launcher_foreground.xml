@@ -1,0 +1,48 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Fox head, centred in the 66dp safe zone -->
+    <group android:name="fox" android:translateX="0" android:translateY="2">
+
+        <!-- ears -->
+        <path
+            android:fillColor="#C7CED9"
+            android:pathData="M33,34 L44,20 L47,44 Z" />
+        <path
+            android:fillColor="#C7CED9"
+            android:pathData="M75,34 L64,20 L61,44 Z" />
+        <path
+            android:fillColor="#6E8DC0"
+            android:pathData="M37,35 L44,25 L47,42 Z" />
+        <path
+            android:fillColor="#6E8DC0"
+            android:pathData="M71,35 L64,25 L61,42 Z" />
+
+        <!-- head -->
+        <path
+            android:fillColor="#A9C0E4"
+            android:pathData="M40,40 H68 C70,40 71,42 70,44 L64,70 C61,80 54,86 54,86 C54,86 47,80 44,70 L38,44 C37,42 38,40 40,40 Z" />
+
+        <!-- open book carved into the face -->
+        <path
+            android:fillColor="#1E3057"
+            android:pathData="M54,46 C49,42 42,41 37,43 L37,64 C42,62 49,63 54,67 Z" />
+        <path
+            android:fillColor="#24406B"
+            android:pathData="M54,46 C59,42 66,41 71,43 L71,64 C66,62 59,63 54,67 Z" />
+        <path
+            android:fillColor="#0F1B31"
+            android:pathData="M52.5,45 h3 v23 h-3 Z" />
+
+        <!-- snout + nose -->
+        <path
+            android:fillColor="#C7CED9"
+            android:pathData="M47,70 H61 L54,82 Z" />
+        <path
+            android:fillColor="#0F1B31"
+            android:pathData="M54,74 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+    </group>
+</vector>

@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Dexxicon Reader logo concept A">
+  <defs>
+    <linearGradient id="bgA" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1E3057"/>
+      <stop offset="1" stop-color="#132039"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgA)"/>
+
+  <!-- faceted fox head, dark blue + grey planes -->
+  <g stroke="#0E1A2E" stroke-width="3" stroke-linejoin="round">
+    <!-- ears -->
+    <path d="M150 150 L196 96 L214 178 Z" fill="#3D5A8A"/>
+    <path d="M362 150 L316 96 L298 178 Z" fill="#2E4670"/>
+    <path d="M170 176 L196 120 L214 178 Z" fill="#8A94A6"/>
+    <path d="M342 176 L316 120 L298 178 Z" fill="#6B7688"/>
+    <!-- upper face -->
+    <path d="M214 178 L298 178 L322 250 L190 250 Z" fill="#4A6BA0"/>
+    <path d="M190 250 L322 250 L256 300 Z" fill="#3D5A8A"/>
+    <!-- cheeks -->
+    <path d="M190 250 L256 300 L214 356 L150 258 Z" fill="#2E4670"/>
+    <path d="M322 250 L256 300 L298 356 L362 258 Z" fill="#35507E"/>
+    <!-- muzzle: grey planes with book negative space -->
+    <path d="M214 356 L256 300 L298 356 L256 420 Z" fill="#C7CED9"/>
+    <path d="M214 356 L256 420 L232 392 Z" fill="#9AA4B4"/>
+    <path d="M298 356 L256 420 L280 392 Z" fill="#B4BDCB"/>
+  </g>
+
+  <!-- open book carved into the muzzle -->
+  <g fill="none" stroke="#1E3057" stroke-width="10" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M256 356 C 240 346 224 346 212 352 L212 392 C 224 386 240 386 256 396 Z"/>
+    <path d="M256 356 C 272 346 288 346 300 352 L300 392 C 288 386 272 386 256 396 Z"/>
+  </g>
+
+  <!-- eyes -->
+  <path d="M226 250 l20 -10 -6 20 Z" fill="#0E1A2E"/>
+  <path d="M286 250 l-20 -10 6 20 Z" fill="#0E1A2E"/>
+</svg>

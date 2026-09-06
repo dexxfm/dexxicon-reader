@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Dexxicon Reader logo concept B">
+  <defs>
+    <linearGradient id="bgB" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#24406B"/>
+      <stop offset="1" stop-color="#101C33"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgB)"/>
+
+  <!-- monoline fox head drawn as one continuous ribbon / bookmark -->
+  <g fill="none" stroke="#C7CED9" stroke-width="22" stroke-linecap="round" stroke-linejoin="round">
+    <!-- head outline with pointed ears -->
+    <path d="M256 392
+             C 196 392 156 350 150 300
+             L132 176 L206 232
+             C 236 220 276 220 306 232
+             L380 176 L362 300
+             C 356 350 316 392 256 392 Z"/>
+  </g>
+
+  <!-- inner ear + snout accents in mid grey -->
+  <path d="M150 300 C 156 350 196 392 256 392 C 316 392 356 350 362 300
+           C 330 330 300 344 256 344 C 212 344 182 330 150 300 Z" fill="#3D5A8A"/>
+
+  <!-- bookmark ribbon falling from the chin -->
+  <path d="M236 372 L276 372 L276 468 L256 444 L236 468 Z" fill="#8A94A6"/>
+
+  <!-- eyes -->
+  <circle cx="222" cy="286" r="12" fill="#101C33"/>
+  <circle cx="290" cy="286" r="12" fill="#101C33"/>
+  <!-- nose -->
+  <path d="M256 330 l-14 -16 h28 Z" fill="#101C33"/>
+</svg>

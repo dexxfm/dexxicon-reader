@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" role="img" aria-label="Dexxicon Reader logo concepts contact sheet">
+  <rect width="900" height="520" fill="#0B1220"/>
+  <text x="40" y="52" fill="#C7CED9" font-family="Segoe UI, Roboto, sans-serif" font-size="26" font-weight="600">Dexxicon Reader — fox logo directions</text>
+  <text x="40" y="80" fill="#6B7688" font-family="Segoe UI, Roboto, sans-serif" font-size="15">dark blue + grey · geometric · book motif</text>
+
+  <!-- A -->
+  <g transform="translate(40,120)">
+    <use href="A-lowpoly-fox.svg#root"/>
+    <image href="A-lowpoly-fox.svg" width="220" height="220"/>
+    <text x="0" y="248" fill="#C7CED9" font-family="Segoe UI, Roboto, sans-serif" font-size="18" font-weight="600">A · Low-poly fox</text>
+    <text x="0" y="272" fill="#6B7688" font-family="Segoe UI, Roboto, sans-serif" font-size="13">faceted planes, open book carved in muzzle</text>
+  </g>
+
+  <!-- B -->
+  <g transform="translate(340,120)">
+    <image href="B-bookmark-fox.svg" width="220" height="220"/>
+    <text x="0" y="248" fill="#C7CED9" font-family="Segoe UI, Roboto, sans-serif" font-size="18" font-weight="600">B · Bookmark ribbon</text>
+    <text x="0" y="272" fill="#6B7688" font-family="Segoe UI, Roboto, sans-serif" font-size="13">single monoline stroke, ribbon tail = bookmark</text>
+  </g>
+
+  <!-- C -->
+  <g transform="translate(640,120)">
+    <image href="C-open-book-fox.svg" width="220" height="220"/>
+    <text x="0" y="248" fill="#C7CED9" font-family="Segoe UI, Roboto, sans-serif" font-size="18" font-weight="600">C · Face is a book</text>
+    <text x="0" y="272" fill="#6B7688" font-family="Segoe UI, Roboto, sans-serif" font-size="13">open book fills the face between the ears</text>
+  </g>
+
+  <!-- wordmark lockup -->
+  <g transform="translate(40,410)">
+    <image href="B-bookmark-fox.svg" width="72" height="72"/>
+    <text x="92" y="38" fill="#E7EBF1" font-family="Segoe UI, Roboto, sans-serif" font-size="30" font-weight="700">Dexxicon</text>
+    <text x="92" y="66" fill="#8A94A6" font-family="Segoe UI, Roboto, sans-serif" font-size="20" font-weight="500" letter-spacing="6">READER</text>
+  </g>
+</svg>

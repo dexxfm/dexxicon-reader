@@ -1,0 +1,21 @@
+*.iml
+.gradle/
+**/build/
+!src/**/build/
+local.properties
+.idea/
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.keystore
+!debug.keystore
+
+.claude/settings.local.json
+.claude/plans/
+
+# Python leftovers from the previous project state
+__pycache__/
+*.pyc

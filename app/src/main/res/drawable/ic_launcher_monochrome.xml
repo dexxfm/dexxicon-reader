@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Single silhouette; the system tints this as an alpha mask. -->
+    <path
+        android:fillColor="#000000"
+        android:fillType="evenOdd"
+        android:pathData="M33,36 L44,22 L47,46 Z
+                          M75,36 L64,22 L61,46 Z
+                          M40,42 H68 C70,42 71,44 70,46 L64,72 C61,82 54,88 54,88 C54,88 47,82 44,72 L38,46 C37,44 38,42 40,42 Z
+                          M53,48 C48,44 42,44 38,46 L38,64 C42,62 48,62 53,66 Z
+                          M55,48 C60,44 66,44 70,46 L70,64 C66,62 60,62 55,66 Z" />
+</vector>

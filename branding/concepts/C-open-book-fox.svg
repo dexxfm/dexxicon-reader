@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Dexxicon Reader logo concept C">
+  <defs>
+    <linearGradient id="bgC" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#20365E"/>
+      <stop offset="1" stop-color="#0F1B31"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#bgC)"/>
+
+  <!-- fox head silhouette where the face is an open book -->
+  <!-- ears -->
+  <path d="M120 150 L188 120 L196 214 Z" fill="#3D5A8A"/>
+  <path d="M392 150 L324 120 L316 214 Z" fill="#3D5A8A"/>
+  <path d="M142 162 L188 140 L192 200 Z" fill="#8A94A6"/>
+  <path d="M370 162 L324 140 L320 200 Z" fill="#8A94A6"/>
+
+  <!-- head base -->
+  <path d="M196 200 H316 L300 320 C 292 372 256 404 256 404 C 256 404 220 372 212 320 Z" fill="#2E4670"/>
+
+  <!-- open book forming the face -->
+  <g>
+    <path d="M256 214 C 224 196 190 194 168 202 L168 322 C 190 314 224 316 256 336 Z" fill="#C7CED9"/>
+    <path d="M256 214 C 288 196 322 194 344 202 L344 322 C 322 314 288 316 256 336 Z" fill="#DBE0E8"/>
+    <path d="M252 210 h8 v130 h-8 Z" fill="#20365E"/>
+    <!-- page lines -->
+    <g stroke="#9AA4B4" stroke-width="6" stroke-linecap="round">
+      <path d="M192 232 h44"/><path d="M192 256 h44"/><path d="M192 280 h44"/>
+      <path d="M276 232 h44"/><path d="M276 256 h44"/><path d="M276 280 h44"/>
+    </g>
+  </g>
+
+  <!-- snout + nose below the book -->
+  <path d="M232 342 h48 l-24 34 Z" fill="#8A94A6"/>
+  <circle cx="256" cy="352" r="9" fill="#0F1B31"/>
+</svg>
