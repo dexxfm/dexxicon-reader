@@ -17,15 +17,19 @@ import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.data.sync.DigestSource
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.reader.PublicationStreamer
 import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
 import net.dexxicon.reader.core.reader.ReaderPreferencesStore
+import net.dexxicon.reader.core.reader.ReaderSync
 import net.dexxicon.reader.feature.reader.epub.navigation.EpubReaderRoute
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.positions
 import org.readium.r2.shared.util.mediatype.MediaType
+import kotlin.math.abs
 import javax.inject.Inject
 
 sealed interface EpubReaderState {
@@ -35,6 +39,9 @@ sealed interface EpubReaderState {
         val publication: Publication,
         val initialLocator: Locator?,
         val title: String,
+        /** A newer position from KOReader sync / another device, if any (0.0–1.0). */
+        val remoteResumePercent: Double? = null,
+        val remoteResumeLocator: Locator? = null,
     ) : EpubReaderState
 }
 
@@ -45,11 +52,13 @@ class EpubReaderViewModel @Inject constructor(
     private val locatorStore: ReaderLocatorStore,
     private val downloadRepository: DownloadRepository,
     private val streamer: PublicationStreamer,
+    private val readerSync: ReaderSync,
     preferencesStore: ReaderPreferencesStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val route = savedStateHandle.toRoute<EpubReaderRoute>()
+    private var digestSource: DigestSource? = null
 
     private val _state = MutableStateFlow<EpubReaderState>(EpubReaderState.Loading)
     val state: StateFlow<EpubReaderState> = _state.asStateFlow()
@@ -66,8 +75,14 @@ class EpubReaderViewModel @Inject constructor(
     init {
         viewModelScope.launch { load() }
         viewModelScope.launch {
-            locatorUpdates.debounce(1_500).collect {
-                locatorStore.save(route.serverId, route.bookId, it)
+            locatorUpdates.debounce(1_500).collect { locator ->
+                locatorStore.save(route.serverId, route.bookId, locator)
+                digestSource?.let { source ->
+                    readerSync.report(
+                        route.serverId, route.bookId, source,
+                        locator.locations.totalProgression,
+                    )
+                }
             }
         }
     }
@@ -86,6 +101,7 @@ class EpubReaderViewModel @Inject constructor(
         }
 
         val opened = if (localFile != null) {
+            digestSource = DigestSource.LocalFile(localFile)
             streamer.open(localFile, MediaType.EPUB)
         } else {
             val acquisition = detail!!.acquisitions.firstOrNull { it.format == ContentFormat.EPUB }
@@ -94,16 +110,33 @@ class EpubReaderViewModel @Inject constructor(
                 _state.value = EpubReaderState.Error("This book isn't an EPUB")
                 return
             }
+            digestSource = DigestSource.Remote(acquisition.href)
             streamer.open(acquisition.href, MediaType.EPUB)
         }
 
         when (opened) {
             is Outcome.Success -> {
                 publication = opened.value
+                val initial = locatorStore.initialLocator(route.serverId, route.bookId)
+                val remote = digestSource?.let { source ->
+                    readerSync.remoteResumePercent(
+                        route.serverId, route.bookId, source,
+                        initial?.locations?.totalProgression,
+                    )
+                }
+                val remoteLocator = remote?.let { target ->
+                    runCatching {
+                        opened.value.positions().minByOrNull {
+                            abs((it.locations.totalProgression ?: 0.0) - target)
+                        }
+                    }.getOrNull()
+                }
                 _state.value = EpubReaderState.Ready(
                     publication = opened.value,
-                    initialLocator = locatorStore.initialLocator(route.serverId, route.bookId),
+                    initialLocator = initial,
                     title = detail?.summary?.title ?: downloadTitle ?: "",
+                    remoteResumePercent = remote,
+                    remoteResumeLocator = remoteLocator,
                 )
             }
             is Outcome.Failure ->

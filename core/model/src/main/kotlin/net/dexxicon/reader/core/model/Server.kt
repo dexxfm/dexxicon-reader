@@ -13,6 +13,9 @@ data class Server(
     val username: String = "",
     val opdsPath: String = "/api/v1/opds",
     val koSyncPath: String? = null,
+    /** Full base URL of the KOReader sync server (e.g. `https://host/koreader`). */
+    val koSyncUrl: String? = null,
+    val koSyncUsername: String? = null,
     val koboEndpoint: String? = null,
     val enabledProviders: Set<SyncProviderKind> = emptySet(),
     val createdAt: Long = 0L,

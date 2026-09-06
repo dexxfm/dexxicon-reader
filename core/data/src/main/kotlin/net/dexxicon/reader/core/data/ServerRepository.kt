@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.map
 import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.database.dao.ServerDao
 import net.dexxicon.reader.core.database.entity.ServerEntity
+import net.dexxicon.reader.core.data.sync.KoSyncRepository
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.security.CredentialStore
 import java.util.UUID
@@ -28,7 +29,7 @@ class ServerRepository @Inject constructor(
     suspend fun get(id: String): Server? = serverDao.findById(id)?.toDomain()
 
     /** Insert or update a server. Pass [password] to (re)store the secret. */
-    suspend fun save(server: Server, password: String?): Server {
+    suspend fun save(server: Server, password: String?, koSyncPassword: String? = null): Server {
         val withId = if (server.id.isBlank()) {
             server.copy(id = UUID.randomUUID().toString(), createdAt = System.currentTimeMillis())
         } else {
@@ -38,6 +39,9 @@ class ServerRepository @Inject constructor(
         if (password != null) {
             credentialStore.putPassword(withId.id, password)
             tokenManager.invalidate(withId.id)
+        }
+        if (koSyncPassword != null) {
+            credentialStore.putSyncSecret(withId.id, KoSyncRepository.KOSYNC_PROVIDER, koSyncPassword)
         }
         return withId
     }

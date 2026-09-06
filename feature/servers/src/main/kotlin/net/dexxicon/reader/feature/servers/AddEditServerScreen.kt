@@ -195,6 +195,44 @@ fun AddEditServerScreen(
             )
 
             Spacer(Modifier.height(24.dp))
+            Text(
+                "KOReader sync (optional)",
+                style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
+            )
+            Text(
+                "Share reading progress with the KOReader app and other devices. Needs a " +
+                    "dedicated sync account on the server.",
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
+            )
+            OutlinedTextField(
+                value = state.koSyncUrl,
+                onValueChange = viewModel::onKoSyncUrlChange,
+                label = { Text("Sync server URL") },
+                placeholder = { Text("https://host/koreader") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = state.koSyncUsername,
+                onValueChange = viewModel::onKoSyncUsernameChange,
+                label = { Text("Sync username") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
+                value = state.koSyncPassword,
+                onValueChange = viewModel::onKoSyncPasswordChange,
+                label = { Text("Sync password") },
+                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(24.dp))
             Button(
                 onClick = { viewModel.save(onDone) },
                 enabled = state.canSave && !state.saving,

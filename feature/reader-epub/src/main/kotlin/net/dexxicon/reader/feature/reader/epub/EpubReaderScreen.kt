@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.CircularProgressIndicator
@@ -185,27 +186,58 @@ private fun ReaderContent(
             }
         },
     ) { padding ->
-        AndroidView(
-            factory = { ctx ->
-                val container = FragmentContainerView(ctx).apply {
-                    id = View.generateViewId()
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                    )
-                }
-                if (fragmentManager.findFragmentByTag(NAV_FRAGMENT_TAG) == null &&
-                    !fragmentManager.isStateSaved
+        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().padding(padding)) {
+            AndroidView(
+                factory = { ctx ->
+                    val container = FragmentContainerView(ctx).apply {
+                        id = View.generateViewId()
+                        layoutParams = FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                        )
+                    }
+                    if (fragmentManager.findFragmentByTag(NAV_FRAGMENT_TAG) == null &&
+                        !fragmentManager.isStateSaved
+                    ) {
+                        fragmentManager.commit {
+                            setReorderingAllowed(true)
+                            add(container.id, EpubNavigatorFragment::class.java, null, NAV_FRAGMENT_TAG)
+                        }
+                    }
+                    container
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            var resumeDismissed by remember { mutableStateOf(false) }
+            val resumeLocator = state.remoteResumeLocator
+            if (resumeLocator != null && !resumeDismissed) {
+                Surface(
+                    tonalElevation = 3.dp,
+                    shadowElevation = 4.dp,
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
                 ) {
-                    fragmentManager.commit {
-                        setReorderingAllowed(true)
-                        add(container.id, EpubNavigatorFragment::class.java, null, NAV_FRAGMENT_TAG)
+                    Row(
+                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Continue from ${((state.remoteResumePercent ?: 0.0) * 100).toInt()}% (synced)",
+                            Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        TextButton(onClick = {
+                            navigator?.go(resumeLocator, true)
+                            resumeDismissed = true
+                        }) { Text("Jump") }
+                        IconButton(onClick = { resumeDismissed = true }) {
+                            Icon(Icons.Filled.Close, contentDescription = "Dismiss")
+                        }
                     }
                 }
-                container
-            },
-            modifier = Modifier.fillMaxSize().padding(padding),
-        )
+            }
+        }
     }
 
     if (showToc) {

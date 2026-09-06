@@ -64,11 +64,18 @@ object DatabaseModule {
         }
     }
 
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `servers` ADD COLUMN `koSyncUrl` TEXT")
+            db.execSQL("ALTER TABLE `servers` ADD COLUMN `koSyncUsername` TEXT")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): DexxiconDatabase =
         Room.databaseBuilder(context, DexxiconDatabase::class.java, DexxiconDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
             .build()
 
     @Provides

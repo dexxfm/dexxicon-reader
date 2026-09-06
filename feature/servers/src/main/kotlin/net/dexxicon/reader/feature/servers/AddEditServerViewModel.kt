@@ -31,6 +31,9 @@ data class AddEditServerUiState(
     val username: String = "",
     val password: String = "",
     val passwordTouched: Boolean = false,
+    val koSyncUrl: String = "",
+    val koSyncUsername: String = "",
+    val koSyncPassword: String = "",
     val testState: TestState = TestState.Idle,
     val sso: SsoState = SsoState.Idle,
     val saving: Boolean = false,
@@ -86,6 +89,8 @@ class AddEditServerViewModel @Inject constructor(
                             displayName = server.displayName,
                             baseUrl = server.baseUrl,
                             username = server.username,
+                            koSyncUrl = server.koSyncUrl.orEmpty(),
+                            koSyncUsername = server.koSyncUsername.orEmpty(),
                             savedType = server.type,
                         )
                     }
@@ -107,6 +112,10 @@ class AddEditServerViewModel @Inject constructor(
     fun onPasswordChange(value: String) = _uiState.update {
         it.copy(password = value, passwordTouched = true, testState = TestState.Idle)
     }
+
+    fun onKoSyncUrlChange(value: String) = _uiState.update { it.copy(koSyncUrl = value) }
+    fun onKoSyncUsernameChange(value: String) = _uiState.update { it.copy(koSyncUsername = value) }
+    fun onKoSyncPasswordChange(value: String) = _uiState.update { it.copy(koSyncPassword = value) }
 
     fun test() {
         val state = _uiState.value
@@ -224,8 +233,11 @@ class AddEditServerViewModel @Inject constructor(
                     type = state.savedType,
                     authMode = AuthMode.NATIVE,
                     username = state.username.trim(),
+                    koSyncUrl = state.koSyncUrl.trim().trimEnd('/').takeIf { it.isNotBlank() },
+                    koSyncUsername = state.koSyncUsername.trim().takeIf { it.isNotBlank() },
                 ),
                 password = state.password.takeIf { it.isNotBlank() },
+                koSyncPassword = state.koSyncPassword.takeIf { it.isNotBlank() },
             )
             onSaved()
         }

@@ -9,6 +9,7 @@ import net.dexxicon.reader.core.network.di.DexxiconHttpClient
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
+import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -59,4 +60,9 @@ object ServerApiModule {
     @Singleton
     fun provideBookOrbitBrowseApi(retrofit: Retrofit): BookOrbitBrowseApi =
         retrofit.create(BookOrbitBrowseApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideKoSyncApi(retrofit: Retrofit): KoSyncApi =
+        retrofit.create(KoSyncApi::class.java)
 }

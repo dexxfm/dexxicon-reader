@@ -17,6 +17,8 @@ data class ServerEntity(
     val username: String,
     val opdsPath: String,
     val koSyncPath: String?,
+    val koSyncUrl: String? = null,
+    val koSyncUsername: String? = null,
     val koboEndpoint: String?,
     val enabledProviders: String,
     val createdAt: Long,
@@ -30,6 +32,8 @@ data class ServerEntity(
         username = username,
         opdsPath = opdsPath,
         koSyncPath = koSyncPath,
+        koSyncUrl = koSyncUrl,
+        koSyncUsername = koSyncUsername,
         koboEndpoint = koboEndpoint,
         enabledProviders = enabledProviders.split(',')
             .filter { it.isNotBlank() }
@@ -48,6 +52,8 @@ data class ServerEntity(
             username = server.username,
             opdsPath = server.opdsPath,
             koSyncPath = server.koSyncPath,
+            koSyncUrl = server.koSyncUrl,
+            koSyncUsername = server.koSyncUsername,
             koboEndpoint = server.koboEndpoint,
             enabledProviders = server.enabledProviders.joinToString(",") { it.name },
             createdAt = server.createdAt,
