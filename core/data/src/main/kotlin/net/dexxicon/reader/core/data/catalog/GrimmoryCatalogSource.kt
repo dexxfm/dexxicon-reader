@@ -5,7 +5,9 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.common.htmlToPlainText
 import net.dexxicon.reader.core.model.Acquisition
 import net.dexxicon.reader.core.model.AcquisitionRelation
+import net.dexxicon.reader.core.model.AudiobookInfo
 import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.Chapter
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
@@ -84,6 +86,13 @@ class GrimmoryCatalogSource @Inject constructor(
         // ?withDescription=true — BookLore omits the description from the default DTO.
         val book = api.book(server.resolve("/api/v1/books/$bookId?withDescription=true"))
         val summary = book.toSummary(server)
+        val isAudio = summary.format == ContentFormat.AUDIOBOOK
+        val audioMeta = book.metadata.audiobookMetadata
+        val acquisitionHref = if (isAudio) {
+            server.resolve("/api/v1/audiobooks/$bookId/stream")
+        } else {
+            server.resolve("/api/v1/books/$bookId/content")
+        }
         BookDetail(
             summary = summary,
             description = book.metadata.description?.htmlToPlainText()?.takeIf { it.isNotBlank() },
@@ -95,9 +104,19 @@ class GrimmoryCatalogSource @Inject constructor(
             narrators = listOfNotNull(book.metadata.narrator?.takeIf { it.isNotBlank() }),
             categories = book.metadata.categories,
             fileSizeBytes = book.primaryFile?.fileSizeKb?.let { it * 1024 },
+            audio = if (isAudio && audioMeta != null) {
+                AudiobookInfo(
+                    durationMs = (audioMeta.durationSeconds ?: 0L) * 1000L,
+                    chapters = audioMeta.chapters.mapNotNull { c ->
+                        c.title?.let { Chapter(it, c.startTimeMs ?: 0L) }
+                    },
+                )
+            } else {
+                null
+            },
             acquisitions = listOf(
                 Acquisition(
-                    href = server.resolve("/api/v1/books/$bookId/content"),
+                    href = acquisitionHref,
                     mediaType = summary.format.name,
                     format = summary.format,
                     relation = AcquisitionRelation.ACQUIRE,

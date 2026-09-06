@@ -12,6 +12,8 @@ import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.feature.library.LibraryScreen
 import net.dexxicon.reader.feature.reader.comic.navigation.comicReaderSection
 import net.dexxicon.reader.feature.reader.comic.navigation.navigateToComicReader
+import net.dexxicon.reader.feature.player.navigation.navigateToPlayer
+import net.dexxicon.reader.feature.player.navigation.playerSection
 import net.dexxicon.reader.feature.reader.epub.navigation.epubReaderSection
 import net.dexxicon.reader.feature.reader.epub.navigation.navigateToEpubReader
 import net.dexxicon.reader.feature.servers.ServersScreen
@@ -65,6 +67,7 @@ fun DexxiconNavHost(
             onOpenReader = { serverId, bookId, format ->
                 when (format) {
                     ContentFormat.COMIC -> navController.navigateToComicReader(serverId, bookId)
+                    ContentFormat.AUDIOBOOK -> navController.navigateToPlayer(serverId, bookId)
                     else -> navController.navigateToEpubReader(serverId, bookId)
                 }
             },
@@ -72,5 +75,6 @@ fun DexxiconNavHost(
 
         epubReaderSection(navController)
         comicReaderSection(navController)
+        playerSection(navController)
     }
 }

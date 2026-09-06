@@ -19,6 +19,8 @@ dependencies {
     api(libs.media3.common)
     implementation(libs.media3.datasource.okhttp)
     implementation(libs.androidx.lifecycle.service)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

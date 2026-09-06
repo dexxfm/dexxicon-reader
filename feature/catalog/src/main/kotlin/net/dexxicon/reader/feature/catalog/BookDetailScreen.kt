@@ -152,17 +152,19 @@ private fun DetailContent(
 
         Spacer(Modifier.height(20.dp))
         val isAudio = s.format == ContentFormat.AUDIOBOOK
-        val canRead = s.format == ContentFormat.EPUB || s.format == ContentFormat.COMIC
+        val canOpen = s.format == ContentFormat.EPUB ||
+            s.format == ContentFormat.COMIC ||
+            s.format == ContentFormat.AUDIOBOOK
         Button(
             onClick = onRead,
-            enabled = canRead,
+            enabled = canOpen,
             modifier = Modifier.fillMaxWidth(),
         ) {
             Icon(Icons.Filled.PlayArrow, contentDescription = null)
             Text(
                 when {
-                    canRead -> "  Read"
-                    isAudio -> "  Listen (player coming soon)"
+                    isAudio -> "  Listen"
+                    canOpen -> "  Read"
                     else -> "  Read (reader coming soon)"
                 },
             )

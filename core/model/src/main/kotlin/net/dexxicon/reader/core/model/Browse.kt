@@ -43,12 +43,19 @@ data class BookDetail(
     val categories: List<String> = emptyList(),
     val acquisitions: List<Acquisition> = emptyList(),
     val fileSizeBytes: Long? = null,
+    /** Populated for [ContentFormat.AUDIOBOOK] — chapters + total duration. */
+    val audio: AudiobookInfo? = null,
 ) {
     val narratorLine: String get() = narrators.joinToString(", ")
 
     val primaryAcquisition: Acquisition?
         get() = acquisitions.minByOrNull { it.format.priority }
 }
+
+data class AudiobookInfo(
+    val durationMs: Long,
+    val chapters: List<Chapter> = emptyList(),
+)
 
 /** How book listings are ordered. */
 enum class BookSort { RECENT, TITLE, SERIES }

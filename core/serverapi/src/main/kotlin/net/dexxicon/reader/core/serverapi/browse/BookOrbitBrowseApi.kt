@@ -82,12 +82,25 @@ data class BookOrbitBook(
     val libraryId: Long? = null,
     val libraryName: String? = null,
     val files: List<BookOrbitFile> = emptyList(),
+    val audioMetadata: BookOrbitAudioMeta? = null,
 ) {
     /** The file the readers/downloader should use. */
     val primaryFile: BookOrbitFile?
         get() = files.firstOrNull { it.role.equals("primary", ignoreCase = true) }
             ?: files.firstOrNull()
 }
+
+@Serializable
+data class BookOrbitAudioMeta(
+    val durationSeconds: Long? = null,
+    val chapters: List<BookOrbitChapter> = emptyList(),
+)
+
+@Serializable
+data class BookOrbitChapter(
+    val title: String? = null,
+    val startMs: Long? = null,
+)
 
 @Serializable
 data class BookOrbitFile(

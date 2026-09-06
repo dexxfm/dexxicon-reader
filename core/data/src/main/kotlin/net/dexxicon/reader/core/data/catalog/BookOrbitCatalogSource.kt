@@ -5,7 +5,9 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.common.htmlToPlainText
 import net.dexxicon.reader.core.model.Acquisition
 import net.dexxicon.reader.core.model.AcquisitionRelation
+import net.dexxicon.reader.core.model.AudiobookInfo
 import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.Chapter
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
@@ -78,6 +80,14 @@ class BookOrbitCatalogSource @Inject constructor(
             narrators = book.narrators,
             categories = book.genres,
             fileSizeBytes = file?.sizeBytes,
+            audio = book.audioMetadata?.takeIf { summary.format == ContentFormat.AUDIOBOOK }?.let { am ->
+                AudiobookInfo(
+                    durationMs = (am.durationSeconds ?: file?.durationSeconds ?: 0L) * 1000L,
+                    chapters = am.chapters.mapNotNull { c ->
+                        c.title?.let { Chapter(it, c.startMs ?: 0L) }
+                    },
+                )
+            },
             acquisitions = listOfNotNull(
                 file?.let {
                     Acquisition(

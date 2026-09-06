@@ -109,6 +109,19 @@ data class GrimmoryMetadata(
     val narrator: String? = null,
     val authors: List<String> = emptyList(),
     val categories: List<String> = emptyList(),
+    val audiobookMetadata: GrimmoryAudiobookMeta? = null,
+)
+
+@Serializable
+data class GrimmoryAudiobookMeta(
+    val durationSeconds: Long? = null,
+    val chapters: List<GrimmoryChapter> = emptyList(),
+)
+
+@Serializable
+data class GrimmoryChapter(
+    val title: String? = null,
+    val startTimeMs: Long? = null,
 )
 
 @Serializable
