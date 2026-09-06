@@ -55,8 +55,7 @@ class KoSyncRepository @Inject constructor(
             .joinToString("") { "%02x".format(it) }
     }
 
-    fun isConfigured(server: Server): Boolean =
-        !server.koSyncUrl.isNullOrBlank() && !server.koSyncUsername.isNullOrBlank()
+    fun isConfigured(server: Server): Boolean = !server.koSyncUsername.isNullOrBlank()
 
     private suspend fun authKey(server: Server): String? {
         val password = credentialStore.getSyncSecret(server.id, KOSYNC_PROVIDER) ?: return null
@@ -66,7 +65,7 @@ class KoSyncRepository @Inject constructor(
 
     /** Verify credentials against `{base}/users/auth`. */
     suspend fun verify(server: Server): Boolean = withContext(io) {
-        val base = server.koSyncUrl?.trimEnd('/') ?: return@withContext false
+        val base = server.effectiveKoSyncUrl
         val user = server.koSyncUsername ?: return@withContext false
         val key = authKey(server) ?: return@withContext false
         runCatching { api.authorize("$base/users/auth", user, key).isSuccessful }.getOrDefault(false)
@@ -75,7 +74,7 @@ class KoSyncRepository @Inject constructor(
     suspend fun pull(server: Server, cacheKey: String, source: DigestSource): RemoteProgress? =
         withContext(io) {
             if (!isConfigured(server)) return@withContext null
-            val base = server.koSyncUrl?.trimEnd('/') ?: return@withContext null
+            val base = server.effectiveKoSyncUrl
             val user = server.koSyncUsername ?: return@withContext null
             val key = authKey(server) ?: return@withContext null
             val digest = digestFor(cacheKey, source) ?: return@withContext null
@@ -90,7 +89,7 @@ class KoSyncRepository @Inject constructor(
     suspend fun push(server: Server, cacheKey: String, source: DigestSource, percentage: Double) =
         withContext(io) {
             if (!isConfigured(server)) return@withContext
-            val base = server.koSyncUrl?.trimEnd('/') ?: return@withContext
+            val base = server.effectiveKoSyncUrl
             val user = server.koSyncUsername ?: return@withContext
             val key = authKey(server) ?: return@withContext
             val digest = digestFor(cacheKey, source) ?: return@withContext

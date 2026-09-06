@@ -72,6 +72,7 @@ class PdfReaderViewModel @Inject constructor(
             return
         }
 
+        var remoteHref: String? = null
         val opened = if (localFile != null) {
             streamer.open(localFile, MediaType.PDF)
         } else {
@@ -81,6 +82,7 @@ class PdfReaderViewModel @Inject constructor(
                 _state.value = PdfReaderState.Error("This book isn't a PDF")
                 return
             }
+            remoteHref = acquisition.href
             streamer.open(acquisition.href, MediaType.PDF)
         }
 
@@ -93,6 +95,15 @@ class PdfReaderViewModel @Inject constructor(
                     title = detail?.summary?.title ?: downloadTitle ?: "",
                     pageCount = (opened.value.metadata.numberOfPages
                         ?: opened.value.readingOrder.size).coerceAtLeast(1),
+                )
+                locatorStore.noteOpened(
+                    serverId = route.serverId,
+                    bookId = route.bookId,
+                    title = detail?.summary?.title ?: downloadTitle,
+                    author = detail?.summary?.authorLine,
+                    coverUrl = detail?.summary?.coverUrl,
+                    format = ContentFormat.PDF,
+                    digestUrl = remoteHref,
                 )
             }
             is Outcome.Failure ->

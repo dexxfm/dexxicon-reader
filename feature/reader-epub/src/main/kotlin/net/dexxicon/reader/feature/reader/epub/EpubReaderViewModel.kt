@@ -86,14 +86,9 @@ class EpubReaderViewModel @Inject constructor(
             runCatching { highlightRepository.syncFromServer(route.serverId, route.bookId) }
         }
         viewModelScope.launch {
+            // locatorStore.save persists the position and pushes it to KOReader sync.
             locatorUpdates.debounce(1_500).collect { locator ->
                 locatorStore.save(route.serverId, route.bookId, locator)
-                digestSource?.let { source ->
-                    readerSync.report(
-                        route.serverId, route.bookId, source,
-                        locator.locations.totalProgression,
-                    )
-                }
             }
         }
     }
@@ -148,6 +143,15 @@ class EpubReaderViewModel @Inject constructor(
                     title = detail?.summary?.title ?: downloadTitle ?: "",
                     remoteResumePercent = remote,
                     remoteResumeLocator = remoteLocator,
+                )
+                locatorStore.noteOpened(
+                    serverId = route.serverId,
+                    bookId = route.bookId,
+                    title = detail?.summary?.title ?: downloadTitle,
+                    author = detail?.summary?.authorLine,
+                    coverUrl = detail?.summary?.coverUrl,
+                    format = ContentFormat.EPUB,
+                    digestUrl = (digestSource as? DigestSource.Remote)?.url,
                 )
             }
             is Outcome.Failure ->

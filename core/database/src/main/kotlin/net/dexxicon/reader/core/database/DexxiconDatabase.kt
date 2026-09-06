@@ -18,7 +18,7 @@ import net.dexxicon.reader.core.database.entity.ServerEntity
         DownloadEntity::class,
         HighlightEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class DexxiconDatabase : RoomDatabase() {

@@ -41,6 +41,14 @@ fun DexxiconNavHost(
                 onOpenBook = { serverId, bookId ->
                     navController.navigateToBookDetail(serverId, bookId)
                 },
+                onContinue = { serverId, bookId, format ->
+                    when (format) {
+                        ContentFormat.COMIC -> navController.navigateToComicReader(serverId, bookId)
+                        ContentFormat.PDF -> navController.navigateToPdfReader(serverId, bookId)
+                        ContentFormat.AUDIOBOOK -> navController.navigateToPlayer(serverId, bookId)
+                        else -> navController.navigateToEpubReader(serverId, bookId)
+                    }
+                },
             )
         }
 

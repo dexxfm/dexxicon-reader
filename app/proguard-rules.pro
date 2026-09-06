@@ -13,3 +13,7 @@
 
 # Media3
 -keep class androidx.media3.** { *; }
+
+# junrar (CBR support) logs through slf4j-api with no binding bundled — that's fine.
+-dontwarn org.slf4j.**
+-keep class com.github.junrar.** { *; }

@@ -18,6 +18,17 @@ interface ReadingProgressDao {
     @Query("SELECT * FROM reading_progress WHERE serverId = :serverId")
     fun observeForServer(serverId: String): Flow<List<ReadingProgressEntity>>
 
+    @Query("SELECT * FROM reading_progress")
+    suspend fun all(): List<ReadingProgressEntity>
+
+    /** Books that have been started but not finished, most recently touched first. */
+    @Query(
+        "SELECT * FROM reading_progress " +
+            "WHERE percent IS NOT NULL AND percent > 0.0 AND percent < 0.985 " +
+            "ORDER BY updatedAt DESC",
+    )
+    fun observeInProgress(): Flow<List<ReadingProgressEntity>>
+
     @Upsert
     suspend fun upsert(entity: ReadingProgressEntity)
 

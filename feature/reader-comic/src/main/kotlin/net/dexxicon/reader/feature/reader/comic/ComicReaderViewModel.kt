@@ -19,6 +19,7 @@ import net.dexxicon.reader.core.model.ContentFormat
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import net.dexxicon.reader.core.reader.ComicArchiveNormalizer
 import net.dexxicon.reader.core.reader.PublicationStreamer
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
 import net.dexxicon.reader.core.reader.ReaderPreferencesStore
@@ -46,6 +47,7 @@ class ComicReaderViewModel @Inject constructor(
     private val locatorStore: ReaderLocatorStore,
     private val downloadRepository: DownloadRepository,
     private val streamer: PublicationStreamer,
+    private val archiveNormalizer: ComicArchiveNormalizer,
     private val preferencesStore: ReaderPreferencesStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -87,8 +89,11 @@ class ComicReaderViewModel @Inject constructor(
             return
         }
 
+        var remoteHref: String? = null
         val opened = if (localFile != null) {
-            streamer.open(localFile, MediaType.CBZ)
+            // A downloaded .cbr is repacked to CBZ on first open (no-op for real ZIPs).
+            val normalized = runCatching { archiveNormalizer.fromFile(localFile) }.getOrDefault(localFile)
+            streamer.open(normalized, MediaType.CBZ)
         } else {
             val acquisition = detail!!.acquisitions.firstOrNull { it.format == ContentFormat.COMIC }
                 ?: detail.primaryAcquisition
@@ -96,7 +101,18 @@ class ComicReaderViewModel @Inject constructor(
                 _state.value = ComicReaderState.Error("This book isn't a comic")
                 return
             }
-            streamer.open(acquisition.href, MediaType.CBZ)
+            remoteHref = acquisition.href
+            if (archiveNormalizer.looksLikeRar(acquisition.href, acquisition.mediaType)) {
+                // RAR can't be range-streamed — fetch in full, then repack to CBZ.
+                val cbz = runCatching { archiveNormalizer.fromUrl(acquisition.href) }.getOrNull()
+                if (cbz == null) {
+                    _state.value = ComicReaderState.Error("Couldn't unpack this .cbr comic")
+                    return
+                }
+                streamer.open(cbz, MediaType.CBZ)
+            } else {
+                streamer.open(acquisition.href, MediaType.CBZ)
+            }
         }
 
         when (opened) {
@@ -107,6 +123,15 @@ class ComicReaderViewModel @Inject constructor(
                     initialLocator = locatorStore.initialLocator(route.serverId, route.bookId),
                     title = detail?.summary?.title ?: downloadTitle ?: "",
                     pageCount = opened.value.readingOrder.size,
+                )
+                locatorStore.noteOpened(
+                    serverId = route.serverId,
+                    bookId = route.bookId,
+                    title = detail?.summary?.title ?: downloadTitle,
+                    author = detail?.summary?.authorLine,
+                    coverUrl = detail?.summary?.coverUrl,
+                    format = ContentFormat.COMIC,
+                    digestUrl = remoteHref,
                 )
             }
             is Outcome.Failure ->

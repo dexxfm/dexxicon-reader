@@ -14,8 +14,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -422,17 +426,50 @@ private fun HighlightEditor(
     onDelete: () -> Unit,
 ) {
     var note by remember(highlight.id) { mutableStateOf(highlight.note.orEmpty()) }
-    Column(Modifier.fillMaxWidth().padding(20.dp)) {
+    var selectedColor by remember(highlight.id) { mutableStateOf(highlight.color) }
+    val latestNote by rememberUpdatedState(note)
+
+    // Persist the note when the sheet goes away (or the highlight changes) so an edit is
+    // never lost just because the user dismissed without tapping "Save".
+    DisposableEffect(highlight.id) {
+        onDispose {
+            if (latestNote != highlight.note.orEmpty()) onNote(latestNote)
+        }
+    }
+
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(20.dp)
+            .imePadding()
+            .navigationBarsPadding(),
+    ) {
         Text(highlight.text, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
         Row(Modifier.padding(top = 16.dp)) {
             net.dexxicon.reader.core.model.HighlightColor.entries.forEach { c ->
+                val selected = c == selectedColor
                 Box(
                     Modifier
                         .padding(end = 10.dp)
-                        .size(28.dp)
+                        .size(30.dp)
                         .clip(androidx.compose.foundation.shape.CircleShape)
                         .background(androidx.compose.ui.graphics.Color(c.argb))
-                        .clickableText { onColor(c) },
+                        .then(
+                            if (selected) {
+                                Modifier.border(
+                                    3.dp,
+                                    MaterialTheme.colorScheme.onSurface,
+                                    androidx.compose.foundation.shape.CircleShape,
+                                )
+                            } else {
+                                Modifier
+                            },
+                        )
+                        .clickableText {
+                            selectedColor = c
+                            onColor(c)
+                        },
                 )
             }
         }
@@ -451,6 +488,8 @@ private fun HighlightEditor(
         }
     }
 }
+
+private fun Modifier.androidx_navBars(): Modifier = this.navigationBarsPadding()
 
 private fun Modifier.clickableText(onClick: () -> Unit): Modifier = this.clickable(onClick = onClick)
 

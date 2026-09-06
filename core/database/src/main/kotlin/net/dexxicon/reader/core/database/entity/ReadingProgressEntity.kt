@@ -2,6 +2,7 @@ package net.dexxicon.reader.core.database.entity
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingProgress
 
 @Entity(tableName = "reading_progress")
@@ -13,6 +14,11 @@ data class ReadingProgressEntity(
     val percent: Double?,
     val locator: String?,
     val updatedAt: Long,
+    val title: String? = null,
+    val author: String? = null,
+    val coverUrl: String? = null,
+    val format: String? = null,
+    val digestUrl: String? = null,
 ) {
     fun toDomain(): ReadingProgress = ReadingProgress(
         serverId = serverId,
@@ -20,6 +26,11 @@ data class ReadingProgressEntity(
         percent = percent,
         locator = locator,
         updatedAt = updatedAt,
+        title = title,
+        author = author,
+        coverUrl = coverUrl,
+        format = format?.let { runCatching { ContentFormat.valueOf(it) }.getOrNull() },
+        digestUrl = digestUrl,
     )
 
     companion object {
@@ -30,6 +41,11 @@ data class ReadingProgressEntity(
             percent = progress.percent,
             locator = progress.locator,
             updatedAt = progress.updatedAt,
+            title = progress.title,
+            author = progress.author,
+            coverUrl = progress.coverUrl,
+            format = progress.format?.name,
+            digestUrl = progress.digestUrl,
         )
     }
 }

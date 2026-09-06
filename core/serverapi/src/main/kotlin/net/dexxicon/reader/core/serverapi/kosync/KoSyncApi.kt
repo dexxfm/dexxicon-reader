@@ -9,8 +9,8 @@ import retrofit2.http.PUT
 import retrofit2.http.Url
 
 /**
- * KOReader sync protocol (`kosync`). Base URL is per-server (BookLore hosts it at
- * `{host}/koreader`, BookOrbit at `{host}/api/v1/koreader`). Auth is a pair of headers:
+ * KOReader sync protocol (`kosync`). Base URL is per-server (BookLore/Grimmory host it at
+ * `{host}/api/koreader`, BookOrbit at `{host}/api/v1/koreader`). Auth is a pair of headers:
  * `x-auth-user` = username, `x-auth-key` = md5(password).
  */
 interface KoSyncApi {

@@ -17,12 +17,17 @@ data class KoSyncServerRow(
     val serverId: String,
     val name: String,
     val configured: Boolean,
-    val koSyncUrl: String,
+    /** The by-convention kosync URL for this server family. */
+    val assumedUrl: String,
+    /** A custom override URL, or "" when the assumed one is used. */
+    val customUrl: String,
     val koSyncUsername: String,
     /** null = not checked, true/false = last verify result */
     val verified: Boolean? = null,
     val verifying: Boolean = false,
-)
+) {
+    val effectiveUrl: String get() = customUrl.trim().trimEnd('/').ifBlank { assumedUrl }
+}
 
 @HiltViewModel
 class KoSyncSettingsViewModel @Inject constructor(
@@ -39,8 +44,9 @@ class KoSyncSettingsViewModel @Inject constructor(
                 KoSyncServerRow(
                     serverId = s.id,
                     name = s.displayName,
-                    configured = !s.koSyncUrl.isNullOrBlank() && !s.koSyncUsername.isNullOrBlank(),
-                    koSyncUrl = s.koSyncUrl.orEmpty(),
+                    configured = !s.koSyncUsername.isNullOrBlank(),
+                    assumedUrl = s.assumedKoSyncUrl,
+                    customUrl = s.koSyncUrl.orEmpty(),
                     koSyncUsername = s.koSyncUsername.orEmpty(),
                     verified = verified,
                     verifying = verifying,
@@ -48,12 +54,13 @@ class KoSyncSettingsViewModel @Inject constructor(
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    fun save(serverId: String, url: String, username: String, password: String) {
+    /** [customUrl] blank → use the assumed URL (stored as null). */
+    fun save(serverId: String, customUrl: String, username: String, password: String) {
         viewModelScope.launch {
             val server = serverRepository.get(serverId) ?: return@launch
             serverRepository.save(
                 server = server.copy(
-                    koSyncUrl = url.trim().trimEnd('/').takeIf { it.isNotBlank() },
+                    koSyncUrl = customUrl.trim().trimEnd('/').takeIf { it.isNotBlank() },
                     koSyncUsername = username.trim().takeIf { it.isNotBlank() },
                 ),
                 password = null,

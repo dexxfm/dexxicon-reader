@@ -21,6 +21,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.core.ktx)
+    implementation(libs.okhttp)
+    implementation(libs.junrar)
 
     api(libs.readium.shared)
     api(libs.readium.streamer)

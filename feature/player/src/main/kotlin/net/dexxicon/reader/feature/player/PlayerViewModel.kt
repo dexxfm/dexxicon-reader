@@ -16,6 +16,7 @@ import net.dexxicon.reader.core.media.AudiobookPlayer
 import net.dexxicon.reader.core.media.PlayerUiState
 import net.dexxicon.reader.core.model.Audiobook
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.feature.player.navigation.PlayerRoute
 import org.json.JSONObject
 import javax.inject.Inject
@@ -63,6 +64,7 @@ class PlayerViewModel @Inject constructor(
                     _screen.value = PlayerScreenState(loading = false, error = "This book has no audio to play")
                     return
                 }
+                val durationMs = detail.audio?.durationMs ?: 0L
                 val audiobook = Audiobook(
                     serverId = route.serverId,
                     bookId = route.bookId,
@@ -70,13 +72,31 @@ class PlayerViewModel @Inject constructor(
                     author = detail.summary.authorLine,
                     coverUrl = detail.summary.coverUrl,
                     streamUrl = acquisition.href,
-                    durationMs = detail.audio?.durationMs ?: 0L,
+                    durationMs = durationMs,
                     chapters = detail.audio?.chapters.orEmpty(),
                 )
-                val startMs = progressRepository.get(route.serverId, route.bookId)
+                progressRepository.save(
+                    ReadingProgress(
+                        serverId = route.serverId,
+                        bookId = route.bookId,
+                        title = detail.summary.title,
+                        author = detail.summary.authorLine,
+                        coverUrl = detail.summary.coverUrl,
+                        format = ContentFormat.AUDIOBOOK,
+                        digestUrl = acquisition.href,
+                    ),
+                )
+                val localMs = progressRepository.get(route.serverId, route.bookId)
                     ?.locator
                     ?.let { runCatching { JSONObject(it).optLong("position", 0L) }.getOrDefault(0L) }
                     ?: 0L
+                val startMs = progressRepository.audiobookResumeMs(
+                    serverId = route.serverId,
+                    bookId = route.bookId,
+                    digestUrl = acquisition.href,
+                    durationMs = durationMs,
+                    localMs = localMs,
+                )
                 player.play(audiobook, startMs)
                 _screen.value = PlayerScreenState(loading = false)
             }

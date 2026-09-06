@@ -25,6 +25,17 @@ data class Server(
 
     fun resolve(path: String): String =
         normalizedBaseUrl + "/" + path.trimStart('/')
+
+    /** Where this server family hosts its KOReader (kosync) endpoint, by convention. */
+    val assumedKoSyncUrl: String
+        get() = normalizedBaseUrl + when (type) {
+            ServerType.BOOKORBIT -> "/api/v1/koreader"
+            else -> "/api/koreader" // BookLore / Grimmory
+        }
+
+    /** The kosync base URL actually used: a custom override, else the assumed one. */
+    val effectiveKoSyncUrl: String
+        get() = koSyncUrl?.trimEnd('/')?.takeIf { it.isNotBlank() } ?: assumedKoSyncUrl
 }
 
 /** How the app authenticates to a server. */

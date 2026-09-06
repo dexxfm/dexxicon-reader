@@ -33,6 +33,7 @@ retrofitSerialization = "1.0.0"
 coil = "3.6.2"
 media3 = "1.11.0"
 readium = "3.3.0"
+junrar = "7.5.5"
 appauth = "0.11.1"
 androidxBrowser = "1.10.0"
 
@@ -111,6 +112,7 @@ readium-streamer = { module = "org.readium.kotlin-toolkit:readium-streamer", ver
 readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", version.ref = "readium" }
 readium-opds = { module = "org.readium.kotlin-toolkit:readium-opds", version.ref = "readium" }
 readium-adapter-pdfium = { module = "org.readium.kotlin-toolkit:readium-adapter-pdfium", version.ref = "readium" }
+junrar = { module = "com.github.junrar:junrar", version.ref = "junrar" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExt" }

@@ -117,12 +117,13 @@ fun SettingsScreen(
 @Composable
 private fun KoSyncServerCard(
     row: KoSyncServerRow,
-    onSave: (url: String, user: String, pass: String) -> Unit,
+    onSave: (customUrl: String, user: String, pass: String) -> Unit,
     onVerify: () -> Unit,
 ) {
-    var url by remember(row.serverId) { mutableStateOf(row.koSyncUrl) }
     var user by remember(row.serverId) { mutableStateOf(row.koSyncUsername) }
     var pass by remember(row.serverId) { mutableStateOf("") }
+    var customUrl by remember(row.serverId) { mutableStateOf(row.customUrl) }
+    var useCustom by remember(row.serverId) { mutableStateOf(row.customUrl.isNotBlank()) }
     var expanded by remember(row.serverId) { mutableStateOf(false) }
 
     Card(Modifier.fillMaxWidth()) {
@@ -155,14 +156,40 @@ private fun KoSyncServerCard(
                 }
             }
             if (expanded) {
-                OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    label = { Text("Sync server URL") },
-                    placeholder = { Text("https://host/koreader") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                Text(
+                    "Sync endpoint",
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier = Modifier.padding(top = 12.dp),
                 )
+                Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = !useCustom,
+                        onClick = { useCustom = false },
+                        label = { Text("Assumed") },
+                    )
+                    FilterChip(
+                        selected = useCustom,
+                        onClick = { useCustom = true },
+                        label = { Text("Custom") },
+                    )
+                }
+                if (!useCustom) {
+                    Text(
+                        row.assumedUrl,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = customUrl,
+                        onValueChange = { customUrl = it },
+                        label = { Text("Custom sync URL") },
+                        placeholder = { Text(row.assumedUrl) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    )
+                }
                 OutlinedTextField(
                     value = user,
                     onValueChange = { user = it },
@@ -180,7 +207,10 @@ private fun KoSyncServerCard(
                 )
                 Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = onVerify, enabled = row.configured) { Text("Verify") }
-                    TextButton(onClick = { onSave(url, user, pass); expanded = false }) { Text("Save") }
+                    TextButton(onClick = {
+                        onSave(if (useCustom) customUrl else "", user, pass)
+                        expanded = false
+                    }) { Text("Save") }
                 }
             }
         }
