@@ -12,6 +12,7 @@ import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcApi
+import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -71,4 +72,9 @@ object ServerApiModule {
     @Singleton
     fun provideAnnotationApi(retrofit: Retrofit): AnnotationApi =
         retrofit.create(AnnotationApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideNativeProgressApi(retrofit: Retrofit): NativeProgressApi =
+        retrofit.create(NativeProgressApi::class.java)
 }

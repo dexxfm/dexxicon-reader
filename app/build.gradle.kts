@@ -16,12 +16,13 @@ val keystoreProps = Properties().apply {
 }
 
 android {
+    // Kotlin package / R / BuildConfig namespace stays; only the install/Play identity changes.
     namespace = "net.dexxicon.reader"
 
     defaultConfig {
-        applicationId = "net.dexxicon.reader"
-        versionCode = 7
-        versionName = "0.7.0"
+        applicationId = "com.dexxfm.dexxicon_reader"
+        versionCode = 8
+        versionName = "0.7.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Custom-scheme OIDC redirect for Grimmory/BookLore: grimmory://oauth2-callback

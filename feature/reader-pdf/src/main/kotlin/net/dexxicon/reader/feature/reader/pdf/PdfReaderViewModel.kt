@@ -72,7 +72,8 @@ class PdfReaderViewModel @Inject constructor(
             return
         }
 
-        var remoteHref: String? = null
+        var remoteHref: String? = detail?.acquisitions?.firstOrNull { it.format == ContentFormat.PDF }?.href
+            ?: detail?.primaryAcquisition?.href
         val opened = if (localFile != null) {
             streamer.open(localFile, MediaType.PDF)
         } else {

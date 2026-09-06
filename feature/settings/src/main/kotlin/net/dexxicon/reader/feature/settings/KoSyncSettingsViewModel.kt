@@ -93,7 +93,7 @@ class KoSyncSettingsViewModel @Inject constructor(
         if (_refreshing.value) return
         viewModelScope.launch {
             _refreshing.value = true
-            runCatching { progressRepository.syncWithKoSync() }
+            runCatching { progressRepository.syncProgress() }
             val servers = serverRepository.servers.first()
             servers.filter { !it.koSyncUsername.isNullOrBlank() }.forEach { server ->
                 setVerify(server.id, null, true)

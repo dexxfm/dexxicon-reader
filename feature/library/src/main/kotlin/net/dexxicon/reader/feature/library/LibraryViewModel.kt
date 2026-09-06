@@ -67,7 +67,7 @@ class LibraryViewModel @Inject constructor(
         if (refreshing.value) return
         viewModelScope.launch {
             refreshing.value = true
-            runCatching { progressRepository.syncWithKoSync() }
+            runCatching { progressRepository.syncProgress() }
             refreshing.value = false
         }
     }
