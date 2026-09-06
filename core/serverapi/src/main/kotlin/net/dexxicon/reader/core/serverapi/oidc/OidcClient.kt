@@ -109,7 +109,7 @@ class OidcClient @Inject constructor(
                 state = stateResponse.state,
                 exchangeUrl = server.resolve(BOOKORBIT_CALLBACK),
                 serverType = ServerType.BOOKORBIT,
-                providerName = provider.name,
+                providerName = provider.label,
             ),
         )
     }

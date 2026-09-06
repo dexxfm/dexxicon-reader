@@ -129,6 +129,7 @@ fun AddEditServerScreen(
                         authLauncher.launch(authFlow.authorizationIntent(it.handshake))
                     }
                 },
+                onCancel = viewModel::onAuthorizeCancelled,
             )
 
             Spacer(Modifier.height(16.dp))
@@ -212,6 +213,7 @@ private fun SsoBlock(
     state: SsoState,
     onDiscover: () -> Unit,
     onSignIn: () -> Unit,
+    onCancel: () -> Unit,
 ) {
     Column {
         when (state) {
@@ -221,16 +223,20 @@ private fun SsoBlock(
                     Text("  Continue with ${state.handshake.providerName ?: "SSO"}")
                 }
             }
-            SsoState.Discovering, SsoState.Authorizing, SsoState.Exchanging -> {
+            SsoState.Discovering, SsoState.Exchanging -> {
                 OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
                     CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
                     Text(
-                        when (state) {
-                            SsoState.Discovering -> "  Looking for SSO…"
-                            SsoState.Exchanging -> "  Finishing sign-in…"
-                            else -> "  Waiting for browser…"
-                        },
+                        if (state == SsoState.Discovering) "  Looking for SSO…"
+                        else "  Finishing sign-in…",
                     )
+                }
+            }
+            SsoState.Authorizing -> {
+                // Tappable so the user can back out if they dismiss the browser tab.
+                OutlinedButton(onClick = onCancel, modifier = Modifier.fillMaxWidth()) {
+                    CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp)
+                    Text("  Waiting for browser — tap to cancel")
                 }
             }
             else -> {

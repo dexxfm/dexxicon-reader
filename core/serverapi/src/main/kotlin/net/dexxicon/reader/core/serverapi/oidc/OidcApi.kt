@@ -63,11 +63,14 @@ data class OidcProvider(
     val slug: String,
     val enabled: Boolean = false,
     val name: String? = null,
+    val displayName: String? = null,
     val clientId: String = "",
     val scopes: String = "openid profile email",
     val issuerUri: String? = null,
     val authorizationEndpoint: String? = null,
-)
+) {
+    val label: String? get() = displayName ?: name
+}
 
 @Serializable
 data class OidcExchangeRequest(
