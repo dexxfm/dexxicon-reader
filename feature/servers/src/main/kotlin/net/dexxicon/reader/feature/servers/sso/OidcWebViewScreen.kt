@@ -57,6 +57,7 @@ fun OidcWebViewScreen(
             .appendQueryParameter("code_challenge_method", "S256")
             .build()
             .toString()
+            .also { android.util.Log.i("DexxiconOidc", "webview authorize: $it") }
     }
 
     BackHandler(onBack = onCancel)

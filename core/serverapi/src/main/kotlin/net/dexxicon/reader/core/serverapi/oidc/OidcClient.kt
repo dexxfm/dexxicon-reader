@@ -146,6 +146,6 @@ class OidcClient @Inject constructor(
         const val BOOKORBIT_CALLBACK = "/api/v1/auth/oidc/callback"
         const val OPENID_CONFIG = "/.well-known/openid-configuration"
         const val OAUTH2_CALLBACK_PATH = "/oauth2-callback"
-        const val DEFAULT_SCOPES = "openid profile email offline_access"
+        const val DEFAULT_SCOPES = "openid profile email"
     }
 }
