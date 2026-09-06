@@ -85,9 +85,18 @@ fun OidcWebViewScreen(
                 modifier = Modifier.fillMaxSize(),
                 factory = { context ->
                     WebView(context).apply {
+                        layoutParams = android.view.ViewGroup.LayoutParams(
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        )
                         @SuppressLint("SetJavaScriptEnabled")
                         settings.javaScriptEnabled = true
                         settings.domStorageEnabled = true
+                        settings.useWideViewPort = true
+                        settings.loadWithOverviewMode = true
+                        settings.javaScriptCanOpenWindowsAutomatically = true
+                        settings.databaseEnabled = true
+                        webChromeClient = android.webkit.WebChromeClient()
                         webViewClient = CallbackInterceptingClient(
                             redirectPrefix = handshake.redirectUri,
                             expectedState = handshake.state,
