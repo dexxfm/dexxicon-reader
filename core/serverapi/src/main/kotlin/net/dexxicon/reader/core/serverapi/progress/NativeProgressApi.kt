@@ -23,8 +23,11 @@ import retrofit2.http.Url
  */
 interface NativeProgressApi {
 
+    // GETs are nullable: the servers answer 200 with a literal `null` body when a book has
+    // no progress yet.
+
     @GET
-    suspend fun bookOrbitFileProgress(@Url url: String): BookOrbitFileProgress
+    suspend fun bookOrbitFileProgress(@Url url: String): BookOrbitFileProgress?
 
     @POST
     suspend fun bookOrbitSaveFileProgress(
@@ -33,7 +36,7 @@ interface NativeProgressApi {
     ): Response<Unit>
 
     @GET
-    suspend fun bookOrbitAudioProgress(@Url url: String): BookOrbitAudioProgress
+    suspend fun bookOrbitAudioProgress(@Url url: String): BookOrbitAudioProgress?
 
     @HTTP(method = "PATCH", hasBody = true)
     suspend fun bookOrbitSaveAudioProgress(
@@ -42,7 +45,7 @@ interface NativeProgressApi {
     ): Response<Unit>
 
     @GET
-    suspend fun grimmoryProgress(@Url url: String): GrimmoryProgressResponse
+    suspend fun grimmoryProgress(@Url url: String): GrimmoryProgressResponse?
 
     @PUT
     suspend fun grimmorySaveProgress(
