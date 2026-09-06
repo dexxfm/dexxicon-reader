@@ -15,7 +15,7 @@ dependencies {
     api(project(":core:model"))
     api(project(":core:common"))
     implementation(project(":core:network"))
-    implementation(libs.retrofit)
+    api(libs.retrofit)
     implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)

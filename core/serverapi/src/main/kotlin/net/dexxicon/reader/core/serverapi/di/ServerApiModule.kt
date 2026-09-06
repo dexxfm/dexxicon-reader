@@ -7,6 +7,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
 import net.dexxicon.reader.core.network.di.DexxiconHttpClient
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
+import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -47,4 +48,9 @@ object ServerApiModule {
     @Singleton
     fun provideOidcApi(retrofit: Retrofit): OidcApi =
         retrofit.create(OidcApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideGrimmoryBrowseApi(retrofit: Retrofit): GrimmoryBrowseApi =
+        retrofit.create(GrimmoryBrowseApi::class.java)
 }

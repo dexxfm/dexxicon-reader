@@ -44,6 +44,7 @@ fun ServersScreen(
     onBack: () -> Unit,
     onAddServer: () -> Unit,
     onEditServer: (String) -> Unit,
+    onOpenServer: (id: String, name: String) -> Unit = { _, _ -> },
     showBack: Boolean = true,
     viewModel: ServersViewModel = hiltViewModel(),
 ) {
@@ -86,7 +87,8 @@ fun ServersScreen(
                 items(state.servers, key = { it.id }) { server ->
                     ServerRow(
                         server = server,
-                        onClick = { onEditServer(server.id) },
+                        onClick = { onOpenServer(server.id, server.displayName) },
+                        onEdit = { onEditServer(server.id) },
                         onDelete = { viewModel.deleteServer(server.id) },
                     )
                 }
@@ -99,6 +101,7 @@ fun ServersScreen(
 private fun ServerRow(
     server: Server,
     onClick: () -> Unit,
+    onEdit: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
@@ -114,7 +117,7 @@ private fun ServerRow(
                 DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
                     DropdownMenuItem(
                         text = { Text("Edit") },
-                        onClick = { menuOpen = false; onClick() },
+                        onClick = { menuOpen = false; onEdit() },
                     )
                     DropdownMenuItem(
                         text = { Text("Remove") },

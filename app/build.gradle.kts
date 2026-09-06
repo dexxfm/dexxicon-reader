@@ -75,8 +75,12 @@ dependencies {
     implementation(project(":core:model"))
     implementation(project(":core:common"))
     implementation(project(":core:designsystem"))
+    implementation(project(":core:network"))
     implementation(project(":core:data"))
     implementation(project(":core:media"))
+
+    implementation(libs.okhttp)
+    implementation(libs.coil.network.okhttp)
 
     implementation(project(":feature:servers"))
     implementation(project(":feature:catalog"))
