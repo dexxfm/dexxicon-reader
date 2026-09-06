@@ -16,8 +16,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
+import kotlinx.coroutines.flow.first
 import net.dexxicon.reader.core.database.dao.DownloadDao
 import net.dexxicon.reader.core.database.entity.DownloadEntity
+import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
@@ -30,6 +32,7 @@ import javax.inject.Singleton
 class DownloadRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dao: DownloadDao,
+    private val appPreferences: AppPreferencesStore,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
 ) {
     private val workManager get() = WorkManager.getInstance(context)
@@ -45,7 +48,8 @@ class DownloadRepository @Inject constructor(
     }
 
     /** Queue (or re-queue) an offline copy of [detail]. */
-    suspend fun enqueue(detail: BookDetail, wifiOnly: Boolean = false) = withContext(io) {
+    suspend fun enqueue(detail: BookDetail) = withContext(io) {
+        val wifiOnly = appPreferences.preferences.first().downloadsWifiOnly
         val s = detail.summary
         val acquisition = detail.acquisitions.firstOrNull { it.format == s.format }
             ?: detail.primaryAcquisition

@@ -22,6 +22,8 @@ import net.dexxicon.reader.feature.servers.ServersScreen
 import net.dexxicon.reader.feature.servers.navigation.navigateToAddServer
 import net.dexxicon.reader.feature.servers.navigation.navigateToEditServer
 import net.dexxicon.reader.feature.servers.navigation.serversSection
+import net.dexxicon.reader.feature.settings.SettingsScreen
+import net.dexxicon.reader.BuildConfig
 import net.dexxicon.reader.ui.PlaceholderScreen
 
 @Composable
@@ -53,10 +55,7 @@ fun DexxiconNavHost(
         }
 
         composable<TopLevelRoute.Settings> {
-            PlaceholderScreen(
-                title = "Settings",
-                body = "Theme, downloads, sync providers and about.",
-            )
+            SettingsScreen(versionName = BuildConfig.VERSION_NAME)
         }
 
         serversSection(

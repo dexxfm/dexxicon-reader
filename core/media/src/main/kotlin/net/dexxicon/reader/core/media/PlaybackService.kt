@@ -2,14 +2,18 @@ package net.dexxicon.reader.core.media
 
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.AndroidEntryPoint
 import net.dexxicon.reader.core.network.di.DexxiconHttpClient
 import okhttp3.OkHttpClient
+import java.util.concurrent.Executors
 import javax.inject.Inject
 
 /**
@@ -44,7 +48,18 @@ class PlaybackService : MediaSessionService() {
             .setSeekBackIncrementMs(15_000)
             .build()
 
-        mediaSession = MediaSession.Builder(this, player).build()
+        // Route cover-art loading through the authed client too, so lock-screen/notification
+        // artwork doesn't 401.
+        val bitmapLoader = CacheBitmapLoader(
+            DataSourceBitmapLoader(
+                MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()),
+                dataSourceFactory,
+            ),
+        )
+
+        mediaSession = MediaSession.Builder(this, player)
+            .setBitmapLoader(bitmapLoader)
+            .build()
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
