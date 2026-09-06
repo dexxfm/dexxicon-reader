@@ -18,8 +18,10 @@ import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerProbeResult
 import net.dexxicon.reader.core.model.ServerType
+import net.dexxicon.reader.core.serverapi.oidc.OidcFlowKind
 import net.dexxicon.reader.core.serverapi.oidc.OidcHandshake
 import net.dexxicon.reader.feature.servers.navigation.AddEditServerRoute
+import net.dexxicon.reader.feature.servers.sso.Pkce
 import javax.inject.Inject
 
 data class AddEditServerUiState(
@@ -53,6 +55,7 @@ sealed interface SsoState {
     data object Discovering : SsoState
     data class Ready(val handshake: OidcHandshake) : SsoState
     data object Authorizing : SsoState
+    data class WebView(val handshake: OidcHandshake, val pkce: Pkce) : SsoState
     data object Exchanging : SsoState
     data class Error(val message: String) : SsoState
 }
@@ -145,10 +148,23 @@ class AddEditServerViewModel @Inject constructor(
         }
     }
 
-    /** The handshake to launch the browser with; null if discovery hasn't run. */
-    fun handshakeForAuthorization(): OidcHandshake? = pendingHandshake
-
-    fun onAuthorizing() = _uiState.update { it.copy(sso = SsoState.Authorizing) }
+    /**
+     * User tapped "Continue": for the custom-scheme flow returns the handshake to hand to
+     * AppAuth; for the WebView flow flips state to [SsoState.WebView] and returns null.
+     */
+    fun onContinueSso(): OidcHandshake? {
+        val handshake = pendingHandshake ?: return null
+        return when (handshake.flow) {
+            OidcFlowKind.CUSTOM_SCHEME -> {
+                _uiState.update { it.copy(sso = SsoState.Authorizing) }
+                handshake
+            }
+            OidcFlowKind.WEBVIEW -> {
+                _uiState.update { it.copy(sso = SsoState.WebView(handshake, Pkce.generate())) }
+                null
+            }
+        }
+    }
 
     fun onAuthorizeCancelled() = _uiState.update {
         if (it.sso is SsoState.Exchanging) it else it.copy(sso = SsoState.Idle)
@@ -157,14 +173,17 @@ class AddEditServerViewModel @Inject constructor(
     fun onAuthorizeFailed(message: String) =
         _uiState.update { it.copy(sso = SsoState.Error(message)) }
 
-    /** Step 2 of SSO: exchange the browser code, save the server, finish. */
-    fun completeSso(
-        redirectUri: String,
-        code: String,
-        codeVerifier: String,
-        nonce: String,
-        onSaved: () -> Unit,
-    ) {
+    /** Custom-scheme flow: AppAuth returned a code + PKCE verifier + nonce. */
+    fun completeSsoCustomScheme(code: String, codeVerifier: String, nonce: String, onSaved: () -> Unit) =
+        exchangeAndSave(code, codeVerifier, nonce, onSaved)
+
+    /** WebView flow: the intercepted redirect gave us a code; verifier/nonce are our PKCE. */
+    fun completeSsoWebView(code: String, onSaved: () -> Unit) {
+        val webView = _uiState.value.sso as? SsoState.WebView ?: return
+        exchangeAndSave(code, webView.pkce.verifier, webView.pkce.nonce, onSaved)
+    }
+
+    private fun exchangeAndSave(code: String, codeVerifier: String, nonce: String, onSaved: () -> Unit) {
         val handshake = pendingHandshake ?: run {
             _uiState.update { it.copy(sso = SsoState.Error("Sign-in state was lost — try again")) }
             return
@@ -176,7 +195,6 @@ class AddEditServerViewModel @Inject constructor(
                     displayName = _uiState.value.displayName.ifBlank { prettyHost(_uiState.value.baseUrl) },
                 ),
                 handshake = handshake,
-                redirectUri = redirectUri,
                 code = code,
                 codeVerifier = codeVerifier,
                 nonce = nonce,

@@ -50,9 +50,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import net.dexxicon.reader.feature.servers.sso.OIDC_REDIRECT_URI
 import net.dexxicon.reader.feature.servers.sso.OidcAuthFlow
 import net.dexxicon.reader.feature.servers.sso.OidcAuthResult
+import net.dexxicon.reader.feature.servers.sso.OidcWebViewScreen
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,8 +73,7 @@ fun AddEditServerScreen(
         ActivityResultContracts.StartActivityForResult(),
     ) { result ->
         when (val parsed = authFlow.parseResult(result.data)) {
-            is OidcAuthResult.Code -> viewModel.completeSso(
-                redirectUri = OIDC_REDIRECT_URI,
+            is OidcAuthResult.Code -> viewModel.completeSsoCustomScheme(
                 code = parsed.code,
                 codeVerifier = parsed.codeVerifier,
                 nonce = parsed.nonce,
@@ -83,6 +82,17 @@ fun AddEditServerScreen(
             is OidcAuthResult.Failed -> viewModel.onAuthorizeFailed(parsed.message)
             OidcAuthResult.Cancelled -> viewModel.onAuthorizeCancelled()
         }
+    }
+
+    (state.sso as? SsoState.WebView)?.let { webView ->
+        OidcWebViewScreen(
+            handshake = webView.handshake,
+            pkce = webView.pkce,
+            onCode = { code -> viewModel.completeSsoWebView(code, onDone) },
+            onError = viewModel::onAuthorizeFailed,
+            onCancel = viewModel::onAuthorizeCancelled,
+        )
+        return
     }
 
     Scaffold(
@@ -119,8 +129,7 @@ fun AddEditServerScreen(
                 state = state.sso,
                 onDiscover = viewModel::discoverSso,
                 onSignIn = {
-                    viewModel.handshakeForAuthorization()?.let { handshake ->
-                        viewModel.onAuthorizing()
+                    viewModel.onContinueSso()?.let { handshake ->
                         authLauncher.launch(authFlow.authorizationIntent(handshake))
                     }
                 },

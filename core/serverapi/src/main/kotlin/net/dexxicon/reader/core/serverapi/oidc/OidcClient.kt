@@ -9,7 +9,16 @@ import retrofit2.HttpException
 import java.io.IOException
 import javax.inject.Inject
 
-/** Everything the app needs to launch the browser auth-code flow for one server. */
+/** How the browser step is run. */
+enum class OidcFlowKind {
+    /** System browser (Custom Tab) + custom-scheme redirect via AppAuth. */
+    CUSTOM_SCHEME,
+
+    /** In-app WebView that intercepts an https redirect (servers with no native redirect). */
+    WEBVIEW,
+}
+
+/** Everything the app needs to run the auth-code flow for one server. */
 data class OidcHandshake(
     val authorizationEndpoint: String,
     val tokenEndpoint: String?,
@@ -17,6 +26,8 @@ data class OidcHandshake(
     val scopes: String,
     val state: String,
     val exchangeUrl: String,
+    val redirectUri: String,
+    val flow: OidcFlowKind,
     val serverType: ServerType,
     val providerName: String?,
 )
@@ -38,28 +49,17 @@ class OidcClient @Inject constructor(
         }
     }
 
-    /** Exchanges the browser's auth code for a native session. */
+    /** Exchanges the auth code for a native session. */
     suspend fun exchange(
         handshake: OidcHandshake,
         code: String,
         codeVerifier: String,
-        redirectUri: String,
         nonce: String,
     ): Outcome<NativeSession> = runCatching {
-        val response = when (handshake.serverType) {
-            ServerType.BOOKORBIT -> api.exchangeJson(
-                handshake.exchangeUrl,
-                OidcExchangeRequest(code, codeVerifier, redirectUri, nonce, handshake.state),
-            )
-            else -> api.exchangeForm(
-                url = handshake.exchangeUrl,
-                code = code,
-                codeVerifier = codeVerifier,
-                redirectUri = redirectUri,
-                nonce = nonce,
-                state = handshake.state,
-            )
-        }
+        val response = api.exchangeJson(
+            handshake.exchangeUrl,
+            OidcExchangeRequest(code, codeVerifier, handshake.redirectUri, nonce, handshake.state),
+        )
         val token = response.accessToken
             ?: return Outcome.Failure(DexxiconError.Parse("OIDC exchange returned no token"))
         Outcome.Success(
@@ -78,9 +78,7 @@ class OidcClient @Inject constructor(
         if (!settings.oidcEnabled || details == null || details.issuerUri.isNullOrBlank()) {
             return Outcome.Failure(DexxiconError.Unsupported("SSO is not enabled on this server"))
         }
-        val discovery = api.openIdConfiguration(
-            details.issuerUri.trimEnd('/') + OPENID_CONFIG,
-        )
+        val discovery = api.openIdConfiguration(details.issuerUri.trimEnd('/') + OPENID_CONFIG)
         val authEndpoint = discovery.authorization_endpoint
             ?: return Outcome.Failure(DexxiconError.Parse("No authorization_endpoint in discovery"))
         val state = api.bookloreState(server.resolve(BOOKLORE_STATE)).state
@@ -91,7 +89,11 @@ class OidcClient @Inject constructor(
                 clientId = details.clientId,
                 scopes = details.scopes.ifBlank { DEFAULT_SCOPES },
                 state = state,
-                exchangeUrl = server.resolve(BOOKLORE_MOBILE_CALLBACK),
+                exchangeUrl = server.resolve(BOOKLORE_WEB_CALLBACK),
+                // The server's own web callback — already whitelisted in the IdP (the web
+                // flow uses it) and BookLore accepts it when the origin matches the server.
+                redirectUri = server.normalizedBaseUrl + OAUTH2_CALLBACK_PATH,
+                flow = OidcFlowKind.WEBVIEW,
                 serverType = ServerType.GRIMMORY,
                 providerName = details.providerName,
             ),
@@ -102,9 +104,7 @@ class OidcClient @Inject constructor(
         val providers = api.bookorbitProviders(server.resolve(BOOKORBIT_PROVIDERS))
         val provider = providers.firstOrNull { it.enabled }
             ?: return Outcome.Failure(DexxiconError.Unsupported("No SSO provider is enabled"))
-        val stateResponse = api.bookorbitState(
-            server.resolve(BOOKORBIT_STATE.format(provider.slug)),
-        )
+        val stateResponse = api.bookorbitState(server.resolve(BOOKORBIT_STATE.format(provider.slug)))
         val authEndpoint = stateResponse.authorizationEndpoint
             ?: provider.authorizationEndpoint
             ?: return Outcome.Failure(DexxiconError.Parse("SSO provider is unreachable"))
@@ -116,6 +116,9 @@ class OidcClient @Inject constructor(
                 scopes = provider.scopes.ifBlank { DEFAULT_SCOPES },
                 state = stateResponse.state,
                 exchangeUrl = server.resolve(BOOKORBIT_CALLBACK),
+                // BookOrbit hardcodes `${appUrl}/oauth2-callback`; capture it with a WebView.
+                redirectUri = server.normalizedBaseUrl + OAUTH2_CALLBACK_PATH,
+                flow = OidcFlowKind.WEBVIEW,
                 serverType = ServerType.BOOKORBIT,
                 providerName = provider.label,
             ),
@@ -125,7 +128,7 @@ class OidcClient @Inject constructor(
     private fun Throwable.toFailure(): Outcome<Nothing> = when (this) {
         is HttpException -> {
             val detail = runCatching { response()?.errorBody()?.string() }.getOrNull()
-                ?.take(160)?.takeIf { it.isNotBlank() }
+                ?.take(200)?.takeIf { it.isNotBlank() }
             Outcome.Failure(
                 DexxiconError.Network("SSO exchange failed (HTTP ${code()})${detail?.let { " — $it" } ?: ""}"),
             )
@@ -137,11 +140,12 @@ class OidcClient @Inject constructor(
     companion object {
         const val BOOKLORE_SETTINGS = "/api/v1/public-settings"
         const val BOOKLORE_STATE = "/api/v1/auth/oidc/state"
-        const val BOOKLORE_MOBILE_CALLBACK = "/api/v1/auth/oidc/mobile/callback"
+        const val BOOKLORE_WEB_CALLBACK = "/api/v1/auth/oidc/callback"
         const val BOOKORBIT_PROVIDERS = "/api/v1/app-settings/oidc/providers/public"
         const val BOOKORBIT_STATE = "/api/v1/auth/oidc/%s/state"
         const val BOOKORBIT_CALLBACK = "/api/v1/auth/oidc/callback"
         const val OPENID_CONFIG = "/.well-known/openid-configuration"
+        const val OAUTH2_CALLBACK_PATH = "/oauth2-callback"
         const val DEFAULT_SCOPES = "openid profile email offline_access"
     }
 }

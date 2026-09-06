@@ -29,7 +29,6 @@ class OidcAuthenticator @Inject constructor(
     suspend fun completeAndSave(
         pendingServer: Server,
         handshake: OidcHandshake,
-        redirectUri: String,
         code: String,
         codeVerifier: String,
         nonce: String,
@@ -39,7 +38,6 @@ class OidcAuthenticator @Inject constructor(
                 handshake = handshake,
                 code = code,
                 codeVerifier = codeVerifier,
-                redirectUri = redirectUri,
                 nonce = nonce,
             )
         ) {

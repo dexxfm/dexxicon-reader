@@ -12,9 +12,6 @@ import net.openid.appauth.AuthorizationService
 import net.openid.appauth.AuthorizationServiceConfiguration
 import net.openid.appauth.ResponseTypeValues
 
-/** App-registered redirect target (see `appAuthRedirectScheme` in app/build.gradle.kts). */
-const val OIDC_REDIRECT_URI = "net.dexxicon.reader://oauth2redirect"
-
 /** Result of the browser auth step: the code + the PKCE verifier + nonce for the exchange. */
 sealed interface OidcAuthResult {
     data class Code(
@@ -27,8 +24,8 @@ sealed interface OidcAuthResult {
 }
 
 /**
- * Thin wrapper over AppAuth. We only use it to obtain an authorization *code* + PKCE
- * verifier — the token exchange happens server-side (BookLore / BookOrbit callback).
+ * Thin wrapper over AppAuth for the custom-scheme flow. We only use it to obtain an
+ * authorization *code* + PKCE verifier + nonce — the token exchange happens server-side.
  */
 class OidcAuthFlow(context: Context) {
 
@@ -43,7 +40,7 @@ class OidcAuthFlow(context: Context) {
             config,
             handshake.clientId,
             ResponseTypeValues.CODE,
-            Uri.parse(OIDC_REDIRECT_URI),
+            Uri.parse(handshake.redirectUri),
         )
             .setScope(handshake.scopes)
             .setState(handshake.state)

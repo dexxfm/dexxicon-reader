@@ -92,8 +92,8 @@ data class OidcExchangeRequest(
     val code: String,
     val codeVerifier: String,
     val redirectUri: String,
-    val nonce: String? = null,
-    val state: String? = null,
+    val nonce: String,
+    val state: String,
 )
 
 /** Shape of Grimmory's `/api/v1/public-settings`. */

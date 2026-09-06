@@ -24,9 +24,9 @@ android {
         versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        // OIDC redirect: net.dexxicon.reader://oauth2redirect  (register this in your
-        // identity provider AND the server's OIDC settings).
-        manifestPlaceholders["appAuthRedirectScheme"] = "net.dexxicon.reader"
+        // Custom-scheme OIDC redirect for Grimmory/BookLore: grimmory://oauth2-callback
+        // (whitelisted by BookLore out of the box). BookOrbit uses an in-app WebView.
+        manifestPlaceholders["appAuthRedirectScheme"] = "grimmory"
     }
 
     buildFeatures {
