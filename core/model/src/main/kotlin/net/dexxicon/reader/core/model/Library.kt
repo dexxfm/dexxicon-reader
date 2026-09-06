@@ -37,18 +37,4 @@ data class ReadingPosition(
     val syncedAt: Long? = null,
 )
 
-data class Annotation(
-    val id: String,
-    val itemId: String,
-    val locatorJson: String,
-    val progression: Double,
-    val selectedText: String,
-    val note: String? = null,
-    val color: HighlightColor = HighlightColor.YELLOW,
-    val createdAt: Long,
-    val updatedAt: Long,
-    val remoteId: String? = null,
-    val dirty: Boolean = true,
-)
-
-enum class HighlightColor { YELLOW, GREEN, BLUE, PINK, PURPLE }
+// Highlights / annotations live in Highlight.kt.

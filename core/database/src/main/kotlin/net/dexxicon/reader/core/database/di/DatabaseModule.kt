@@ -11,6 +11,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import net.dexxicon.reader.core.database.DexxiconDatabase
 import net.dexxicon.reader.core.database.dao.DownloadDao
+import net.dexxicon.reader.core.database.dao.HighlightDao
 import net.dexxicon.reader.core.database.dao.ReadingProgressDao
 import net.dexxicon.reader.core.database.dao.ServerDao
 import javax.inject.Singleton
@@ -71,11 +72,38 @@ object DatabaseModule {
         }
     }
 
+    private val MIGRATION_4_5 = object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `highlights` (
+                    `id` TEXT NOT NULL,
+                    `serverId` TEXT NOT NULL,
+                    `bookId` TEXT NOT NULL,
+                    `locatorJson` TEXT NOT NULL,
+                    `progression` REAL NOT NULL,
+                    `text` TEXT NOT NULL,
+                    `note` TEXT,
+                    `color` TEXT NOT NULL,
+                    `chapterTitle` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    `updatedAt` INTEGER NOT NULL,
+                    `remoteId` TEXT,
+                    `dirty` INTEGER NOT NULL,
+                    `deleted` INTEGER NOT NULL,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_highlights_serverId_bookId` ON `highlights` (`serverId`, `bookId`)")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): DexxiconDatabase =
         Room.databaseBuilder(context, DexxiconDatabase::class.java, DexxiconDatabase.NAME)
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
             .build()
 
     @Provides
@@ -87,4 +115,7 @@ object DatabaseModule {
 
     @Provides
     fun provideDownloadDao(database: DexxiconDatabase): DownloadDao = database.downloadDao()
+
+    @Provides
+    fun provideHighlightDao(database: DexxiconDatabase): HighlightDao = database.highlightDao()
 }

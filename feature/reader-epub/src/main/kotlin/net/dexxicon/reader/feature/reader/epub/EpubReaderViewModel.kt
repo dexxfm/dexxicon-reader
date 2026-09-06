@@ -16,9 +16,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
+import net.dexxicon.reader.core.data.HighlightRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.DigestSource
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.Highlight
+import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.core.reader.PublicationStreamer
 import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
@@ -53,12 +56,17 @@ class EpubReaderViewModel @Inject constructor(
     private val downloadRepository: DownloadRepository,
     private val streamer: PublicationStreamer,
     private val readerSync: ReaderSync,
+    private val highlightRepository: HighlightRepository,
     preferencesStore: ReaderPreferencesStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
     private val route = savedStateHandle.toRoute<EpubReaderRoute>()
     private var digestSource: DigestSource? = null
+
+    val highlights: StateFlow<List<Highlight>> =
+        highlightRepository.observe(route.serverId, route.bookId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _state = MutableStateFlow<EpubReaderState>(EpubReaderState.Loading)
     val state: StateFlow<EpubReaderState> = _state.asStateFlow()
@@ -74,6 +82,9 @@ class EpubReaderViewModel @Inject constructor(
 
     init {
         viewModelScope.launch { load() }
+        viewModelScope.launch {
+            runCatching { highlightRepository.syncFromServer(route.serverId, route.bookId) }
+        }
         viewModelScope.launch {
             locatorUpdates.debounce(1_500).collect { locator ->
                 locatorStore.save(route.serverId, route.bookId, locator)
@@ -146,6 +157,34 @@ class EpubReaderViewModel @Inject constructor(
 
     fun onLocatorChanged(locator: Locator) {
         locatorUpdates.tryEmit(locator)
+    }
+
+    fun addHighlight(locator: Locator) {
+        val text = locator.text.highlight ?: return
+        if (text.isBlank()) return
+        viewModelScope.launch {
+            highlightRepository.add(
+                serverId = route.serverId,
+                bookId = route.bookId,
+                locatorJson = locator.toJSON().toString(),
+                progression = locator.locations.totalProgression ?: 0.0,
+                text = text.trim(),
+                color = HighlightColor.YELLOW,
+                chapterTitle = locator.title,
+            )
+        }
+    }
+
+    fun setNote(id: String, note: String?) {
+        viewModelScope.launch { highlightRepository.updateNote(id, note?.takeIf { it.isNotBlank() }) }
+    }
+
+    fun setColor(id: String, color: HighlightColor) {
+        viewModelScope.launch { highlightRepository.updateColor(id, color) }
+    }
+
+    fun deleteHighlight(id: String) {
+        viewModelScope.launch { highlightRepository.delete(id) }
     }
 
     override fun onCleared() {

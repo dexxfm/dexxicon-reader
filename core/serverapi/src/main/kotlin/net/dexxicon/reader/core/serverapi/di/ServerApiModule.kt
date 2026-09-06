@@ -7,6 +7,7 @@ import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
 import net.dexxicon.reader.core.network.di.DexxiconHttpClient
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
+import net.dexxicon.reader.core.serverapi.annotation.AnnotationApi
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
@@ -65,4 +66,9 @@ object ServerApiModule {
     @Singleton
     fun provideKoSyncApi(retrofit: Retrofit): KoSyncApi =
         retrofit.create(KoSyncApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideAnnotationApi(retrofit: Retrofit): AnnotationApi =
+        retrofit.create(AnnotationApi::class.java)
 }

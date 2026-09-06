@@ -13,8 +13,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.CircularProgressIndicator
@@ -69,6 +80,7 @@ fun EpubReaderScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
+    val highlights by viewModel.highlights.collectAsStateWithLifecycle()
 
     when (val s = state) {
         is EpubReaderState.Loading -> Center { CircularProgressIndicator() }
@@ -83,9 +95,14 @@ fun EpubReaderScreen(
         is EpubReaderState.Ready -> ReaderContent(
             state = s,
             preferences = prefs,
+            highlights = highlights,
             onBack = onBack,
             onLocator = viewModel::onLocatorChanged,
             onUpdatePreferences = viewModel.updatePreferences,
+            onAddHighlight = viewModel::addHighlight,
+            onSetNote = viewModel::setNote,
+            onSetColor = viewModel::setColor,
+            onDeleteHighlight = viewModel::deleteHighlight,
         )
     }
 }
@@ -95,9 +112,14 @@ fun EpubReaderScreen(
 private fun ReaderContent(
     state: EpubReaderState.Ready,
     preferences: ReaderDisplayPreferences,
+    highlights: List<net.dexxicon.reader.core.model.Highlight>,
     onBack: () -> Unit,
     onLocator: (Locator) -> Unit,
     onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
+    onAddHighlight: (Locator) -> Unit,
+    onSetNote: (String, String?) -> Unit,
+    onSetColor: (String, net.dexxicon.reader.core.model.HighlightColor) -> Unit,
+    onDeleteHighlight: (String) -> Unit,
 ) {
     val activity = LocalActivity.current as? FragmentActivity
     val scope = rememberCoroutineScope()
@@ -113,8 +135,12 @@ private fun ReaderContent(
     var navigator by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
     var showToc by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showHighlights by remember { mutableStateOf(false) }
+    var activeHighlightId by remember { mutableStateOf<String?>(null) }
     var chromeVisible by remember { mutableStateOf(true) }
     val tapNavEnabled by rememberUpdatedState(preferences.tapNavigation)
+    val navHolder = remember { arrayOfNulls<EpubNavigatorFragment?>(1) }
+    val addHighlight by rememberUpdatedState(onAddHighlight)
 
     // Build the navigator fragment once per opened publication and set it as the factory
     // the FragmentManager will use to instantiate EpubNavigatorFragment by class.
@@ -124,6 +150,14 @@ private fun ReaderContent(
             .createFragmentFactory(
                 initialLocator = state.initialLocator,
                 initialPreferences = initialPrefs,
+                configuration = org.readium.r2.navigator.epub.EpubNavigatorFragment.Configuration().apply {
+                    decorationTemplates = org.readium.r2.navigator.html.HtmlDecorationTemplates.defaultTemplates()
+                    selectionActionModeCallback = HighlightSelectionCallback(
+                        activity = activity,
+                        navigator = { navHolder[0] },
+                        onHighlight = { addHighlight(it) },
+                    )
+                },
             )
         onDispose {
             if (!fragmentManager.isStateSaved) {
@@ -141,10 +175,44 @@ private fun ReaderContent(
             navigator = fragmentManager.findFragmentByTag(NAV_FRAGMENT_TAG) as? EpubNavigatorFragment
             if (navigator == null) kotlinx.coroutines.delay(50)
         }
+        navHolder[0] = navigator
     }
 
     LaunchedEffect(navigator) {
         navigator?.currentLocator?.collect { onLocator(it) }
+    }
+
+    // Render highlight decorations and react to taps on them.
+    LaunchedEffect(navigator, highlights) {
+        val nav = navigator ?: return@LaunchedEffect
+        val decorations = highlights.mapNotNull { h ->
+            val locator = runCatching {
+                org.readium.r2.shared.publication.Locator.fromJSON(org.json.JSONObject(h.locatorJson))
+            }.getOrNull() ?: return@mapNotNull null
+            org.readium.r2.navigator.Decoration(
+                id = h.id,
+                locator = locator,
+                style = org.readium.r2.navigator.Decoration.Style.Highlight(
+                    tint = h.color.argb,
+                    isActive = false,
+                ),
+            )
+        }
+        runCatching { nav.applyDecorations(decorations, "highlights") }
+    }
+
+    DisposableEffect(navigator) {
+        val nav = navigator
+        val listener = object : org.readium.r2.navigator.DecorableNavigator.Listener {
+            override fun onDecorationActivated(
+                event: org.readium.r2.navigator.DecorableNavigator.OnActivatedEvent,
+            ): Boolean {
+                activeHighlightId = event.decoration.id
+                return true
+            }
+        }
+        nav?.addDecorationListener("highlights", listener)
+        onDispose { nav?.removeDecorationListener(listener) }
     }
 
     DisposableEffect(navigator) {
@@ -175,6 +243,12 @@ private fun ReaderContent(
                         }
                     },
                     actions = {
+                        IconButton(onClick = { showHighlights = true }) {
+                            Icon(
+                                androidx.compose.material.icons.Icons.Filled.Bookmarks,
+                                contentDescription = "Highlights",
+                            )
+                        }
                         IconButton(onClick = { showToc = true }) {
                             Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Contents")
                         }
@@ -260,7 +334,125 @@ private fun ReaderContent(
             )
         }
     }
+
+    if (showHighlights) {
+        ModalBottomSheet(onDismissRequest = { showHighlights = false }) {
+            HighlightList(
+                highlights = highlights,
+                onSelect = { h ->
+                    runCatching {
+                        org.readium.r2.shared.publication.Locator.fromJSON(org.json.JSONObject(h.locatorJson))
+                    }.getOrNull()?.let { navigator?.go(it, true) }
+                    showHighlights = false
+                },
+                onEdit = { activeHighlightId = it.id; showHighlights = false },
+            )
+        }
+    }
+
+    val active = highlights.firstOrNull { it.id == activeHighlightId }
+    if (active != null) {
+        ModalBottomSheet(onDismissRequest = { activeHighlightId = null }) {
+            HighlightEditor(
+                highlight = active,
+                onNote = { onSetNote(active.id, it) },
+                onColor = { onSetColor(active.id, it) },
+                onDelete = { onDeleteHighlight(active.id); activeHighlightId = null },
+            )
+        }
+    }
 }
+
+@Composable
+private fun HighlightList(
+    highlights: List<net.dexxicon.reader.core.model.Highlight>,
+    onSelect: (net.dexxicon.reader.core.model.Highlight) -> Unit,
+    onEdit: (net.dexxicon.reader.core.model.Highlight) -> Unit,
+) {
+    if (highlights.isEmpty()) {
+        Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
+            Text("Select text in the book to add a highlight")
+        }
+        return
+    }
+    LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        items(highlights, key = { it.id }) { h ->
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(
+                    Modifier
+                        .size(10.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(androidx.compose.ui.graphics.Color(h.color.argb)),
+                )
+                Column(
+                    Modifier.weight(1f).padding(start = 12.dp).clickableText { onSelect(h) },
+                ) {
+                    Text(
+                        h.text,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (!h.note.isNullOrBlank()) {
+                        Text(
+                            h.note!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+                IconButton(onClick = { onEdit(h) }) {
+                    Icon(Icons.Filled.Edit, contentDescription = "Edit highlight")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HighlightEditor(
+    highlight: net.dexxicon.reader.core.model.Highlight,
+    onNote: (String?) -> Unit,
+    onColor: (net.dexxicon.reader.core.model.HighlightColor) -> Unit,
+    onDelete: () -> Unit,
+) {
+    var note by remember(highlight.id) { mutableStateOf(highlight.note.orEmpty()) }
+    Column(Modifier.fillMaxWidth().padding(20.dp)) {
+        Text(highlight.text, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
+        Row(Modifier.padding(top = 16.dp)) {
+            net.dexxicon.reader.core.model.HighlightColor.entries.forEach { c ->
+                Box(
+                    Modifier
+                        .padding(end = 10.dp)
+                        .size(28.dp)
+                        .clip(androidx.compose.foundation.shape.CircleShape)
+                        .background(androidx.compose.ui.graphics.Color(c.argb))
+                        .clickableText { onColor(c) },
+                )
+            }
+        }
+        androidx.compose.material3.OutlinedTextField(
+            value = note,
+            onValueChange = { note = it },
+            label = { Text("Note") },
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+        )
+        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
+            TextButton(onClick = onDelete) {
+                Icon(Icons.Filled.Delete, contentDescription = null)
+                Text("  Delete")
+            }
+            TextButton(onClick = { onNote(note) }) { Text("Save note") }
+        }
+    }
+}
+
+private fun Modifier.clickableText(onClick: () -> Unit): Modifier = this.clickable(onClick = onClick)
 
 @Composable
 private fun TableOfContents(links: List<Pair<Int, Link>>, onSelect: (Link) -> Unit) {
