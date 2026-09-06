@@ -1,4 +1,4 @@
-package net.dexxicon.reader.feature.reader.epub
+package net.dexxicon.reader.feature.reader.comic
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -8,106 +8,109 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.debounce
-import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.ContentFormat
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import net.dexxicon.reader.core.reader.PublicationStreamer
-import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
 import net.dexxicon.reader.core.reader.ReaderPreferencesStore
-import net.dexxicon.reader.feature.reader.epub.navigation.EpubReaderRoute
+import net.dexxicon.reader.feature.reader.comic.navigation.ComicReaderRoute
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
 import org.readium.r2.shared.util.mediatype.MediaType
 import javax.inject.Inject
 
-sealed interface EpubReaderState {
-    data object Loading : EpubReaderState
-    data class Error(val message: String) : EpubReaderState
+sealed interface ComicReaderState {
+    data object Loading : ComicReaderState
+    data class Error(val message: String) : ComicReaderState
     data class Ready(
         val publication: Publication,
         val initialLocator: Locator?,
         val title: String,
-    ) : EpubReaderState
+        val pageCount: Int,
+    ) : ComicReaderState
 }
 
 @OptIn(FlowPreview::class)
 @HiltViewModel
-class EpubReaderViewModel @Inject constructor(
+class ComicReaderViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val locatorStore: ReaderLocatorStore,
     private val downloadRepository: DownloadRepository,
     private val streamer: PublicationStreamer,
-    preferencesStore: ReaderPreferencesStore,
+    private val preferencesStore: ReaderPreferencesStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val route = savedStateHandle.toRoute<EpubReaderRoute>()
+    private val route = savedStateHandle.toRoute<ComicReaderRoute>()
 
-    private val _state = MutableStateFlow<EpubReaderState>(EpubReaderState.Loading)
-    val state: StateFlow<EpubReaderState> = _state.asStateFlow()
+    private val _state = MutableStateFlow<ComicReaderState>(ComicReaderState.Loading)
+    val state: StateFlow<ComicReaderState> = _state.asStateFlow()
 
-    val preferences: StateFlow<ReaderDisplayPreferences> = preferencesStore.preferences
-        .stateIn(viewModelScope, SharingStarted.Eagerly, ReaderDisplayPreferences())
+    val tapNavigation: StateFlow<Boolean> = preferencesStore.preferences
+        .map { it.tapNavigation }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
+
+    fun setTapNavigation(enabled: Boolean) {
+        viewModelScope.launch { preferencesStore.update { it.copy(tapNavigation = enabled) } }
+    }
 
     private val locatorUpdates = MutableSharedFlow<Locator>(extraBufferCapacity = 1)
     private var publication: Publication? = null
 
-    val updatePreferences: (suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit) =
-        preferencesStore::update
-
     init {
         viewModelScope.launch { load() }
         viewModelScope.launch {
-            locatorUpdates.debounce(1_500).collect {
+            locatorUpdates.debounce(1_000).collect {
                 locatorStore.save(route.serverId, route.bookId, it)
             }
         }
     }
 
     private suspend fun load() {
-        // Prefer a downloaded copy — this is also what makes the reader work offline, so
-        // don't gate it on the (network) catalog detail call.
         val localFile = downloadRepository.localFile(route.serverId, route.bookId)
         val downloadTitle = downloadRepository.get(route.serverId, route.bookId)?.title
-
         val detail = (catalogRepository.detail(route.serverId, route.bookId) as? Outcome.Success)?.value
 
         if (localFile == null && detail == null) {
-            _state.value = EpubReaderState.Error("Couldn't reach this book — download it for offline reading")
+            _state.value = ComicReaderState.Error(
+                "Couldn't reach this comic — download it for offline reading",
+            )
             return
         }
 
         val opened = if (localFile != null) {
-            streamer.open(localFile, MediaType.EPUB)
+            streamer.open(localFile, MediaType.CBZ)
         } else {
-            val acquisition = detail!!.acquisitions.firstOrNull { it.format == ContentFormat.EPUB }
+            val acquisition = detail!!.acquisitions.firstOrNull { it.format == ContentFormat.COMIC }
                 ?: detail.primaryAcquisition
-            if (acquisition == null || acquisition.format != ContentFormat.EPUB) {
-                _state.value = EpubReaderState.Error("This book isn't an EPUB")
+            if (acquisition == null || acquisition.format != ContentFormat.COMIC) {
+                _state.value = ComicReaderState.Error("This book isn't a comic")
                 return
             }
-            streamer.open(acquisition.href, MediaType.EPUB)
+            streamer.open(acquisition.href, MediaType.CBZ)
         }
 
         when (opened) {
             is Outcome.Success -> {
                 publication = opened.value
-                _state.value = EpubReaderState.Ready(
+                _state.value = ComicReaderState.Ready(
                     publication = opened.value,
                     initialLocator = locatorStore.initialLocator(route.serverId, route.bookId),
                     title = detail?.summary?.title ?: downloadTitle ?: "",
+                    pageCount = opened.value.readingOrder.size,
                 )
             }
             is Outcome.Failure ->
-                _state.value = EpubReaderState.Error(opened.error.message ?: "Couldn't open this EPUB")
+                _state.value = ComicReaderState.Error(opened.error.message ?: "Couldn't open this comic")
         }
     }
 

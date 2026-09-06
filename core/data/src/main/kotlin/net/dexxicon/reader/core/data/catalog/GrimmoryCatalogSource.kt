@@ -81,7 +81,8 @@ class GrimmoryCatalogSource @Inject constructor(
     }
 
     override suspend fun detail(server: Server, bookId: String): Outcome<BookDetail> = call {
-        val book = api.book(server.resolve("/api/v1/books/$bookId"))
+        // ?withDescription=true — BookLore omits the description from the default DTO.
+        val book = api.book(server.resolve("/api/v1/books/$bookId?withDescription=true"))
         val summary = book.toSummary(server)
         BookDetail(
             summary = summary,

@@ -36,6 +36,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +50,9 @@ import androidx.fragment.app.commit
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.reader.EdgeTapNavigator
+import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
+import net.dexxicon.reader.core.reader.ReaderTheme
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.shared.publication.Link
@@ -108,6 +112,8 @@ private fun ReaderContent(
     var navigator by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
     var showToc by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var chromeVisible by remember { mutableStateOf(true) }
+    val tapNavEnabled by rememberUpdatedState(preferences.tapNavigation)
 
     // Build the navigator fragment once per opened publication and set it as the factory
     // the FragmentManager will use to instantiate EpubNavigatorFragment by class.
@@ -140,28 +146,43 @@ private fun ReaderContent(
         navigator?.currentLocator?.collect { onLocator(it) }
     }
 
+    DisposableEffect(navigator) {
+        val nav = navigator
+        val listener = nav?.let {
+            EdgeTapNavigator(
+                navigator = it,
+                viewWidth = { it.publicationView.width },
+                onCenterTap = { chromeVisible = !chromeVisible },
+                enabled = { tapNavEnabled },
+            ).also { l -> it.addInputListener(l) }
+        }
+        onDispose { if (nav != null && listener != null) nav.removeInputListener(listener) }
+    }
+
     LaunchedEffect(preferences, darkTheme, navigator) {
         navigator?.submitPreferences(preferences.toEpubPreferences(darkTheme))
     }
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(state.title, maxLines = 1) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showToc = true }) {
-                        Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Contents")
-                    }
-                    IconButton(onClick = { showSettings = true }) {
-                        Icon(Icons.Filled.TextFields, contentDescription = "Display settings")
-                    }
-                },
-            )
+            if (chromeVisible) {
+                TopAppBar(
+                    title = { Text(state.title, maxLines = 1) },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { showToc = true }) {
+                            Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Contents")
+                        }
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(Icons.Filled.TextFields, contentDescription = "Display settings")
+                        }
+                    },
+                )
+            }
         },
     ) { padding ->
         AndroidView(
@@ -265,6 +286,17 @@ private fun DisplaySettings(
                 selected = preferences.scroll,
                 onClick = { onChange { it.copy(scroll = true) } },
                 label = { Text("Scroll") },
+            )
+        }
+
+        Row(
+            Modifier.fillMaxWidth().padding(top = 16.dp),
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+        ) {
+            Text("Tap edges to turn pages", Modifier.weight(1f))
+            androidx.compose.material3.Switch(
+                checked = preferences.tapNavigation,
+                onCheckedChange = { on -> onChange { it.copy(tapNavigation = on) } },
             )
         }
     }

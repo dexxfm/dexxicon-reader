@@ -19,6 +19,7 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:data"))
     implementation(project(":core:network"))
+    implementation(project(":core:reader"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.runtime)
@@ -43,7 +44,6 @@ dependencies {
     implementation(libs.coil.compose)
 
     implementation(libs.readium.shared)
-    implementation(libs.readium.streamer)
     implementation(libs.readium.navigator)
 
     testImplementation(libs.junit)

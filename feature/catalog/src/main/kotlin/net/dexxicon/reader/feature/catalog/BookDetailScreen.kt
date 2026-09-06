@@ -53,7 +53,7 @@ import net.dexxicon.reader.core.model.DownloadStatus
 @Composable
 fun BookDetailScreen(
     onBack: () -> Unit,
-    onRead: (serverId: String, bookId: String) -> Unit = { _, _ -> },
+    onRead: (serverId: String, bookId: String, format: ContentFormat) -> Unit = { _, _, _ -> },
     viewModel: BookDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -81,7 +81,10 @@ fun BookDetailScreen(
             state.detail != null -> DetailContent(
                 detail = state.detail!!,
                 download = download,
-                onRead = { onRead(state.detail!!.summary.serverId, state.detail!!.summary.id) },
+                onRead = {
+                    val d = state.detail!!.summary
+                    onRead(d.serverId, d.id, d.format)
+                },
                 onDownload = viewModel::onDownload,
                 onRemoveDownload = viewModel::onRemoveDownload,
                 modifier = Modifier.padding(padding),
@@ -149,7 +152,7 @@ private fun DetailContent(
 
         Spacer(Modifier.height(20.dp))
         val isAudio = s.format == ContentFormat.AUDIOBOOK
-        val canRead = s.format == ContentFormat.EPUB
+        val canRead = s.format == ContentFormat.EPUB || s.format == ContentFormat.COMIC
         Button(
             onClick = onRead,
             enabled = canRead,

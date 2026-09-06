@@ -5,6 +5,7 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
 import kotlinx.serialization.Serializable
 import androidx.navigation.toRoute
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.feature.catalog.BookDetailScreen
 import net.dexxicon.reader.feature.catalog.CatalogScreen
 
@@ -22,7 +23,7 @@ fun NavController.navigateToBookDetail(serverId: String, bookId: String) =
 
 fun NavGraphBuilder.catalogSection(
     navController: NavController,
-    onOpenReader: (serverId: String, bookId: String) -> Unit = { _, _ -> },
+    onOpenReader: (serverId: String, bookId: String, format: ContentFormat) -> Unit = { _, _, _ -> },
 ) {
     composable<CatalogRoute> {
         CatalogScreen(

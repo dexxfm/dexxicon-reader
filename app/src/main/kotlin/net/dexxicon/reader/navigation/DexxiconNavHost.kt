@@ -8,7 +8,10 @@ import androidx.navigation.compose.composable
 import net.dexxicon.reader.feature.catalog.navigation.catalogSection
 import net.dexxicon.reader.feature.catalog.navigation.navigateToBookDetail
 import net.dexxicon.reader.feature.catalog.navigation.navigateToCatalog
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.feature.library.LibraryScreen
+import net.dexxicon.reader.feature.reader.comic.navigation.comicReaderSection
+import net.dexxicon.reader.feature.reader.comic.navigation.navigateToComicReader
 import net.dexxicon.reader.feature.reader.epub.navigation.epubReaderSection
 import net.dexxicon.reader.feature.reader.epub.navigation.navigateToEpubReader
 import net.dexxicon.reader.feature.servers.ServersScreen
@@ -59,11 +62,15 @@ fun DexxiconNavHost(
 
         catalogSection(
             navController = navController,
-            onOpenReader = { serverId, bookId ->
-                navController.navigateToEpubReader(serverId, bookId)
+            onOpenReader = { serverId, bookId, format ->
+                when (format) {
+                    ContentFormat.COMIC -> navController.navigateToComicReader(serverId, bookId)
+                    else -> navController.navigateToEpubReader(serverId, bookId)
+                }
             },
         )
 
         epubReaderSection(navController)
+        comicReaderSection(navController)
     }
 }
