@@ -2,25 +2,22 @@ package net.dexxicon.reader.core.serverapi.oidc
 
 import kotlinx.serialization.Serializable
 import retrofit2.http.Body
-import retrofit2.http.Field
-import retrofit2.http.FormUrlEncoded
 import retrofit2.http.GET
 import retrofit2.http.POST
 import retrofit2.http.Url
 
 /**
- * OIDC endpoints for the two server families.
+ * OIDC endpoints for the two server families. Both use an https/http redirect to the
+ * server's own `/oauth2-callback` (captured by an in-app WebView) and exchange the code at
+ * `POST /api/v1/auth/oidc/callback` with a JSON body -> access + refresh token.
  *
  * Grimmory / BookLore:
- *   GET  /api/v1/public-settings          -> issuer + clientId + scopes
- *   GET  /api/v1/auth/oidc/state          -> { state }
+ *   GET  /api/v1/public-settings                     -> issuer + clientId + scopes
+ *   GET  /api/v1/auth/oidc/state                     -> { state }
  *   GET  {issuer}/.well-known/openid-configuration
- *   POST /api/v1/auth/oidc/mobile/callback  { code, codeVerifier, redirectUri, nonce, state }
- *
  * BookOrbit:
  *   GET  /api/v1/app-settings/oidc/providers/public  -> [ { slug, enabled, clientId, scopes } ]
  *   POST /api/v1/auth/oidc/{slug}/state              -> { state, authorizationEndpoint }
- *   POST /api/v1/auth/oidc/callback                  { code, codeVerifier, redirectUri, nonce, state }
  */
 interface OidcApi {
 
@@ -39,23 +36,11 @@ interface OidcApi {
     @POST
     suspend fun bookorbitState(@Url url: String): OidcStateResponse
 
-    /** BookOrbit `/api/v1/auth/oidc/callback` — JSON body. */
+    /** `POST /api/v1/auth/oidc/callback` — JSON body, returns access + refresh token. */
     @POST
     suspend fun exchangeJson(
         @Url url: String,
         @Body body: OidcExchangeRequest,
-    ): net.dexxicon.reader.core.serverapi.auth.LoginResponse
-
-    /** Grimmory/BookLore `/api/v1/auth/oidc/mobile/callback` — form-encoded, snake_case. */
-    @FormUrlEncoded
-    @POST
-    suspend fun exchangeForm(
-        @Url url: String,
-        @Field("code") code: String,
-        @Field("code_verifier") codeVerifier: String,
-        @Field("redirect_uri") redirectUri: String,
-        @Field("nonce") nonce: String,
-        @Field("state") state: String,
     ): net.dexxicon.reader.core.serverapi.auth.LoginResponse
 }
 
