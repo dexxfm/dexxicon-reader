@@ -2,6 +2,7 @@ package net.dexxicon.reader.core.data
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.DexxiconDispatcher
@@ -115,6 +116,12 @@ class ReadingProgressRepository @Inject constructor(
      * books it needs the [ReadingProgress.digestUrl] captured at open time.
      */
     suspend fun syncWithKoSync() = withContext(io) {
+        // Touch every configured account first so each one records a "last synced" time,
+        // even servers with nothing in progress right now.
+        serverRepository.servers.first()
+            .filter { koSync.isConfigured(it) }
+            .forEach { server -> runCatching { koSync.verify(server) } }
+
         val rows = dao.all()
         val servers = rows.map { it.serverId }.distinct()
             .mapNotNull { id -> serverRepository.get(id)?.let { id to it } }

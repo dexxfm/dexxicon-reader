@@ -65,12 +65,15 @@ class KoSyncRepository @Inject constructor(
             .joinToString("") { "%02x".format(it) }
     }
 
-    /** Verify credentials against `{base}/users/auth`. */
+    /** Verify credentials against `{base}/users/auth`; a success also counts as "synced now". */
     suspend fun verify(server: Server): Boolean = withContext(io) {
         val base = server.effectiveKoSyncUrl
         val user = server.koSyncUsername ?: return@withContext false
         val key = authKey(server) ?: return@withContext false
-        runCatching { api.authorize("$base/users/auth", user, key).isSuccessful }.getOrDefault(false)
+        val ok = runCatching { api.authorize("$base/users/auth", user, key).isSuccessful }
+            .getOrDefault(false)
+        if (ok) syncStateStore.markSynced(server.id)
+        ok
     }
 
     suspend fun pull(server: Server, cacheKey: String, source: DigestSource): RemoteProgress? =
