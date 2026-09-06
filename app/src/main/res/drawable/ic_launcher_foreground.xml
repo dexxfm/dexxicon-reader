@@ -4,45 +4,41 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Fox head, centred in the 66dp safe zone -->
-    <group android:name="fox" android:translateX="0" android:translateY="2">
+    <!-- Concept B: single-ribbon monoline fox with a bookmark tail. -->
 
-        <!-- ears -->
-        <path
-            android:fillColor="#C7CED9"
-            android:pathData="M33,34 L44,20 L47,44 Z" />
-        <path
-            android:fillColor="#C7CED9"
-            android:pathData="M75,34 L64,20 L61,44 Z" />
-        <path
-            android:fillColor="#6E8DC0"
-            android:pathData="M37,35 L44,25 L47,42 Z" />
-        <path
-            android:fillColor="#6E8DC0"
-            android:pathData="M71,35 L64,25 L61,42 Z" />
+    <!-- bookmark ribbon falling from the chin -->
+    <path
+        android:fillColor="#8A94A6"
+        android:pathData="M48,74 h12 v24 l-6,-7 -6,7 Z" />
 
-        <!-- head -->
-        <path
-            android:fillColor="#A9C0E4"
-            android:pathData="M40,40 H68 C70,40 71,42 70,44 L64,70 C61,80 54,86 54,86 C54,86 47,80 44,70 L38,44 C37,42 38,40 40,40 Z" />
+    <!-- fox head: one continuous ribbon stroke -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#DBE0E8"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M54,80
+                          C 42,80 34,71 32,60
+                          L28,32 L44,44
+                          C 50,41 58,41 64,44
+                          L80,32 L76,60
+                          C 74,71 66,80 54,80 Z" />
 
-        <!-- open book carved into the face -->
-        <path
-            android:fillColor="#1E3057"
-            android:pathData="M54,46 C49,42 42,41 37,43 L37,64 C42,62 49,63 54,67 Z" />
-        <path
-            android:fillColor="#24406B"
-            android:pathData="M54,46 C59,42 66,41 71,43 L71,64 C66,62 59,63 54,67 Z" />
-        <path
-            android:fillColor="#0F1B31"
-            android:pathData="M52.5,45 h3 v23 h-3 Z" />
+    <!-- muzzle / lower-face fill to seat the ribbon -->
+    <path
+        android:fillColor="#3D5A8A"
+        android:pathData="M33,61 C 35,71 43,79 54,79 C 65,79 73,71 75,61
+                          C 67,67 61,70 54,70 C 47,70 41,67 33,61 Z" />
 
-        <!-- snout + nose -->
-        <path
-            android:fillColor="#C7CED9"
-            android:pathData="M47,70 H61 L54,82 Z" />
-        <path
-            android:fillColor="#0F1B31"
-            android:pathData="M54,74 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
-    </group>
+    <!-- eyes + nose -->
+    <path
+        android:fillColor="#0F1B31"
+        android:pathData="M45,55 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
+    <path
+        android:fillColor="#0F1B31"
+        android:pathData="M63,55 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
+    <path
+        android:fillColor="#0F1B31"
+        android:pathData="M54,66 l-4,-5 h8 Z" />
 </vector>

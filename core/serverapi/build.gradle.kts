@@ -13,7 +13,7 @@ android {
 
 dependencies {
     api(project(":core:model"))
-    implementation(project(":core:common"))
+    api(project(":core:common"))
     implementation(project(":core:network"))
     implementation(libs.retrofit)
     implementation(libs.retrofit.kotlinx.serialization)
