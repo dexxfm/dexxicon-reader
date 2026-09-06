@@ -40,6 +40,9 @@ class NativeProgressSync @Inject constructor(
     private val syncStateStore: SyncStateStore,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
 ) {
+    /** Grimmory `bookFileId` per "serverId::bookId::format" — avoids re-fetching on every push. */
+    private val bookFileIdCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
     fun supports(server: Server): Boolean =
         server.type == ServerType.BOOKORBIT || server.type == ServerType.GRIMMORY
 
@@ -192,6 +195,9 @@ class NativeProgressSync @Inject constructor(
     }
 
     private suspend fun grimmoryBookFileId(server: Server, bookId: String, format: ContentFormat): Long? {
+        val cacheKey = "${server.id}::$bookId::$format"
+        bookFileIdCache[cacheKey]?.let { return it }
+
         val book = api.grimmoryAppBook(server.resolve("/api/v1/app/books/$bookId"))
         val wantType = when (format) {
             ContentFormat.AUDIOBOOK -> "AUDIOBOOK"
@@ -199,9 +205,11 @@ class NativeProgressSync @Inject constructor(
             ContentFormat.COMIC -> "CBX"
             else -> "EPUB"
         }
-        return book.files.firstOrNull { it.bookType?.equals(wantType, ignoreCase = true) == true }?.id
-            ?: book.files.firstOrNull { it.isPrimaryFile }?.id
-            ?: book.files.firstOrNull()?.id
+        return (
+            book.files.firstOrNull { it.bookType?.equals(wantType, ignoreCase = true) == true }?.id
+                ?: book.files.firstOrNull { it.isPrimaryFile }?.id
+                ?: book.files.firstOrNull()?.id
+            )?.also { bookFileIdCache[cacheKey] = it }
     }
 
     private fun fileIdFrom(url: String?): Long? {
