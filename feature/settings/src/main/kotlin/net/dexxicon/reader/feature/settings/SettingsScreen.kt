@@ -85,10 +85,11 @@ fun SettingsScreen(
             }
 
             Spacer()
-            SectionTitle("Reading sync (koreader)")
+            SectionTitle("Reading sync")
             Text(
-                "Share reading progress with the KOReader app and other devices. Each server " +
-                    "needs a dedicated sync account (KOReader plugin).",
+                "Reading & listening position syncs with each server. BookOrbit and Grimmory " +
+                    "sync through their own library API (same as the web reader); other OPDS " +
+                    "servers use a KOReader sync account.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp),
@@ -101,11 +102,15 @@ fun SettingsScreen(
                 )
             }
             koSyncRows.forEach { row ->
-                KoSyncServerCard(
-                    row = row,
-                    onSave = { url, user, pass -> koSyncViewModel.save(row.serverId, url, user, pass) },
-                    onVerify = { koSyncViewModel.verify(row.serverId) },
-                )
+                if (row.usesNative) {
+                    NativeSyncRow(row)
+                } else {
+                    KoSyncServerCard(
+                        row = row,
+                        onSave = { url, user, pass -> koSyncViewModel.save(row.serverId, url, user, pass) },
+                        onVerify = { koSyncViewModel.verify(row.serverId) },
+                    )
+                }
                 LayoutSpacer(Modifier.height(10.dp))
             }
 
@@ -122,8 +127,29 @@ fun SettingsScreen(
 }
 
 @Composable
+private fun NativeSyncRow(row: SyncServerRow) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text(row.name, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                "Syncs with the library",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            row.lastSyncedAt?.let { at ->
+                Text(
+                    "Last synced ${relativeTime(at)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun KoSyncServerCard(
-    row: KoSyncServerRow,
+    row: SyncServerRow,
     onSave: (customUrl: String, user: String, pass: String) -> Unit,
     onVerify: () -> Unit,
 ) {

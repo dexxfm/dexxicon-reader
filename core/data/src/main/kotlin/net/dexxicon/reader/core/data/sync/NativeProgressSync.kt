@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
+import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
@@ -36,6 +37,7 @@ data class NativeProgress(
 @Singleton
 class NativeProgressSync @Inject constructor(
     private val api: NativeProgressApi,
+    private val syncStateStore: SyncStateStore,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
 ) {
     fun supports(server: Server): Boolean =
@@ -53,7 +55,8 @@ class NativeProgressSync @Inject constructor(
                 ServerType.GRIMMORY -> pullGrimmory(server, bookId, format)
                 else -> null
             }
-        }.onFailure { Log.w(TAG, "pull ${server.type} $bookId $format failed: ${it.message}") }
+        }.onSuccess { syncStateStore.markSynced(server.id) }
+            .onFailure { Log.w(TAG, "pull ${server.type} $bookId $format failed: ${it.message}") }
             .getOrNull()
             ?.also { Log.i(TAG, "pull ${server.type} $bookId $format -> $it") }
     }
@@ -73,8 +76,10 @@ class NativeProgressSync @Inject constructor(
                 ServerType.GRIMMORY -> pushGrimmory(server, bookId, format, percent, positionMs, position)
                 else -> {}
             }
-        }.onSuccess { Log.i(TAG, "push ${server.type} $bookId $format pct=$percent posMs=$positionMs ok") }
-            .onFailure { Log.w(TAG, "push ${server.type} $bookId $format failed: ${it.message}") }
+        }.onSuccess {
+            syncStateStore.markSynced(server.id)
+            Log.i(TAG, "push ${server.type} $bookId $format pct=$percent posMs=$positionMs ok")
+        }.onFailure { Log.w(TAG, "push ${server.type} $bookId $format failed: ${it.message}") }
         Unit
     }
 

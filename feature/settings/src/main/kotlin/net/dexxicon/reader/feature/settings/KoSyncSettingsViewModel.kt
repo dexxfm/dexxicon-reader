@@ -16,16 +16,18 @@ import net.dexxicon.reader.core.data.sync.KoSyncRepository
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import javax.inject.Inject
 
-data class KoSyncServerRow(
+data class SyncServerRow(
     val serverId: String,
     val name: String,
+    /** BookOrbit / Grimmory sync through their own API; generic OPDS servers use KOReader. */
+    val usesNative: Boolean,
     val configured: Boolean,
-    /** The by-convention kosync URL for this server family. */
+    /** The by-convention kosync URL for this server family (generic servers only). */
     val assumedUrl: String,
     /** A custom override URL, or "" when the assumed one is used. */
     val customUrl: String,
     val koSyncUsername: String,
-    /** null = not checked, true/false = last verify result */
+    /** null = not checked, true/false = last verify result (generic servers only). */
     val verified: Boolean? = null,
     val verifying: Boolean = false,
     /** Epoch millis of the last successful progress sync, or null. */
@@ -47,7 +49,7 @@ class KoSyncSettingsViewModel @Inject constructor(
     private val _refreshing = MutableStateFlow(false)
     val refreshing: StateFlow<Boolean> = _refreshing
 
-    val rows: StateFlow<List<KoSyncServerRow>> =
+    val rows: StateFlow<List<SyncServerRow>> =
         combine(
             serverRepository.servers,
             verifyState,
@@ -55,10 +57,11 @@ class KoSyncSettingsViewModel @Inject constructor(
         ) { servers, verify, lastSynced ->
             servers.map { s ->
                 val (verified, verifying) = verify[s.id] ?: (null to false)
-                KoSyncServerRow(
+                SyncServerRow(
                     serverId = s.id,
                     name = s.displayName,
-                    configured = !s.koSyncUsername.isNullOrBlank(),
+                    usesNative = s.type.supportsNativeApi,
+                    configured = s.type.supportsNativeApi || !s.koSyncUsername.isNullOrBlank(),
                     assumedUrl = s.assumedKoSyncUrl,
                     customUrl = s.koSyncUrl.orEmpty(),
                     koSyncUsername = s.koSyncUsername.orEmpty(),
@@ -86,20 +89,21 @@ class KoSyncSettingsViewModel @Inject constructor(
     }
 
     /**
-     * Pull-to-refresh on the Settings screen: reconcile reading progress with KOReader sync
-     * (both directions) and re-verify every configured sync account.
+     * Pull-to-refresh on Settings: reconcile reading progress with every server (native or
+     * kosync, both directions) and re-verify the KOReader accounts.
      */
     fun refreshAll() {
         if (_refreshing.value) return
         viewModelScope.launch {
             _refreshing.value = true
             runCatching { progressRepository.syncProgress() }
-            val servers = serverRepository.servers.first()
-            servers.filter { !it.koSyncUsername.isNullOrBlank() }.forEach { server ->
-                setVerify(server.id, null, true)
-                val ok = runCatching { koSync.verify(server) }.getOrDefault(false)
-                setVerify(server.id, ok, false)
-            }
+            serverRepository.servers.first()
+                .filter { !it.type.supportsNativeApi && !it.koSyncUsername.isNullOrBlank() }
+                .forEach { server ->
+                    setVerify(server.id, null, true)
+                    val ok = runCatching { koSync.verify(server) }.getOrDefault(false)
+                    setVerify(server.id, ok, false)
+                }
             _refreshing.value = false
         }
     }

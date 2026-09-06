@@ -17,6 +17,7 @@ import net.dexxicon.reader.core.database.dao.ReadingProgressDao
 import net.dexxicon.reader.core.database.entity.ReadingProgressEntity
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingProgress
+import net.dexxicon.reader.core.model.Server
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -24,13 +25,12 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Stores where each book was last left off. Position tokens are opaque (see [ReadingProgress]).
+ * Stores where each book was left off, and keeps that position **two-way** with the server.
  *
- * Progress is **two-way** with the server on two independent channels:
- *  - the server's **native** progress API ([NativeProgressSync]) — what its web reader uses,
- *    so a position set on the website shows up here and vice-versa;
- *  - **KOReader `kosync`** ([KoSyncRepository]) — for the KOReader e-reader app.
- * Every [save] with a percentage pushes both; [syncProgress] reconciles both directions.
+ * The sync channel is chosen by server type and they are mutually exclusive:
+ *  - **BookOrbit / Grimmory** → the server's own native progress API ([NativeProgressSync]),
+ *    the exact one its web reader uses, so positions round-trip with the website.
+ *  - **Generic OPDS servers** → the KOReader `kosync` protocol ([KoSyncRepository]).
  */
 @Singleton
 class ReadingProgressRepository @Inject constructor(
@@ -58,11 +58,16 @@ class ReadingProgressRepository @Inject constructor(
         dao.find(key(serverId, bookId))?.toDomain()
     }
 
+    /** True when [server] syncs progress through its native API rather than kosync. */
+    private fun usesNative(server: Server): Boolean = nativeSync.supports(server)
+
+    private fun usesKoSync(server: Server): Boolean =
+        !usesNative(server) && koSync.isConfigured(server)
+
     /**
      * Persist a position update. Metadata fields ([ReadingProgress.title] etc.) are merged —
-     * a null on [progress] keeps whatever the row already had — so a bare position save from
-     * a reader doesn't wipe the snapshot captured when the book was opened. When [progress]
-     * carries a percentage it is also pushed to the server (native + kosync).
+     * a null on [progress] keeps whatever the row already had. When [progress] carries a
+     * percentage it is also pushed to the server.
      */
     suspend fun save(progress: ReadingProgress) = withContext(io) {
         val existing = dao.find(progress.key)
@@ -95,7 +100,7 @@ class ReadingProgressRepository @Inject constructor(
 
     /**
      * The position (ms) an audiobook should resume at: the furthest of the local position and
-     * anything the server has (native progress or kosync). Never rewinds.
+     * whatever the server has. Never rewinds.
      */
     suspend fun audiobookResumeMs(
         serverId: String,
@@ -108,13 +113,12 @@ class ReadingProgressRepository @Inject constructor(
         val server = serverRepository.get(serverId) ?: return@withContext localMs
         var best = localMs
 
-        if (nativeSync.supports(server)) {
+        if (usesNative(server)) {
             nativeSync.pull(server, bookId, ContentFormat.AUDIOBOOK, digestUrl)?.let { np ->
                 val ms = np.positionMs ?: (np.percent.coerceIn(0.0, 1.0) * durationMs).toLong()
                 best = maxOf(best, ms)
             }
-        }
-        if (koSync.isConfigured(server)) {
+        } else if (usesKoSync(server)) {
             digestSourceFor(serverId, bookId, digestUrl)?.let { source ->
                 runCatching { koSync.pull(server, key(serverId, bookId), source) }.getOrNull()?.let {
                     best = maxOf(best, (it.percentage.coerceIn(0.0, 1.0) * durationMs).toLong())
@@ -126,7 +130,7 @@ class ReadingProgressRepository @Inject constructor(
 
     /**
      * A resume percentage the server has that is meaningfully ahead of [localPercent] — for
-     * the readers' "Continue from NN%" prompt. Checks native progress then kosync.
+     * the readers' "Continue from NN%" prompt.
      */
     suspend fun remoteResumePercent(
         serverId: String,
@@ -139,12 +143,11 @@ class ReadingProgressRepository @Inject constructor(
         val local = localPercent ?: 0.0
         var best: Double? = null
 
-        if (nativeSync.supports(server)) {
+        if (usesNative(server)) {
             nativeSync.pull(server, bookId, format, digestUrl)?.percent?.let { p ->
                 if (p - local > 0.01 && p <= 1.0) best = p
             }
-        }
-        if (best == null && koSync.isConfigured(server)) {
+        } else if (usesKoSync(server)) {
             digestSourceFor(serverId, bookId, digestUrl)?.let { source ->
                 runCatching { koSync.pull(server, key(serverId, bookId), source) }.getOrNull()
                     ?.percentage?.let { p -> if (p - local > 0.01 && p <= 1.0) best = p }
@@ -154,14 +157,15 @@ class ReadingProgressRepository @Inject constructor(
     }
 
     /**
-     * Reconcile every in-progress book with the server **both ways** on both channels: adopt
-     * the server's position when newer, push ours when newer or when the server has nothing.
+     * Reconcile every in-progress book with its server **both ways** on that server's channel:
+     * adopt the server's position when newer, push ours when newer or when the server has
+     * nothing yet.
      */
     suspend fun syncProgress() = withContext(io) {
-        // Touch every configured kosync account first so each records a "last synced" time,
-        // even servers with nothing in progress right now.
+        // Touch every configured kosync (generic OPDS) account so each records a "last synced"
+        // time even with nothing in progress right now.
         serverRepository.servers.first()
-            .filter { koSync.isConfigured(it) }
+            .filter { usesKoSync(it) }
             .forEach { server -> runCatching { koSync.verify(server) } }
 
         val rows = dao.all()
@@ -176,38 +180,28 @@ class ReadingProgressRepository @Inject constructor(
                 ?: ContentFormat.EPUB
             val domain = row.toDomain()
 
-            // --- native (web reader) ---
-            if (nativeSync.supports(server)) {
+            if (usesNative(server)) {
                 val native = nativeSync.pull(server, row.bookId, format, row.digestUrl)
-                if (native == null) {
-                    runCatching {
+                when {
+                    native == null || localPercent - native.percent > 0.005 -> runCatching {
                         nativeSync.push(server, row.bookId, format, row.digestUrl, localPercent, positionMsOf(domain), null)
                     }
-                } else if (shouldAdoptNative(native, row)) {
-                    dao.upsert(row.copy(percent = native.percent, updatedAt = native.updatedAtMillis ?: row.updatedAt))
-                } else if (localPercent - native.percent > 0.005) {
-                    runCatching {
-                        nativeSync.push(server, row.bookId, format, row.digestUrl, localPercent, positionMsOf(domain), null)
-                    }
+                    shouldAdoptNative(native, row) ->
+                        dao.upsert(row.copy(percent = native.percent, updatedAt = native.updatedAtMillis ?: row.updatedAt))
                 }
-            }
-
-            // --- kosync ---
-            if (koSync.isConfigured(server)) {
+            } else if (usesKoSync(server)) {
                 val source = digestSourceFor(row.serverId, row.bookId, row.digestUrl) ?: continue
                 val remote = runCatching { koSync.pull(server, row.key, source) }.getOrNull()
-                val current = dao.find(row.key) ?: row
-                val curPercent = current.percent ?: localPercent
                 if (remote == null) {
-                    runCatching { koSync.push(server, row.key, source, curPercent.coerceIn(0.0, 1.0)) }
+                    runCatching { koSync.push(server, row.key, source, localPercent.coerceIn(0.0, 1.0)) }
                 } else {
                     val remoteMillis = remote.timestamp.let { if (it in 1..9_999_999_999L) it * 1000 else it }
-                    val remoteAhead = remote.percentage - curPercent > 0.001
+                    val remoteAhead = remote.percentage - localPercent > 0.001
                     when {
-                        remoteMillis > current.updatedAt && remoteAhead && remote.percentage in 0.0..1.0 ->
-                            dao.upsert(current.copy(percent = remote.percentage, updatedAt = remoteMillis))
-                        curPercent - remote.percentage > 0.001 ->
-                            runCatching { koSync.push(server, row.key, source, curPercent.coerceIn(0.0, 1.0)) }
+                        remoteMillis > row.updatedAt && remoteAhead && remote.percentage in 0.0..1.0 ->
+                            dao.upsert(row.copy(percent = remote.percentage, updatedAt = remoteMillis))
+                        localPercent - remote.percentage > 0.001 ->
+                            runCatching { koSync.push(server, row.key, source, localPercent.coerceIn(0.0, 1.0)) }
                     }
                 }
             }
@@ -228,15 +222,14 @@ class ReadingProgressRepository @Inject constructor(
         val server = serverRepository.get(progress.serverId) ?: return
         val format = progress.format ?: ContentFormat.EPUB
 
-        if (nativeSync.supports(server)) {
+        if (usesNative(server)) {
             runCatching {
                 nativeSync.push(
                     server, progress.bookId, format, progress.digestUrl,
                     percent, positionMsOf(progress), null,
                 )
             }
-        }
-        if (koSync.isConfigured(server)) {
+        } else if (usesKoSync(server)) {
             digestSourceFor(progress.serverId, progress.bookId, progress.digestUrl)?.let { source ->
                 runCatching { koSync.push(server, progress.key, source, percent.coerceIn(0.0, 1.0)) }
             }
