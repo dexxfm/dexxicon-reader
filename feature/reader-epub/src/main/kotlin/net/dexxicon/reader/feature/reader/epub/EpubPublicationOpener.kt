@@ -15,6 +15,7 @@ import org.readium.r2.shared.util.http.HttpClient
 import org.readium.r2.shared.util.mediatype.MediaType
 import org.readium.r2.streamer.PublicationOpener
 import org.readium.r2.streamer.parser.DefaultPublicationParser
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -47,10 +48,21 @@ class EpubPublicationOpener @Inject constructor(
             ?: return@withContext Outcome.Failure(
                 DexxiconError.Network("Couldn't open the book file on the server"),
             )
+        openAsset(asset)
+    }
 
+    /** Open an already-downloaded EPUB from local storage. */
+    suspend fun open(file: File): Outcome<Publication> = withContext(io) {
+        val asset = assetRetriever.retrieve(file, MediaType.EPUB).getOrNull()
+            ?: return@withContext Outcome.Failure(
+                DexxiconError.Parse("Couldn't read the downloaded file"),
+            )
+        openAsset(asset)
+    }
+
+    private suspend fun openAsset(asset: org.readium.r2.shared.util.asset.Asset): Outcome<Publication> =
         publicationOpener.open(asset, allowUserInteraction = false).fold(
             onSuccess = { Outcome.Success(it) },
             onFailure = { Outcome.Failure(DexxiconError.Parse(it.message)) },
         )
-    }
 }

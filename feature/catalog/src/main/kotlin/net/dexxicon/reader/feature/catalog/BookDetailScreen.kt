@@ -17,8 +17,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -42,6 +46,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.Download
+import net.dexxicon.reader.core.model.DownloadStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -51,6 +57,7 @@ fun BookDetailScreen(
     viewModel: BookDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val download by viewModel.download.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -73,7 +80,10 @@ fun BookDetailScreen(
             }
             state.detail != null -> DetailContent(
                 detail = state.detail!!,
+                download = download,
                 onRead = { onRead(state.detail!!.summary.serverId, state.detail!!.summary.id) },
+                onDownload = viewModel::onDownload,
+                onRemoveDownload = viewModel::onRemoveDownload,
                 modifier = Modifier.padding(padding),
             )
         }
@@ -83,7 +93,10 @@ fun BookDetailScreen(
 @Composable
 private fun DetailContent(
     detail: BookDetail,
+    download: Download?,
     onRead: () -> Unit,
+    onDownload: () -> Unit,
+    onRemoveDownload: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val s = detail.summary
@@ -152,10 +165,7 @@ private fun DetailContent(
             )
         }
         Spacer(Modifier.height(8.dp))
-        OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.CloudDownload, contentDescription = null)
-            Text("  Download (coming soon)")
-        }
+        DownloadButton(download, onDownload, onRemoveDownload)
 
         Spacer(Modifier.height(20.dp))
         Text("About", style = MaterialTheme.typography.titleMedium)
@@ -197,6 +207,60 @@ private fun formatFileSize(bytes: Long): String = when {
     bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
     bytes >= 1_000 -> "%.0f KB".format(bytes / 1_000.0)
     else -> "$bytes B"
+}
+
+@Composable
+private fun DownloadButton(
+    download: Download?,
+    onDownload: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    when (download?.status) {
+        DownloadStatus.DONE -> OutlinedButton(
+            onClick = onRemove,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.CheckCircle, contentDescription = null)
+            Text("  Downloaded — remove")
+        }
+
+        DownloadStatus.QUEUED, DownloadStatus.RUNNING -> Column(Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onRemove, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.Delete, contentDescription = null)
+                val pct = download.fraction?.let { " ${(it * 100).toInt()}%" }.orEmpty()
+                Text(if (download.status == DownloadStatus.RUNNING) "  Downloading$pct — cancel" else "  Queued — cancel")
+            }
+            val fraction = download.fraction
+            if (fraction != null) {
+                LinearProgressIndicator(
+                    progress = { fraction },
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                )
+            } else {
+                LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 6.dp))
+            }
+        }
+
+        DownloadStatus.FAILED -> Column(Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Filled.ErrorOutline, contentDescription = null)
+                Text("  Download failed — retry")
+            }
+            download.error?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
+            }
+        }
+
+        null -> OutlinedButton(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
+            Icon(Icons.Filled.CloudDownload, contentDescription = null)
+            Text("  Make available offline")
+        }
+    }
 }
 
 @Composable

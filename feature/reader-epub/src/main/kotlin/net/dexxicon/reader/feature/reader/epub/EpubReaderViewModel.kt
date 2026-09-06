@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
+import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.feature.reader.epub.navigation.EpubReaderRoute
@@ -40,6 +41,7 @@ sealed interface EpubReaderState {
 class EpubReaderViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val progressRepository: ReadingProgressRepository,
+    private val downloadRepository: DownloadRepository,
     private val opener: EpubPublicationOpener,
     preferencesStore: ReaderPreferencesStore,
     savedStateHandle: SavedStateHandle,
@@ -67,22 +69,31 @@ class EpubReaderViewModel @Inject constructor(
     }
 
     private suspend fun load() {
-        val detail = when (val outcome = catalogRepository.detail(route.serverId, route.bookId)) {
-            is Outcome.Success -> outcome.value
-            is Outcome.Failure -> {
-                _state.value = EpubReaderState.Error(outcome.error.message ?: "Couldn't load this book")
-                return
-            }
-        }
+        // Prefer a downloaded copy — this is also what makes the reader work offline, so
+        // don't gate it on the (network) catalog detail call.
+        val localFile = downloadRepository.localFile(route.serverId, route.bookId)
+        val downloadTitle = downloadRepository.get(route.serverId, route.bookId)?.title
 
-        val acquisition = detail.acquisitions.firstOrNull { it.format == ContentFormat.EPUB }
-            ?: detail.primaryAcquisition
-        if (acquisition == null || acquisition.format != ContentFormat.EPUB) {
-            _state.value = EpubReaderState.Error("This book isn't an EPUB")
+        val detail = (catalogRepository.detail(route.serverId, route.bookId) as? Outcome.Success)?.value
+
+        if (localFile == null && detail == null) {
+            _state.value = EpubReaderState.Error("Couldn't reach this book — download it for offline reading")
             return
         }
 
-        when (val opened = opener.open(acquisition.href)) {
+        val opened = if (localFile != null) {
+            opener.open(localFile)
+        } else {
+            val acquisition = detail!!.acquisitions.firstOrNull { it.format == ContentFormat.EPUB }
+                ?: detail.primaryAcquisition
+            if (acquisition == null || acquisition.format != ContentFormat.EPUB) {
+                _state.value = EpubReaderState.Error("This book isn't an EPUB")
+                return
+            }
+            opener.open(acquisition.href)
+        }
+
+        when (opened) {
             is Outcome.Success -> {
                 publication = opened.value
                 val initial = progressRepository.get(route.serverId, route.bookId)
@@ -91,7 +102,7 @@ class EpubReaderViewModel @Inject constructor(
                 _state.value = EpubReaderState.Ready(
                     publication = opened.value,
                     initialLocator = initial,
-                    title = detail.summary.title,
+                    title = detail?.summary?.title ?: downloadTitle ?: "",
                 )
             }
             is Outcome.Failure ->

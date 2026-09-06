@@ -17,6 +17,9 @@ data class BookDetailRoute(val serverId: String, val bookId: String)
 fun NavController.navigateToCatalog(serverId: String, serverName: String) =
     navigate(CatalogRoute(serverId, serverName))
 
+fun NavController.navigateToBookDetail(serverId: String, bookId: String) =
+    navigate(BookDetailRoute(serverId, bookId))
+
 fun NavGraphBuilder.catalogSection(
     navController: NavController,
     onOpenReader: (serverId: String, bookId: String) -> Unit = { _, _ -> },

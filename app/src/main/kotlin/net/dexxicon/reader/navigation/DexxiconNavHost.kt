@@ -6,7 +6,9 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import net.dexxicon.reader.feature.catalog.navigation.catalogSection
+import net.dexxicon.reader.feature.catalog.navigation.navigateToBookDetail
 import net.dexxicon.reader.feature.catalog.navigation.navigateToCatalog
+import net.dexxicon.reader.feature.library.LibraryScreen
 import net.dexxicon.reader.feature.reader.epub.navigation.epubReaderSection
 import net.dexxicon.reader.feature.reader.epub.navigation.navigateToEpubReader
 import net.dexxicon.reader.feature.servers.ServersScreen
@@ -26,9 +28,10 @@ fun DexxiconNavHost(
         modifier = modifier,
     ) {
         composable<TopLevelRoute.Library> {
-            PlaceholderScreen(
-                title = "Library",
-                body = "Downloaded and in-progress books, comics and audiobooks will live here.",
+            LibraryScreen(
+                onOpenBook = { serverId, bookId ->
+                    navController.navigateToBookDetail(serverId, bookId)
+                },
             )
         }
 

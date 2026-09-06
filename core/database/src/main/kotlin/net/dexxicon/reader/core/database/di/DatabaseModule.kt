@@ -10,6 +10,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import net.dexxicon.reader.core.database.DexxiconDatabase
+import net.dexxicon.reader.core.database.dao.DownloadDao
 import net.dexxicon.reader.core.database.dao.ReadingProgressDao
 import net.dexxicon.reader.core.database.dao.ServerDao
 import javax.inject.Singleton
@@ -36,11 +37,38 @@ object DatabaseModule {
         }
     }
 
+    private val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `downloads` (
+                    `key` TEXT NOT NULL,
+                    `serverId` TEXT NOT NULL,
+                    `bookId` TEXT NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `authors` TEXT NOT NULL,
+                    `series` TEXT,
+                    `coverUrl` TEXT,
+                    `format` TEXT NOT NULL,
+                    `sourceUrl` TEXT NOT NULL,
+                    `status` TEXT NOT NULL,
+                    `downloadedBytes` INTEGER NOT NULL,
+                    `totalBytes` INTEGER,
+                    `localPath` TEXT,
+                    `error` TEXT,
+                    `updatedAt` INTEGER NOT NULL,
+                    PRIMARY KEY(`key`)
+                )
+                """.trimIndent(),
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): DexxiconDatabase =
         Room.databaseBuilder(context, DexxiconDatabase::class.java, DexxiconDatabase.NAME)
-            .addMigrations(MIGRATION_1_2)
+            .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
             .build()
 
     @Provides
@@ -49,4 +77,7 @@ object DatabaseModule {
     @Provides
     fun provideReadingProgressDao(database: DexxiconDatabase): ReadingProgressDao =
         database.readingProgressDao()
+
+    @Provides
+    fun provideDownloadDao(database: DexxiconDatabase): DownloadDao = database.downloadDao()
 }

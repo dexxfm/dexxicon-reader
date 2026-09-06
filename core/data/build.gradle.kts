@@ -23,6 +23,7 @@ dependencies {
     implementation(project(":core:media"))
 
     implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.hilt.android)
     implementation(libs.hilt.work)
