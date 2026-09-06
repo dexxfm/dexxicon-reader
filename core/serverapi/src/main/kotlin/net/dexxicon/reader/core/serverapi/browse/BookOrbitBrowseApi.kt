@@ -63,7 +63,9 @@ data class BookOrbitBook(
     val title: String? = null,
     val subtitle: String? = null,
     val description: String? = null,
+    @Serializable(with = FlexibleStringListSerializer::class)
     val authors: List<String> = emptyList(),
+    @Serializable(with = FlexibleStringListSerializer::class)
     val narrators: List<String> = emptyList(),
     @SerialName("seriesName") val seriesName: String? = null,
     @SerialName("seriesIndex") val seriesIndex: String? = null,

@@ -2,6 +2,7 @@ package net.dexxicon.reader.core.data.catalog
 
 import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.common.htmlToPlainText
 import net.dexxicon.reader.core.model.Acquisition
 import net.dexxicon.reader.core.model.AcquisitionRelation
 import net.dexxicon.reader.core.model.BookDetail
@@ -22,9 +23,28 @@ class GrimmoryCatalogSource @Inject constructor(
     private val api: GrimmoryBrowseApi,
 ) : CatalogSource {
 
+    // BookLore has no library filter on /books/page, but it does expose a `file_type` facet
+    // (CBX/EPUB/AUDIOBOOK/PDF/MOBI) — which is the grouping that actually matters to a reader.
     override suspend fun shelves(server: Server): Outcome<List<CatalogShelf>> = call {
-        api.libraries(server.resolve("/api/v1/libraries"))
-            .map { CatalogShelf(id = it.id.toString(), title = it.name) }
+        val fileType = api.facets(server.resolve("/api/v1/books/facets"))
+            .facets.firstOrNull { it.metadata.key == "file_type" }
+            ?: return@call emptyList()
+        fileType.links
+            .mapNotNull { it.value?.let { v -> v to it.properties.numberOfItems } }
+            .sortedByDescending { it.second ?: 0 }
+            .map { (value, count) ->
+                CatalogShelf(id = value, title = shelfTitle(value), bookCount = count)
+            }
+    }
+
+    private fun shelfTitle(fileType: String): String = when (fileType.uppercase()) {
+        "CBX" -> "Comics"
+        "EPUB" -> "Books"
+        "AUDIOBOOK" -> "Audiobooks"
+        "PDF" -> "PDF"
+        "MOBI", "AZW3", "AZW" -> "Kindle"
+        "FB2" -> "FB2"
+        else -> fileType.lowercase().replaceFirstChar { it.uppercase() }
     }
 
     override suspend fun books(
@@ -42,11 +62,12 @@ class GrimmoryCatalogSource @Inject constructor(
             if (!query.isNullOrBlank()) {
                 add("query=" + java.net.URLEncoder.encode(query.trim(), "UTF-8"))
             }
+            if (shelfId != null) {
+                add("facet=" + java.net.URLEncoder.encode("file_type:$shelfId", "UTF-8"))
+            }
         }.joinToString("&")
         val response = api.booksPage(server.resolve("/api/v1/books/page?$params"))
-        val books = response.content
-            .filter { shelfId == null || it.libraryId?.toString() == shelfId }
-            .map { it.toSummary(server) }
+        val books = response.content.map { it.toSummary(server) }
         val totalPages = response.effectiveTotalPages
         BookPage(
             books = books,
@@ -64,7 +85,7 @@ class GrimmoryCatalogSource @Inject constructor(
         val summary = book.toSummary(server)
         BookDetail(
             summary = summary,
-            description = book.metadata.description,
+            description = book.metadata.description?.htmlToPlainText()?.takeIf { it.isNotBlank() },
             publisher = book.metadata.publisher,
             publishedDate = book.metadata.publishedDate,
             language = book.metadata.language,

@@ -21,7 +21,39 @@ interface GrimmoryBrowseApi {
 
     @GET
     suspend fun book(@Url url: String): GrimmoryBook
+
+    @GET
+    suspend fun facets(@Url url: String): GrimmoryFacetsResponse
 }
+
+@Serializable
+data class GrimmoryFacetsResponse(
+    val facets: List<GrimmoryFacet> = emptyList(),
+)
+
+@Serializable
+data class GrimmoryFacet(
+    val metadata: GrimmoryFacetMeta = GrimmoryFacetMeta(),
+    val links: List<GrimmoryFacetLink> = emptyList(),
+)
+
+@Serializable
+data class GrimmoryFacetMeta(
+    val key: String? = null,
+    val title: String? = null,
+)
+
+@Serializable
+data class GrimmoryFacetLink(
+    val value: String? = null,
+    val title: String? = null,
+    val properties: GrimmoryFacetProps = GrimmoryFacetProps(),
+)
+
+@Serializable
+data class GrimmoryFacetProps(
+    val numberOfItems: Int? = null,
+)
 
 @Serializable
 data class GrimmoryLibrary(

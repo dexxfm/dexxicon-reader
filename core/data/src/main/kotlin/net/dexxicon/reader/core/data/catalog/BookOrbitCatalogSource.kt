@@ -2,6 +2,7 @@ package net.dexxicon.reader.core.data.catalog
 
 import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.common.htmlToPlainText
 import net.dexxicon.reader.core.model.Acquisition
 import net.dexxicon.reader.core.model.AcquisitionRelation
 import net.dexxicon.reader.core.model.BookDetail
@@ -68,7 +69,7 @@ class BookOrbitCatalogSource @Inject constructor(
         val file = book.primaryFile
         BookDetail(
             summary = summary,
-            description = book.description,
+            description = book.description?.htmlToPlainText()?.takeIf { it.isNotBlank() },
             publisher = book.publisher,
             publishedDate = book.publishedDate ?: book.publishedYear?.toString(),
             language = book.language,
@@ -97,7 +98,8 @@ class BookOrbitCatalogSource @Inject constructor(
         authors = authors,
         series = seriesName,
         seriesIndex = seriesIndex?.toDoubleOrNull(),
-        coverUrl = if (hasCover) server.resolve("/api/v1/books/$id/cover") else null,
+        // Detail responses omit `hasCover`; the endpoint 404s cleanly when there is none.
+        coverUrl = server.resolve("/api/v1/books/$id/cover"),
         format = formatOf(primaryFile?.format),
         shelfId = libraryId?.toString(),
     )
