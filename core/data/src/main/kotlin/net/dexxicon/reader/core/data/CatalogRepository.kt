@@ -4,6 +4,7 @@ import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.data.catalog.BookOrbitCatalogSource
 import net.dexxicon.reader.core.data.catalog.CatalogSource
 import net.dexxicon.reader.core.data.catalog.GrimmoryCatalogSource
 import net.dexxicon.reader.core.data.catalog.OpdsCatalogSource
@@ -22,6 +23,7 @@ import javax.inject.Singleton
 class CatalogRepository @Inject constructor(
     private val serverRepository: ServerRepository,
     private val grimmorySource: GrimmoryCatalogSource,
+    private val bookOrbitSource: BookOrbitCatalogSource,
     private val opdsSource: OpdsCatalogSource,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
 ) {
@@ -29,6 +31,7 @@ class CatalogRepository @Inject constructor(
         val server = serverRepository.get(serverId) ?: return null
         val source = when (server.type) {
             ServerType.GRIMMORY -> grimmorySource
+            ServerType.BOOKORBIT -> bookOrbitSource
             else -> opdsSource
         }
         return server to source

@@ -47,6 +47,7 @@ import net.dexxicon.reader.core.model.ContentFormat
 @Composable
 fun BookDetailScreen(
     onBack: () -> Unit,
+    onRead: (serverId: String, bookId: String) -> Unit = { _, _ -> },
     viewModel: BookDetailViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -72,6 +73,7 @@ fun BookDetailScreen(
             }
             state.detail != null -> DetailContent(
                 detail = state.detail!!,
+                onRead = { onRead(state.detail!!.summary.serverId, state.detail!!.summary.id) },
                 modifier = Modifier.padding(padding),
             )
         }
@@ -79,7 +81,11 @@ fun BookDetailScreen(
 }
 
 @Composable
-private fun DetailContent(detail: BookDetail, modifier: Modifier = Modifier) {
+private fun DetailContent(
+    detail: BookDetail,
+    onRead: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val s = detail.summary
     Column(
         modifier
@@ -130,9 +136,20 @@ private fun DetailContent(detail: BookDetail, modifier: Modifier = Modifier) {
 
         Spacer(Modifier.height(20.dp))
         val isAudio = s.format == ContentFormat.AUDIOBOOK
-        Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
-            Icon(if (isAudio) Icons.Filled.PlayArrow else Icons.Filled.PlayArrow, contentDescription = null)
-            Text(if (isAudio) "  Listen (reader coming soon)" else "  Read (reader coming soon)")
+        val canRead = s.format == ContentFormat.EPUB
+        Button(
+            onClick = onRead,
+            enabled = canRead,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Icon(Icons.Filled.PlayArrow, contentDescription = null)
+            Text(
+                when {
+                    canRead -> "  Read"
+                    isAudio -> "  Listen (player coming soon)"
+                    else -> "  Read (reader coming soon)"
+                },
+            )
         }
         Spacer(Modifier.height(8.dp))
         OutlinedButton(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {

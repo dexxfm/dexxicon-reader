@@ -7,6 +7,7 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.common.map
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
+import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.security.CredentialStore
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthClient
 import net.dexxicon.reader.core.serverapi.auth.NativeSession
@@ -61,6 +62,13 @@ class TokenManager @Inject constructor(
     }
 
     private suspend fun obtainSession(server: Server): Outcome<NativeSession> {
+        // BookOrbit keeps the refresh token in an HttpOnly cookie (persisted in the shared
+        // cookie jar), so there is nothing to pass in the body.
+        if (server.type == ServerType.BOOKORBIT) {
+            val refreshed = authClient.refreshViaCookie(server)
+            if (refreshed is Outcome.Success) return refreshed
+        }
+
         val refreshToken = sessions[server.id]?.refreshToken
             ?: credentialStore.getRefreshToken(server.id)
         if (refreshToken != null) {

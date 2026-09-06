@@ -17,6 +17,7 @@ dependencies {
     implementation(project(":core:security"))
     api(libs.okhttp)
     implementation(libs.okhttp.logging)
+    api(libs.readium.shared)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.hilt.android)

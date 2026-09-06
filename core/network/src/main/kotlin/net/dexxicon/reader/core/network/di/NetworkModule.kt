@@ -5,7 +5,10 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import net.dexxicon.reader.core.network.AuthInterceptor
+import net.dexxicon.reader.core.network.PersistentCookieJar
+import net.dexxicon.reader.core.network.ReadiumHttpClient
 import okhttp3.OkHttpClient
+import org.readium.r2.shared.util.http.HttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import java.util.concurrent.TimeUnit
 import javax.inject.Qualifier
@@ -31,7 +34,9 @@ object NetworkModule {
     fun provideOkHttpClient(
         authInterceptor: AuthInterceptor,
         loggingInterceptor: HttpLoggingInterceptor,
+        cookieJar: PersistentCookieJar,
     ): OkHttpClient = OkHttpClient.Builder()
+        .cookieJar(cookieJar)
         .addInterceptor(authInterceptor)
         .addInterceptor(loggingInterceptor)
         .connectTimeout(20, TimeUnit.SECONDS)
@@ -39,4 +44,11 @@ object NetworkModule {
         .callTimeout(0, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
+
+    /** Readium's HTTP stack, delegating to the shared authenticated client. */
+    @Provides
+    @Singleton
+    fun provideReadiumHttpClient(
+        @DexxiconHttpClient client: OkHttpClient,
+    ): HttpClient = ReadiumHttpClient(client)
 }

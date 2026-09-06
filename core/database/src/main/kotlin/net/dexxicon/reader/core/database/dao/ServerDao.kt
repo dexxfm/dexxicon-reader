@@ -13,6 +13,9 @@ interface ServerDao {
     @Query("SELECT * FROM servers ORDER BY createdAt ASC")
     fun observeAll(): Flow<List<ServerEntity>>
 
+    @Query("SELECT * FROM servers ORDER BY createdAt ASC")
+    suspend fun getAll(): List<ServerEntity>
+
     @Query("SELECT * FROM servers WHERE id = :id")
     fun observe(id: String): Flow<ServerEntity?>
 

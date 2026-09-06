@@ -24,6 +24,10 @@ interface NativeAuthApi {
         @Url url: String,
         @Body body: RefreshRequest,
     ): LoginResponse
+
+    /** BookOrbit: refresh token travels as an HttpOnly cookie, so no request body. */
+    @POST
+    suspend fun refreshWithCookie(@Url url: String): LoginResponse
 }
 
 @Serializable

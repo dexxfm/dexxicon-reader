@@ -21,6 +21,7 @@ hiltExt = "1.4.0"
 room = "2.8.4"
 datastore = "1.2.1"
 work = "2.11.2"
+fragment = "1.8.9"
 
 coroutines = "1.11.0"
 serialization = "1.9.0"
@@ -80,6 +81,8 @@ androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "
 
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
+androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
+androidx-fragment-compose = { module = "androidx.fragment:fragment-compose", version.ref = "fragment" }
 
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }

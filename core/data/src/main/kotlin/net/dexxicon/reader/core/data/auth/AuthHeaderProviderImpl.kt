@@ -22,7 +22,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class AuthHeaderProviderImpl @Inject constructor(
-    serverDao: ServerDao,
+    private val serverDao: ServerDao,
     private val credentialStore: CredentialStore,
     private val tokenManager: TokenManager,
     @ApplicationScope scope: CoroutineScope,
@@ -56,11 +56,19 @@ class AuthHeaderProviderImpl @Inject constructor(
             ?.let { "Bearer ${it.value}" }
     }
 
-    private fun serverFor(url: HttpUrl): Server? =
-        serversByAuthority["${url.host}:${url.port}"]
-            ?: serversByAuthority.values.firstOrNull {
-                url.toString().startsWith(it.normalizedBaseUrl)
-            }
+    private fun serverFor(url: HttpUrl): Server? {
+        lookup(serversByAuthority, url)?.let { return it }
+        // Cold-start race: the observeAll() collector may not have emitted yet. Load once.
+        val fresh = runBlocking { serverDao.getAll() }
+            .map { it.toDomain() }
+            .associateBy { authorityOf(it.baseUrl) }
+        serversByAuthority = fresh
+        return lookup(fresh, url)
+    }
+
+    private fun lookup(map: Map<String, Server>, url: HttpUrl): Server? =
+        map["${url.host}:${url.port}"]
+            ?: map.values.firstOrNull { url.toString().startsWith(it.normalizedBaseUrl) }
 
     private fun basicHeader(server: Server): String? {
         val password = runBlocking { credentialStore.getPassword(server.id) } ?: return null

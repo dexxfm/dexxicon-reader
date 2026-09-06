@@ -31,6 +31,11 @@ class NativeAuthClient @Inject constructor(
         runCatching { api.refresh(server.resolve(REFRESH_PATH), RefreshRequest(refreshToken)) }
             .fold(::toSession, ::toError)
 
+    /** BookOrbit: the `refresh_token` cookie in the shared jar authorises this call. */
+    suspend fun refreshViaCookie(server: Server): Outcome<NativeSession> =
+        runCatching { api.refreshWithCookie(server.resolve(REFRESH_PATH)) }
+            .fold(::toSession, ::toError)
+
     private fun toSession(response: LoginResponse): Outcome<NativeSession> {
         val token = response.accessToken
             ?: return Outcome.Failure(DexxiconError.Parse("No access token in response"))

@@ -17,7 +17,10 @@ data class BookDetailRoute(val serverId: String, val bookId: String)
 fun NavController.navigateToCatalog(serverId: String, serverName: String) =
     navigate(CatalogRoute(serverId, serverName))
 
-fun NavGraphBuilder.catalogSection(navController: NavController) {
+fun NavGraphBuilder.catalogSection(
+    navController: NavController,
+    onOpenReader: (serverId: String, bookId: String) -> Unit = { _, _ -> },
+) {
     composable<CatalogRoute> {
         CatalogScreen(
             onBack = { navController.popBackStack() },
@@ -27,6 +30,9 @@ fun NavGraphBuilder.catalogSection(navController: NavController) {
         )
     }
     composable<BookDetailRoute> {
-        BookDetailScreen(onBack = { navController.popBackStack() })
+        BookDetailScreen(
+            onBack = { navController.popBackStack() },
+            onRead = onOpenReader,
+        )
     }
 }
