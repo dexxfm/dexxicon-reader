@@ -154,6 +154,13 @@ private fun KoSyncServerCard(
                             MaterialTheme.colorScheme.onSurfaceVariant
                         },
                     )
+                    row.lastSyncedAt?.let { at ->
+                        Text(
+                            "Last synced ${relativeTime(at)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 if (row.verifying) {
                     CircularProgressIndicator(Modifier.size(18.dp))
@@ -222,6 +229,17 @@ private fun KoSyncServerCard(
             }
         }
     }
+}
+
+private fun relativeTime(atMillis: Long): String {
+    val now = System.currentTimeMillis()
+    if (atMillis <= 0L || atMillis > now) return "just now"
+    return android.text.format.DateUtils.getRelativeTimeSpanString(
+        atMillis,
+        now,
+        android.text.format.DateUtils.MINUTE_IN_MILLIS,
+        android.text.format.DateUtils.FORMAT_ABBREV_RELATIVE,
+    ).toString().replaceFirstChar { it.lowercase() }
 }
 
 @Composable

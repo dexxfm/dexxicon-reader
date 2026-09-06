@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
+import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.network.di.DexxiconHttpClient
 import net.dexxicon.reader.core.security.CredentialStore
@@ -39,6 +40,7 @@ class KoSyncRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val api: KoSyncApi,
     private val credentialStore: CredentialStore,
+    private val syncStateStore: SyncStateStore,
     @DexxiconHttpClient private val httpClient: OkHttpClient,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
 ) {
@@ -80,6 +82,7 @@ class KoSyncRepository @Inject constructor(
             val digest = digestFor(cacheKey, source) ?: return@withContext null
             runCatching {
                 val response = api.getProgress("$base/syncs/progress/$digest", user, key)
+                if (response.isSuccessful) syncStateStore.markSynced(server.id)
                 val body = response.body()?.takeIf { response.isSuccessful } ?: return@runCatching null
                 val pct = body.percentage ?: return@runCatching null
                 RemoteProgress(pct, body.timestamp ?: 0L)
@@ -94,7 +97,7 @@ class KoSyncRepository @Inject constructor(
             val key = authKey(server) ?: return@withContext
             val digest = digestFor(cacheKey, source) ?: return@withContext
             runCatching {
-                api.putProgress(
+                val response = api.putProgress(
                     url = "$base/syncs/progress",
                     user = user,
                     key = key,
@@ -106,6 +109,7 @@ class KoSyncRepository @Inject constructor(
                         device_id = deviceId,
                     ),
                 )
+                if (response.isSuccessful) syncStateStore.markSynced(server.id)
             }
         }
 

@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.sync.KoSyncRepository
+import net.dexxicon.reader.core.datastore.SyncStateStore
 import javax.inject.Inject
 
 data class KoSyncServerRow(
@@ -27,6 +28,8 @@ data class KoSyncServerRow(
     /** null = not checked, true/false = last verify result */
     val verified: Boolean? = null,
     val verifying: Boolean = false,
+    /** Epoch millis of the last successful progress sync, or null. */
+    val lastSyncedAt: Long? = null,
 ) {
     val effectiveUrl: String get() = customUrl.trim().trimEnd('/').ifBlank { assumedUrl }
 }
@@ -36,6 +39,7 @@ class KoSyncSettingsViewModel @Inject constructor(
     private val serverRepository: ServerRepository,
     private val koSync: KoSyncRepository,
     private val progressRepository: ReadingProgressRepository,
+    syncStateStore: SyncStateStore,
 ) : ViewModel() {
 
     private val verifyState = MutableStateFlow<Map<String, Pair<Boolean?, Boolean>>>(emptyMap())
@@ -44,7 +48,11 @@ class KoSyncSettingsViewModel @Inject constructor(
     val refreshing: StateFlow<Boolean> = _refreshing
 
     val rows: StateFlow<List<KoSyncServerRow>> =
-        combine(serverRepository.servers, verifyState) { servers, verify ->
+        combine(
+            serverRepository.servers,
+            verifyState,
+            syncStateStore.lastSyncedAt,
+        ) { servers, verify, lastSynced ->
             servers.map { s ->
                 val (verified, verifying) = verify[s.id] ?: (null to false)
                 KoSyncServerRow(
@@ -56,6 +64,7 @@ class KoSyncSettingsViewModel @Inject constructor(
                     koSyncUsername = s.koSyncUsername.orEmpty(),
                     verified = verified,
                     verifying = verifying,
+                    lastSyncedAt = lastSynced[s.id],
                 )
             }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
