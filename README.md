@@ -42,4 +42,8 @@ config lives in `gradle/android-common.gradle`.
 
 ## Licence
 
-TBD.
+[MIT](LICENSE) — free to use, modify, and fork. Keep the copyright notice and licence
+text, and credit the original project (`github.com/dexxfm/dexxicon-reader`).
+
+Bundled third-party components keep their own licences (Readium toolkit: BSD-3-Clause;
+Media3/AndroidX: Apache-2.0; libmobi, when added: LGPL-2.1).

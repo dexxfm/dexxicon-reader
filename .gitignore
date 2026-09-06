@@ -19,3 +19,7 @@ captures/
 # Python leftovers from the previous project state
 __pycache__/
 *.pyc
+
+# Signing (local only)
+app/release.keystore
+keystore.properties
