@@ -61,12 +61,14 @@ import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingStatus
 
 /** What the long-press menu on a catalog card needs. */
 private data class CatalogItemActions(
     val downloadStatus: DownloadStatus?,
     val onMarkRead: () -> Unit,
     val onMarkUnread: () -> Unit,
+    val onSetStatus: (ReadingStatus) -> Unit,
     val onDetails: () -> Unit,
     val onDownloadOrRemove: () -> Unit,
 )
@@ -103,6 +105,7 @@ fun CatalogScreen(
             downloadStatus = status,
             onMarkRead = { viewModel.markRead(book.serverId, book.id) },
             onMarkUnread = { viewModel.markUnread(book.serverId, book.id) },
+            onSetStatus = { viewModel.setReadingStatus(book.serverId, book.id, it) },
             onDetails = { onOpenBook(book.serverId, book.id) },
             onDownloadOrRemove = { viewModel.downloadOrRemove(book.serverId, book.id, status) },
         )
@@ -340,8 +343,10 @@ private fun CatalogMenu(expanded: Boolean, onDismiss: () -> Unit, actions: Catal
         expanded = expanded,
         onDismiss = onDismiss,
         downloadStatus = actions.downloadStatus,
+        currentStatus = null,
         onMarkRead = actions.onMarkRead,
         onMarkUnread = actions.onMarkUnread,
+        onSetStatus = actions.onSetStatus,
         onDetails = actions.onDetails,
         onDownloadOrRemove = actions.onDownloadOrRemove,
     )

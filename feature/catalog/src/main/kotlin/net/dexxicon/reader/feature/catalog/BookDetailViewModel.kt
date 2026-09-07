@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
@@ -23,6 +24,7 @@ import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.core.model.fileExtension
 import net.dexxicon.reader.feature.catalog.navigation.BookDetailRoute
 import javax.inject.Inject
@@ -40,6 +42,7 @@ class BookDetailViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val downloadRepository: DownloadRepository,
     private val serverRepository: ServerRepository,
+    private val bookActions: BookActions,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -133,5 +136,10 @@ class BookDetailViewModel @Inject constructor(
 
     fun onRemoveDownload() {
         viewModelScope.launch { downloadRepository.remove(route.serverId, route.bookId) }
+    }
+
+    fun setReadingStatus(status: ReadingStatus) {
+        bookActions.setReadingStatus(route.serverId, route.bookId, status)
+        _uiState.update { it.copy(detail = it.detail?.copy(readingStatus = status)) }
     }
 }

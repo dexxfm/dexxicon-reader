@@ -103,6 +103,7 @@ class GrimmoryCatalogSource @Inject constructor(
             pageCount = book.metadata.pageCount,
             narrators = listOfNotNull(book.metadata.narrator?.takeIf { it.isNotBlank() }),
             categories = book.metadata.categories,
+            readingStatus = net.dexxicon.reader.core.model.ReadingStatus.fromServer(book.readStatus),
             fileExtension = book.primaryFile?.let { f ->
                 f.extension?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
                     ?: f.bookType?.trim()?.lowercase()?.takeIf { it.isNotBlank() }

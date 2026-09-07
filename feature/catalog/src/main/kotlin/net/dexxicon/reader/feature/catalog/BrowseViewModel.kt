@@ -28,6 +28,7 @@ import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.ContentFilter
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingStatus
 import javax.inject.Inject
 
 data class BrowseUiState(
@@ -111,6 +112,8 @@ class BrowseViewModel @Inject constructor(
 
     fun markRead(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, true)
     fun markUnread(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, false)
+    fun setReadingStatus(serverId: String, bookId: String, status: ReadingStatus) =
+        bookActions.setReadingStatus(serverId, bookId, status)
     fun downloadOrRemove(serverId: String, bookId: String, status: DownloadStatus?) =
         bookActions.downloadOrRemove(serverId, bookId, status)
 

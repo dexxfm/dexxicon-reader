@@ -55,7 +55,20 @@ interface NativeProgressApi {
 
     @GET
     suspend fun grimmoryAppBook(@Url url: String): GrimmoryAppBook
+
+    // ---- reading status ----
+    //  BookOrbit  PATCH  /api/v1/books/{id}/status        {status:"reading"}  (lower_snake)
+    //  Grimmory   PUT    /api/v1/app/books/{id}/status    {status:"READING"}  (UPPER)
+
+    @HTTP(method = "PATCH", hasBody = true)
+    suspend fun bookOrbitSetStatus(@Url url: String, @Body body: ServerStatusUpdate): Response<Unit>
+
+    @PUT
+    suspend fun grimmorySetStatus(@Url url: String, @Body body: ServerStatusUpdate): Response<Unit>
 }
+
+@Serializable
+data class ServerStatusUpdate(val status: String)
 
 // ---- BookOrbit ----
 

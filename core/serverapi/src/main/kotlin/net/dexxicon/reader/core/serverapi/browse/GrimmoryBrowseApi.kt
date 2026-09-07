@@ -89,6 +89,7 @@ data class GrimmoryBook(
     val id: Long,
     val libraryId: Long? = null,
     val libraryName: String? = null,
+    val readStatus: String? = null,
     val metadata: GrimmoryMetadata = GrimmoryMetadata(),
     val primaryFile: GrimmoryFile? = null,
 )

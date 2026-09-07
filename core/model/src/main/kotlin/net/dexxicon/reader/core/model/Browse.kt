@@ -81,6 +81,8 @@ data class BookDetail(
     val fileSizeBytes: Long? = null,
     /** Populated for [ContentFormat.AUDIOBOOK] — chapters + total duration. */
     val audio: AudiobookInfo? = null,
+    /** The server's per-user reading status, if it has one set. */
+    val readingStatus: ReadingStatus? = null,
 ) {
     val narratorLine: String get() = narrators.joinToString(", ")
 

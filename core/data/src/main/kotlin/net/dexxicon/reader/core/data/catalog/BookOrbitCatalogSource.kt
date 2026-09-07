@@ -79,6 +79,7 @@ class BookOrbitCatalogSource @Inject constructor(
             pageCount = book.pageCount,
             narrators = book.narrators,
             categories = book.genres,
+            readingStatus = net.dexxicon.reader.core.model.ReadingStatus.fromServer(book.readStatus?.status),
             fileExtension = fileExtensionOf(file?.format, file?.filename),
             fileSizeBytes = file?.sizeBytes,
             audio = book.audioMetadata?.takeIf { summary.format == ContentFormat.AUDIOBOOK }?.let { am ->

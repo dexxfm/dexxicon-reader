@@ -58,12 +58,14 @@ import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.ContentFilter
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingStatus
 
 /** What the long-press menu on a Browse card needs to act on and render. */
 private data class BrowseItemActions(
     val downloadStatus: DownloadStatus?,
     val onMarkRead: () -> Unit,
     val onMarkUnread: () -> Unit,
+    val onSetStatus: (ReadingStatus) -> Unit,
     val onDetails: () -> Unit,
     val onDownloadOrRemove: () -> Unit,
 )
@@ -99,6 +101,7 @@ fun BrowseScreen(
             downloadStatus = if (book.downloadedIn(overlays)) DownloadStatus.DONE else null,
             onMarkRead = { viewModel.markRead(c.serverId, c.bookId) },
             onMarkUnread = { viewModel.markUnread(c.serverId, c.bookId) },
+            onSetStatus = { viewModel.setReadingStatus(c.serverId, c.bookId, it) },
             onDetails = { onOpenBook(book) },
             onDownloadOrRemove = {
                 viewModel.downloadOrRemove(
@@ -311,8 +314,10 @@ private fun BrowseMenu(expanded: Boolean, onDismiss: () -> Unit, actions: Browse
         expanded = expanded,
         onDismiss = onDismiss,
         downloadStatus = actions.downloadStatus,
+        currentStatus = null,
         onMarkRead = actions.onMarkRead,
         onMarkUnread = actions.onMarkUnread,
+        onSetStatus = actions.onSetStatus,
         onDetails = actions.onDetails,
         onDownloadOrRemove = actions.onDownloadOrRemove,
     )

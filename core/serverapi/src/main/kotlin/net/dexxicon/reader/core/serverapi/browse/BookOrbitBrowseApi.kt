@@ -81,6 +81,7 @@ data class BookOrbitBook(
     val hasCover: Boolean = false,
     val libraryId: Long? = null,
     val libraryName: String? = null,
+    val readStatus: BookOrbitReadStatus? = null,
     val files: List<BookOrbitFile> = emptyList(),
     val audioMetadata: BookOrbitAudioMeta? = null,
 ) {
@@ -101,6 +102,9 @@ data class BookOrbitChapter(
     val title: String? = null,
     val startMs: Long? = null,
 )
+
+@Serializable
+data class BookOrbitReadStatus(val status: String? = null)
 
 @Serializable
 data class BookOrbitFile(

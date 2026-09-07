@@ -7,6 +7,7 @@ import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.serverapi.progress.BookOrbitAudioProgressUpdate
@@ -14,6 +15,7 @@ import net.dexxicon.reader.core.serverapi.progress.BookOrbitFileProgress
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryFileProgress
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryUpdateProgress
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
+import net.dexxicon.reader.core.serverapi.progress.ServerStatusUpdate
 import java.time.Instant
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -47,6 +49,30 @@ class NativeProgressSync @Inject constructor(
 
     fun supports(server: Server): Boolean =
         server.type == ServerType.BOOKORBIT || server.type == ServerType.GRIMMORY
+
+    /** Set the per-user reading status on the server (BookOrbit / Grimmory only). */
+    suspend fun pushStatus(server: Server, bookId: String, status: ReadingStatus) = withContext(io) {
+        runCatching {
+            val response = when (server.type) {
+                ServerType.BOOKORBIT -> api.bookOrbitSetStatus(
+                    server.resolve("/api/v1/books/$bookId/status"),
+                    ServerStatusUpdate(status.toBookOrbit()),
+                )
+                ServerType.GRIMMORY -> api.grimmorySetStatus(
+                    server.resolve("/api/v1/app/books/$bookId/status"),
+                    ServerStatusUpdate(status.toGrimmory()),
+                )
+                else -> return@runCatching
+            }
+            if (!response.isSuccessful) {
+                error("status ${server.type} $bookId -> HTTP ${response.code()}")
+            }
+        }.onSuccess {
+            syncStateStore.markSynced(server.id)
+            Log.i(TAG, "pushStatus ${server.type} $bookId -> $status ok")
+        }.onFailure { Log.w(TAG, "pushStatus ${server.type} $bookId failed: ${it.message}") }
+        Unit
+    }
 
     suspend fun pull(
         server: Server,
@@ -242,4 +268,26 @@ class NativeProgressSync @Inject constructor(
     private companion object {
         const val TAG = "NativeProgressSync"
     }
+}
+
+/** app status -> Grimmory `ReadStatus` enum name (UPPER). */
+private fun ReadingStatus.toGrimmory(): String = when (this) {
+    ReadingStatus.UNREAD -> "UNREAD"
+    ReadingStatus.WANT_TO_READ -> "UNREAD" // Grimmory has no want-to-read
+    ReadingStatus.READING -> "READING"
+    ReadingStatus.ON_HOLD -> "PAUSED"
+    ReadingStatus.REREADING -> "RE_READING"
+    ReadingStatus.READ -> "READ"
+    ReadingStatus.ABANDONED -> "ABANDONED"
+}
+
+/** app status -> BookOrbit `ReadStatus` (lower_snake). */
+private fun ReadingStatus.toBookOrbit(): String = when (this) {
+    ReadingStatus.UNREAD -> "unread"
+    ReadingStatus.WANT_TO_READ -> "want_to_read"
+    ReadingStatus.READING -> "reading"
+    ReadingStatus.ON_HOLD -> "on_hold"
+    ReadingStatus.REREADING -> "rereading"
+    ReadingStatus.READ -> "read"
+    ReadingStatus.ABANDONED -> "abandoned"
 }

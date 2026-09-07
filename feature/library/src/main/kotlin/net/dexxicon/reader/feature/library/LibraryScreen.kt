@@ -47,12 +47,14 @@ import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingStatus
 
 /** What the long-press menu on a Library card needs. */
 private data class LibraryItemActions(
     val downloadStatus: DownloadStatus?,
     val onMarkRead: () -> Unit,
     val onMarkUnread: () -> Unit,
+    val onSetStatus: (ReadingStatus) -> Unit,
     val onDetails: () -> Unit,
     val onDownloadOrRemove: () -> Unit,
 )
@@ -70,6 +72,7 @@ fun LibraryScreen(
         downloadStatus = null,
         onMarkRead = { viewModel.markRead(entry.serverId, entry.bookId) },
         onMarkUnread = { viewModel.markUnread(entry.serverId, entry.bookId) },
+        onSetStatus = { viewModel.setReadingStatus(entry.serverId, entry.bookId, it) },
         onDetails = { onOpenBook(entry.serverId, entry.bookId) },
         onDownloadOrRemove = { viewModel.downloadOrRemove(entry.serverId, entry.bookId, null) },
     )
@@ -80,6 +83,7 @@ fun LibraryScreen(
             downloadStatus = status,
             onMarkRead = { viewModel.markRead(download.serverId, download.bookId) },
             onMarkUnread = { viewModel.markUnread(download.serverId, download.bookId) },
+            onSetStatus = { viewModel.setReadingStatus(download.serverId, download.bookId, it) },
             onDetails = { onOpenBook(download.serverId, download.bookId) },
             onDownloadOrRemove = { viewModel.downloadOrRemove(download.serverId, download.bookId, status) },
         )
@@ -356,8 +360,10 @@ private fun LibraryMenu(expanded: Boolean, onDismiss: () -> Unit, actions: Libra
         expanded = expanded,
         onDismiss = onDismiss,
         downloadStatus = actions.downloadStatus,
+        currentStatus = null,
         onMarkRead = actions.onMarkRead,
         onMarkUnread = actions.onMarkUnread,
+        onSetStatus = actions.onSetStatus,
         onDetails = actions.onDetails,
         onDownloadOrRemove = actions.onDownloadOrRemove,
     )

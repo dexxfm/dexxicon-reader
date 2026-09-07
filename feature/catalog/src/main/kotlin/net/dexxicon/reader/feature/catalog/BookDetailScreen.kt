@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -22,6 +23,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
@@ -31,6 +34,8 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -58,6 +63,7 @@ import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,6 +106,7 @@ fun BookDetailScreen(
                     onOpen = { copy -> onRead(copy.serverId, copy.bookId, detail.summary.format) },
                     onDownload = viewModel::onDownload,
                     onRemoveDownload = viewModel::onRemoveDownload,
+                    onSetStatus = viewModel::setReadingStatus,
                     modifier = Modifier.padding(padding),
                 )
             }
@@ -115,6 +122,7 @@ private fun DetailContent(
     onOpen: (BookCopy) -> Unit,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
+    onSetStatus: (ReadingStatus) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
@@ -135,7 +143,7 @@ private fun DetailContent(
                         .fillMaxHeight()
                         .verticalScroll(rememberScrollState()),
                 ) {
-                    HeroBlock(detail, copies, stacked = true)
+                    HeroBlock(detail, copies, onSetStatus, stacked = true)
                     Spacer(Modifier.height(16.dp))
                     ActionButtons(detail, copies, download, onOpen, onDownload, onRemoveDownload)
                 }
@@ -159,7 +167,7 @@ private fun DetailContent(
                         .verticalScroll(rememberScrollState())
                         .padding(20.dp),
                 ) {
-                    HeroBlock(detail, copies, stacked = false)
+                    HeroBlock(detail, copies, onSetStatus, stacked = false)
                     Spacer(Modifier.height(20.dp))
                     ActionButtons(detail, copies, download, onOpen, onDownload, onRemoveDownload)
                     Spacer(Modifier.height(20.dp))
@@ -173,7 +181,12 @@ private fun DetailContent(
 }
 
 @Composable
-private fun HeroBlock(detail: BookDetail, copies: List<BookCopy>, stacked: Boolean) {
+private fun HeroBlock(
+    detail: BookDetail,
+    copies: List<BookCopy>,
+    onSetStatus: (ReadingStatus) -> Unit,
+    stacked: Boolean,
+) {
     val s = detail.summary
     val cover: @Composable (Modifier) -> Unit = { m ->
         Box(
@@ -212,7 +225,10 @@ private fun HeroBlock(detail: BookDetail, copies: List<BookCopy>, stacked: Boole
                 )
             }
             Spacer(Modifier.height(8.dp))
-            AssistChip(onClick = {}, label = { Text(formatLabel(detail)) })
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = {}, label = { Text(formatLabel(detail)) })
+                ReadingStatusChip(detail.readingStatus, onSetStatus)
+            }
             if (copies.size > 1) {
                 Text(
                     "On ${copies.joinToString(", ") { it.serverName }}",
@@ -233,6 +249,35 @@ private fun HeroBlock(detail: BookDetail, copies: List<BookCopy>, stacked: Boole
             cover(Modifier.width(120.dp))
             Spacer(Modifier.width(16.dp))
             titleColumn()
+        }
+    }
+}
+
+@Composable
+private fun ReadingStatusChip(current: ReadingStatus?, onSet: (ReadingStatus) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    Box {
+        AssistChip(
+            onClick = { open = true },
+            label = { Text(current?.label ?: "Set status") },
+            leadingIcon = {
+                Icon(
+                    Icons.AutoMirrored.Filled.MenuBook,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            },
+        )
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            ReadingStatus.entries.forEach { status ->
+                DropdownMenuItem(
+                    text = { Text(status.label) },
+                    trailingIcon = {
+                        if (status == current) Icon(Icons.Filled.Check, contentDescription = "current")
+                    },
+                    onClick = { open = false; onSet(status) },
+                )
+            }
         }
     }
 }
