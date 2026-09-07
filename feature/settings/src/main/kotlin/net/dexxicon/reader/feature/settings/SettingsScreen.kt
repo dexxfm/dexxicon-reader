@@ -66,6 +66,7 @@ fun SettingsScreen(
     val koSyncRows by koSyncViewModel.rows.collectAsStateWithLifecycle()
     val refreshing by koSyncViewModel.refreshing.collectAsStateWithLifecycle()
     val servers by serverListViewModel.servers.collectAsStateWithLifecycle()
+    val serverAccounts by serverListViewModel.accounts.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         PullToRefreshBox(
@@ -91,6 +92,7 @@ fun SettingsScreen(
             servers.forEach { server ->
                 ServerRow(
                     server = server,
+                    account = serverAccounts[server.id],
                     onOpen = { onOpenServerCatalog(server.id, server.displayName) },
                     onEdit = { onEditServer(server.id) },
                     onRemove = { serverListViewModel.remove(server.id) },
@@ -326,6 +328,7 @@ private fun relativeTime(atMillis: Long): String {
 @Composable
 private fun ServerRow(
     server: Server,
+    account: String?,
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onRemove: () -> Unit,
@@ -334,7 +337,16 @@ private fun ServerRow(
     ListItem(
         headlineContent = { Text(server.displayName) },
         supportingContent = {
-            Text(server.normalizedBaseUrl, style = MaterialTheme.typography.bodySmall)
+            Column {
+                Text(server.normalizedBaseUrl, style = MaterialTheme.typography.bodySmall)
+                account?.let {
+                    Text(
+                        "Signed in as $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         },
         leadingContent = { Icon(Icons.Filled.Dns, contentDescription = null) },
         trailingContent = {

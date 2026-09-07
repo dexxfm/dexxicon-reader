@@ -14,6 +14,7 @@ import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import net.dexxicon.reader.core.serverapi.NullableBodyConverterFactory
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
+import net.dexxicon.reader.core.serverapi.user.NativeUserApi
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -82,4 +83,9 @@ object ServerApiModule {
     @Singleton
     fun provideNativeProgressApi(retrofit: Retrofit): NativeProgressApi =
         retrofit.create(NativeProgressApi::class.java)
+
+    @Provides
+    @Singleton
+    fun provideNativeUserApi(retrofit: Retrofit): NativeUserApi =
+        retrofit.create(NativeUserApi::class.java)
 }
