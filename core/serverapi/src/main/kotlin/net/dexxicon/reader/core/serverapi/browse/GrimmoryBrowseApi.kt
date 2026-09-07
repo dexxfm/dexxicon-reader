@@ -24,7 +24,24 @@ interface GrimmoryBrowseApi {
 
     @GET
     suspend fun facets(@Url url: String): GrimmoryFacetsResponse
+
+    /** `GET /api/v1/app/books/continue-reading` / `continue-listening` — in-progress books. */
+    @GET
+    suspend fun appInProgress(@Url url: String): List<GrimmoryAppSummary>
 }
+
+/** A row from the app's `continue-reading` / `continue-listening` lists. */
+@Serializable
+data class GrimmoryAppSummary(
+    val id: Long,
+    val title: String? = null,
+    val authors: List<String> = emptyList(),
+    val seriesName: String? = null,
+    val seriesNumber: Double? = null,
+    /** Top-level read progress, 0–100. */
+    val readProgress: Float? = null,
+    val primaryFileType: String? = null,
+)
 
 @Serializable
 data class GrimmoryFacetsResponse(

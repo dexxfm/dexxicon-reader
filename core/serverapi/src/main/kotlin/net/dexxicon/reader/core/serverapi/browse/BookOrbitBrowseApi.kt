@@ -27,6 +27,10 @@ interface BookOrbitBrowseApi {
 
     @GET
     suspend fun book(@Url url: String): BookOrbitBook
+
+    /** `GET /api/v1/dashboard/scrollers/{continue-reading|continue-listening}` → book cards. */
+    @GET
+    suspend fun dashboardScroller(@Url url: String): List<BookOrbitBook>
 }
 
 @Serializable
@@ -82,6 +86,8 @@ data class BookOrbitBook(
     val libraryId: Long? = null,
     val libraryName: String? = null,
     val readStatus: BookOrbitReadStatus? = null,
+    /** Overall progression 0–1, present on dashboard scroller cards. */
+    val readingProgress: Double? = null,
     val files: List<BookOrbitFile> = emptyList(),
     val audioMetadata: BookOrbitAudioMeta? = null,
 ) {

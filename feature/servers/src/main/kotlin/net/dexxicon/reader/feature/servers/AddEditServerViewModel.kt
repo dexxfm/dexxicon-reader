@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerProber
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.OidcAuthenticator
@@ -68,6 +69,7 @@ class AddEditServerViewModel @Inject constructor(
     private val serverRepository: ServerRepository,
     private val serverProber: ServerProber,
     private val oidcAuthenticator: OidcAuthenticator,
+    private val readingProgressRepository: ReadingProgressRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -225,7 +227,7 @@ class AddEditServerViewModel @Inject constructor(
         if (!state.canSave) return
         _uiState.update { it.copy(saving = true) }
         viewModelScope.launch {
-            serverRepository.save(
+            val saved = serverRepository.save(
                 server = Server(
                     id = state.editingId ?: "",
                     displayName = state.displayName.trim(),
@@ -239,6 +241,7 @@ class AddEditServerViewModel @Inject constructor(
                 password = state.password.takeIf { it.isNotBlank() },
                 koSyncPassword = state.koSyncPassword.takeIf { it.isNotBlank() },
             )
+            if (state.editingId == null) readingProgressRepository.seedFromServerAsync(saved.id)
             onSaved()
         }
     }

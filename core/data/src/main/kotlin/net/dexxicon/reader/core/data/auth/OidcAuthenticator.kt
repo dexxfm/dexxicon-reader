@@ -3,6 +3,7 @@ package net.dexxicon.reader.core.data.auth
 import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
@@ -16,6 +17,7 @@ import javax.inject.Inject
 class OidcAuthenticator @Inject constructor(
     private val oidcClient: OidcClient,
     private val serverRepository: ServerRepository,
+    private val readingProgressRepository: ReadingProgressRepository,
     private val tokenManager: TokenManager,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
 ) {
@@ -51,6 +53,7 @@ class OidcAuthenticator @Inject constructor(
                     password = null,
                 )
                 tokenManager.seedSession(saved.id, exchange.value)
+                readingProgressRepository.seedFromServerAsync(saved.id)
                 Outcome.Success(saved)
             }
         }

@@ -11,6 +11,7 @@ import net.dexxicon.reader.core.common.di.ApplicationScope
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.DigestSource
 import net.dexxicon.reader.core.data.sync.KoSyncRepository
+import net.dexxicon.reader.core.data.sync.LibrarySeeder
 import net.dexxicon.reader.core.data.sync.NativeProgress
 import net.dexxicon.reader.core.data.sync.NativeProgressSync
 import net.dexxicon.reader.core.database.dao.ReadingProgressDao
@@ -37,6 +38,7 @@ class ReadingProgressRepository @Inject constructor(
     private val dao: ReadingProgressDao,
     private val koSync: KoSyncRepository,
     private val nativeSync: NativeProgressSync,
+    private val librarySeeder: LibrarySeeder,
     private val serverRepository: ServerRepository,
     private val downloadRepository: DownloadRepository,
     @ApplicationScope private val appScope: CoroutineScope,
@@ -100,6 +102,32 @@ class ReadingProgressRepository @Inject constructor(
 
     suspend fun clear(serverId: String, bookId: String) = withContext(io) {
         dao.deleteByKey(key(serverId, bookId))
+    }
+
+    /**
+     * Fill the Library's "Continue" shelves from [server]'s own in-progress lists (its web
+     * app's "continue reading" / "continue listening"). Runs when a server is added and on
+     * every [syncProgress]. Only adds books not already tracked here — a local position,
+     * which may be newer, is never overwritten.
+     */
+    suspend fun seedFromServer(serverId: String) = withContext(io) {
+        val server = serverRepository.get(serverId) ?: return@withContext
+        seedFromServer(server)
+    }
+
+    /** Fire-and-forget [seedFromServer] — for right after a server is added. */
+    fun seedFromServerAsync(serverId: String) {
+        appScope.launch { runCatching { seedFromServer(serverId) } }
+    }
+
+    private suspend fun seedFromServer(server: Server) {
+        if (!usesNative(server)) return
+        val now = System.currentTimeMillis()
+        for (row in librarySeeder.inProgress(server)) {
+            if (row.percent == null) continue
+            if (dao.find(row.key) != null) continue
+            dao.upsert(ReadingProgressEntity.fromDomain(row.copy(updatedAt = now)))
+        }
     }
 
     /**
@@ -185,11 +213,19 @@ class ReadingProgressRepository @Inject constructor(
      * nothing yet.
      */
     suspend fun syncProgress() = withContext(io) {
+        val allServers = serverRepository.servers.first()
+
         // Touch every configured kosync (generic OPDS) account so each records a "last synced"
         // time even with nothing in progress right now.
-        serverRepository.servers.first()
+        allServers
             .filter { usesKoSync(it) }
             .forEach { server -> runCatching { koSync.verify(server) } }
+
+        // Pull each native server's own "continue" lists so books in progress elsewhere show
+        // up on the Library shelves even if they were never opened in this app.
+        allServers
+            .filter { usesNative(it) }
+            .forEach { server -> runCatching { seedFromServer(server) } }
 
         val rows = dao.all()
         val servers = rows.map { it.serverId }.distinct()
