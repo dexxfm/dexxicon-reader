@@ -2,6 +2,7 @@ package net.dexxicon.reader.core.data.media
 
 import android.net.Uri
 import kotlinx.coroutines.flow.first
+import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
@@ -77,54 +78,59 @@ class MediaLibraryContentSourceImpl @Inject constructor(
         var sourcePage = 0
         var hasMore = true
         while (hasMore && sourcePage < MAX_SOURCE_PAGES && collected.size < MAX_AUDIOBOOKS) {
-            val (cards, more) = fetchAudioPage(serverId, sourcePage, SOURCE_PAGE_SIZE)
-            collected += cards
-            hasMore = more
+            val fetch = fetchAudioPage(serverId, sourcePage, SOURCE_PAGE_SIZE)
+            if (fetch.authExpired && collected.isEmpty()) {
+                return MediaPage(emptyList(), hasMore = false, authExpired = true)
+            }
+            collected += fetch.cards
+            hasMore = fetch.hasMore
             sourcePage++
         }
         return MediaPage(collected.distinctBy { it.mediaId }.take(MAX_AUDIOBOOKS), hasMore = false)
     }
 
-    private suspend fun fetchAudioPage(
-        serverId: String?,
-        page: Int,
-        pageSize: Int,
-    ): Pair<List<AudiobookCard>, Boolean> {
-        if (serverId == null) {
-            val value = (
-                catalogRepository.allBooks(null, BookSort.RECENT, page, pageSize, audioOnly)
-                    as? Outcome.Success
-                )?.value ?: return emptyList<AudiobookCard>() to false
-            return value.books.map { book ->
-                val copy = book.primary
-                AudiobookCard(
-                    mediaId = "${copy.serverId}::${copy.bookId}",
-                    title = book.title,
-                    author = book.authorLine.takeIf { it.isNotBlank() },
-                    artworkUri = book.coverUrl,
-                )
-            } to value.hasMore
-        }
+    private class AudioFetch(
+        val cards: List<AudiobookCard>,
+        val hasMore: Boolean,
+        val authExpired: Boolean = false,
+    )
 
-        val value = (
-            catalogRepository.books(
-                serverId = serverId,
-                shelfId = null,
-                query = null,
-                sort = BookSort.RECENT,
-                page = page,
-                pageSize = pageSize,
-                formats = audioOnly,
-            ) as? Outcome.Success
-            )?.value ?: return emptyList<AudiobookCard>() to false
-        return value.books.map {
-            AudiobookCard(
-                mediaId = "${it.serverId}::${it.id}",
-                title = it.title,
-                author = it.authorLine.takeIf { line -> line.isNotBlank() },
-                artworkUri = it.coverUrl,
+    private suspend fun fetchAudioPage(serverId: String?, page: Int, pageSize: Int): AudioFetch {
+        if (serverId == null) {
+            return when (
+                val r = catalogRepository.allBooks(null, BookSort.RECENT, page, pageSize, audioOnly)
+            ) {
+                is Outcome.Failure -> AudioFetch(emptyList(), false, r.error is DexxiconError.Unauthorized)
+                is Outcome.Success -> AudioFetch(
+                    r.value.books.map { book ->
+                        val copy = book.primary
+                        AudiobookCard(
+                            mediaId = "${copy.serverId}::${copy.bookId}",
+                            title = book.title,
+                            author = book.authorLine.takeIf { it.isNotBlank() },
+                            artworkUri = book.coverUrl,
+                        )
+                    },
+                    r.value.hasMore,
+                )
+            }
+        }
+        return when (
+            val r = catalogRepository.books(serverId, null, null, BookSort.RECENT, page, pageSize, audioOnly)
+        ) {
+            is Outcome.Failure -> AudioFetch(emptyList(), false, r.error is DexxiconError.Unauthorized)
+            is Outcome.Success -> AudioFetch(
+                r.value.books.map {
+                    AudiobookCard(
+                        mediaId = "${it.serverId}::${it.id}",
+                        title = it.title,
+                        author = it.authorLine.takeIf { line -> line.isNotBlank() },
+                        artworkUri = it.coverUrl,
+                    )
+                },
+                r.value.hasMore,
             )
-        } to value.hasMore
+        }
     }
 
     override suspend fun search(query: String): List<AudiobookCard> {

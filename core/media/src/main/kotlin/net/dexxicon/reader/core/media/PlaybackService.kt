@@ -92,10 +92,20 @@ class PlaybackService : MediaLibraryService() {
             ),
         )
 
+        // Deep link for the "sign in" button the car shows when a server rejects us.
+        val signInIntent = packageManager.getLaunchIntentForPackage(packageName)?.let {
+            android.app.PendingIntent.getActivity(
+                this,
+                0,
+                it,
+                android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+        }
+
         mediaSession = MediaLibrarySession.Builder(
             this,
             player,
-            AutoLibraryCallback(player, contentSource, serviceScope),
+            AutoLibraryCallback(player, contentSource, serviceScope, signInIntent),
         )
             .setBitmapLoader(bitmapLoader)
             .build()
@@ -136,9 +146,14 @@ private class AutoLibraryCallback(
     private val player: ExoPlayer?,
     private val content: MediaLibraryContentSource,
     private val scope: CoroutineScope,
+    private val signInIntent: android.app.PendingIntent?,
 ) : MediaLibrarySession.Callback {
 
     private val skipSilence = SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY)
+
+    /** Last search served, so `onGetSearchResult` doesn't re-query what `onSearch` fetched. */
+    @Volatile
+    private var cachedSearch: Pair<String, List<AudiobookCard>>? = null
 
     private val rootParams = LibraryParams.Builder()
         .setExtras(
@@ -156,6 +171,7 @@ private class AutoLibraryCallback(
         .build()
 
     private val browseRoot = folder(ROOT_ID, "Audiobooks")
+    private val recentRoot = folder(RECENT_ROOT_ID, "Audiobooks")
 
     // ---- session plumbing ----
 
@@ -192,7 +208,11 @@ private class AutoLibraryCallback(
         browser: MediaSession.ControllerInfo,
         params: LibraryParams?,
     ): ListenableFuture<LibraryResult<MediaItem>> =
-        Futures.immediateFuture(LibraryResult.ofItem(browseRoot, rootParams))
+        if (params?.isRecent == true) {
+            Futures.immediateFuture(LibraryResult.ofItem(recentRoot, params))
+        } else {
+            Futures.immediateFuture(LibraryResult.ofItem(browseRoot, rootParams))
+        }
 
     override fun onGetChildren(
         session: MediaLibrarySession,
@@ -202,26 +222,56 @@ private class AutoLibraryCallback(
         pageSize: Int,
         params: LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
-        val items: List<MediaItem> = when {
-            parentId == ROOT_ID -> listOf(
+        // The car's resumption row: the single last-played book.
+        if (parentId == RECENT_ROOT_ID) {
+            val item = content.lastPlayed()?.let(::bookItem)
+            return@future LibraryResult.ofItemList(
+                ImmutableList.copyOf(listOfNotNull(item)),
+                params,
+            )
+        }
+
+        // Nodes that need a server — surface a "sign in" resolution when the session is dead.
+        if (parentId == LIBRARY_ID || parentId.startsWith(LIB_PREFIX)) {
+            val serverId = when {
+                parentId.startsWith(LIB_PREFIX) -> parentId.removePrefix(LIB_PREFIX)
+                else -> {
+                    val libs = content.libraries()
+                    when {
+                        libs.isEmpty() -> return@future LibraryResult.ofError(
+                            LibraryResult.RESULT_ERROR_SESSION_SETUP_REQUIRED,
+                            errorParams("Open app"),
+                        )
+                        libs.size > 1 -> return@future LibraryResult.ofItemList(
+                            ImmutableList.copyOf(libs.map { folder(it.id, it.title) }),
+                            params,
+                        )
+                        else -> libs.first().serverId()
+                    }
+                }
+            }
+            val pageResult = content.audiobooks(serverId, page, pageSize)
+            return@future if (pageResult.authExpired) {
+                LibraryResult.ofError(
+                    LibraryResult.RESULT_ERROR_SESSION_AUTHENTICATION_EXPIRED,
+                    errorParams("Sign in"),
+                )
+            } else {
+                LibraryResult.ofItemList(
+                    ImmutableList.copyOf(pageResult.items.map(::bookItem)),
+                    params,
+                )
+            }
+        }
+
+        val items: List<MediaItem> = when (parentId) {
+            ROOT_ID -> listOf(
                 folder(CONTINUE_ID, "Continue listening"),
                 folder(DOWNLOADED_ID, "Downloaded"),
                 folder(LIBRARY_ID, "All audiobooks"),
             )
-            parentId == CONTINUE_ID -> content.continueListening().map(::bookItem)
-            parentId == DOWNLOADED_ID -> content.downloaded().map(::bookItem)
-            parentId == LIBRARY_ID -> {
-                val libraries = content.libraries()
-                if (libraries.size > 1) {
-                    libraries.map { folder(it.id, it.title) }
-                } else {
-                    content.audiobooks(libraries.firstOrNull()?.serverId(), page, pageSize)
-                        .items.map(::bookItem)
-                }
-            }
-            parentId.startsWith(LIB_PREFIX) ->
-                content.audiobooks(parentId.removePrefix(LIB_PREFIX), page, pageSize)
-                    .items.map(::bookItem)
+            CONTINUE_ID -> content.continueListening().map(::bookItem)
+            DOWNLOADED_ID -> content.downloaded().map(::bookItem)
             else -> emptyList()
         }
         LibraryResult.ofItemList(ImmutableList.copyOf(items), params)
@@ -234,6 +284,7 @@ private class AutoLibraryCallback(
     ): ListenableFuture<LibraryResult<MediaItem>> = future {
         when (mediaId) {
             ROOT_ID -> LibraryResult.ofItem(browseRoot, rootParams)
+            RECENT_ROOT_ID -> LibraryResult.ofItem(recentRoot, null)
             CONTINUE_ID -> LibraryResult.ofItem(folder(CONTINUE_ID, "Continue listening"), null)
             DOWNLOADED_ID -> LibraryResult.ofItem(folder(DOWNLOADED_ID, "Downloaded"), null)
             LIBRARY_ID -> LibraryResult.ofItem(folder(LIBRARY_ID, "All audiobooks"), null)
@@ -252,6 +303,7 @@ private class AutoLibraryCallback(
         params: LibraryParams?,
     ): ListenableFuture<LibraryResult<Void>> = future {
         val results = content.search(query)
+        cachedSearch = query to results
         session.notifySearchResultChanged(browser, query, results.size, params)
         LibraryResult.ofVoid()
     }
@@ -264,8 +316,27 @@ private class AutoLibraryCallback(
         pageSize: Int,
         params: LibraryParams?,
     ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> = future {
-        val results = content.search(query).map(::bookItem)
-        LibraryResult.ofItemList(ImmutableList.copyOf(results), params)
+        val cached = cachedSearch
+        val results = if (cached?.first == query) cached.second else content.search(query)
+        val from = page * pageSize
+        val window = results.drop(from).take(pageSize)
+        LibraryResult.ofItemList(ImmutableList.copyOf(window.map(::bookItem)), params)
+    }
+
+    // ---- playback resumption (car resume, BT play button with nothing loaded) ----
+
+    override fun onPlaybackResumption(
+        mediaSession: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        isForPlayback: Boolean,
+    ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
+        val playable = content.lastPlayed()?.mediaId?.let { content.resolve(it) }
+            ?: throw IllegalStateException("nothing to resume")
+        MediaSession.MediaItemsWithStartPosition(
+            listOf(playableItem(playable)),
+            0,
+            playable.startPositionMs,
+        )
     }
 
     // ---- media-id -> playable ----
@@ -344,6 +415,18 @@ private class AutoLibraryCallback(
         )
         .build()
 
+    /** `LibraryParams` that make the car show a "sign in" button wired to the app. */
+    private fun errorParams(label: String): LibraryParams = LibraryParams.Builder()
+        .setExtras(
+            Bundle().apply {
+                putString(MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT, label)
+                signInIntent?.let {
+                    putParcelable(MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_INTENT_COMPAT, it)
+                }
+            },
+        )
+        .build()
+
     private fun completionExtras(progress: Double?): Bundle = Bundle().apply {
         if (progress == null) return@apply
         val status = when {
@@ -369,6 +452,7 @@ private class AutoLibraryCallback(
 
     private companion object {
         const val ROOT_ID = "root"
+        const val RECENT_ROOT_ID = "root_recent"
         const val CONTINUE_ID = "continue"
         const val DOWNLOADED_ID = "downloaded"
         const val LIBRARY_ID = "library"

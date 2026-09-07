@@ -56,6 +56,8 @@ data class LibraryNode(
 data class MediaPage<T>(
     val items: List<T>,
     val hasMore: Boolean,
+    /** The server rejected us — the browser should offer a "sign in" resolution. */
+    val authExpired: Boolean = false,
 )
 
 data class PlayableAudiobook(
