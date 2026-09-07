@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -42,8 +41,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.CoverImage
-import net.dexxicon.reader.core.designsystem.component.ViewModeToggle
-import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
@@ -91,10 +88,7 @@ fun LibraryScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Library") },
-                actions = { ViewModeToggle(state.viewMode, viewModel::toggleViewMode) },
-            )
+            TopAppBar(title = { Text("Library") })
         },
     ) { padding ->
         val empty = state.downloads.isEmpty() &&
@@ -128,28 +122,13 @@ fun LibraryScreen(
 
                     if (state.downloads.isNotEmpty()) {
                         fullWidthItem { SectionHeader("Downloaded") }
-                        if (state.viewMode == BookViewMode.LIST) {
-                            items(
-                                state.downloads,
-                                span = { GridItemSpan(maxLineSpan) },
-                                key = { it.key },
-                            ) { download ->
-                                DownloadRow(
-                                    download = download,
-                                    readingProgress = state.downloadProgress[download.key],
-                                    onClick = { onOpenBook(download.serverId, download.bookId) },
-                                    actions = downloadActions(download),
-                                )
-                            }
-                        } else {
-                            items(state.downloads, key = { it.key }) { download ->
-                                DownloadCard(
-                                    download = download,
-                                    readingProgress = state.downloadProgress[download.key],
-                                    onClick = { onOpenBook(download.serverId, download.bookId) },
-                                    actions = downloadActions(download),
-                                )
-                            }
+                        items(state.downloads, key = { it.key }) { download ->
+                            DownloadCard(
+                                download = download,
+                                readingProgress = state.downloadProgress[download.key],
+                                onClick = { onOpenBook(download.serverId, download.bookId) },
+                                actions = downloadActions(download),
+                            )
                         }
                     }
                 }
@@ -278,49 +257,6 @@ private fun DownloadCard(
                 )
             }
         }
-        LibraryMenu(menuOpen, { menuOpen = false }, actions)
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun DownloadRow(
-    download: Download,
-    readingProgress: Float?,
-    onClick: () -> Unit,
-    actions: LibraryItemActions,
-) {
-    var menuOpen by remember { mutableStateOf(false) }
-    val done = download.status == DownloadStatus.DONE
-    val pct = readingProgress?.let { (it * 100).toInt() }
-    val subtitle = buildString {
-        if (download.authorLine.isNotBlank()) append(download.authorLine)
-        append(if (isEmpty()) "" else " · ")
-        append(download.format.name.lowercase())
-        when (download.status) {
-            DownloadStatus.DONE -> if (pct != null) append(" · $pct% read")
-            DownloadStatus.FAILED -> append(" · failed")
-            else -> append(" · downloading")
-        }
-    }
-    Box {
-        ListItem(
-            headlineContent = { Text(download.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            supportingContent = { Text(subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-            leadingContent = {
-                Box(Modifier.width(44.dp)) {
-                    CoverImage(
-                        coverUrl = download.coverUrl,
-                        contentDescription = null,
-                        progress = if (done) readingProgress else null,
-                        downloaded = done,
-                    )
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .combinedClickable(onClick = onClick, onLongClick = { menuOpen = true }),
-        )
         LibraryMenu(menuOpen, { menuOpen = false }, actions)
     }
 }
