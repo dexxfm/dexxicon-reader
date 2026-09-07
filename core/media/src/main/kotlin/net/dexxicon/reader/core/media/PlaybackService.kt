@@ -3,16 +3,21 @@ package net.dexxicon.reader.core.media
 import android.os.Bundle
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CacheBitmapLoader
+import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.LibraryParams
 import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
+import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
@@ -111,15 +116,45 @@ class PlaybackService : MediaLibraryService() {
 }
 
 /**
- * The [MediaLibrarySession.Callback]. Phase 1: only the session/skip-silence plumbing — the
- * browse tree (`onGetLibraryRoot` / `onGetChildren` / `onGetItem` / `onSearch`) and media-id
- * resolution land in Phase 2.
+ * The [MediaLibrarySession.Callback]. Phase 1: session/skip-silence plumbing plus an empty
+ * browsable root, so Android Auto / Automotive can connect and show the (still empty)
+ * library rather than an error. The real browse tree, search and media-id resolution land
+ * in Phase 2.
  */
 private class AutoLibraryCallback(
     private val player: ExoPlayer?,
 ) : MediaLibrarySession.Callback {
 
     private val skipSilence = SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY)
+
+    private val browseRoot = MediaItem.Builder()
+        .setMediaId(ROOT_ID)
+        .setMediaMetadata(
+            MediaMetadata.Builder()
+                .setIsBrowsable(true)
+                .setIsPlayable(false)
+                .setMediaType(MediaMetadata.MEDIA_TYPE_FOLDER_MIXED)
+                .setTitle("Audiobooks")
+                .build(),
+        )
+        .build()
+
+    override fun onGetLibraryRoot(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        params: LibraryParams?,
+    ): ListenableFuture<LibraryResult<MediaItem>> =
+        Futures.immediateFuture(LibraryResult.ofItem(browseRoot, params))
+
+    override fun onGetChildren(
+        session: MediaLibrarySession,
+        browser: MediaSession.ControllerInfo,
+        parentId: String,
+        page: Int,
+        pageSize: Int,
+        params: LibraryParams?,
+    ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> =
+        Futures.immediateFuture(LibraryResult.ofItemList(ImmutableList.of(), params))
 
     override fun onConnect(
         session: MediaSession,
@@ -145,5 +180,9 @@ private class AutoLibraryCallback(
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+    }
+
+    private companion object {
+        const val ROOT_ID = "root"
     }
 }
