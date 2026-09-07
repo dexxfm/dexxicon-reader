@@ -7,11 +7,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -103,9 +105,12 @@ private fun DetailContent(
     modifier: Modifier = Modifier,
 ) {
     val s = detail.summary
+    // Centre and cap the width so the page reads well on tablets / foldables / desktop.
+    Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
     Column(
-        modifier
-            .fillMaxSize()
+        Modifier
+            .widthIn(max = 720.dp)
+            .fillMaxHeight()
             .verticalScroll(rememberScrollState())
             .padding(20.dp),
     ) {
@@ -205,6 +210,7 @@ private fun DetailContent(
         MetaRow("Pages", detail.pageCount?.toString())
         MetaRow("Categories", detail.categories.takeIf { it.isNotEmpty() }?.joinToString(", "))
         MetaRow("File size", detail.fileSizeBytes?.let(::formatFileSize))
+    }
     }
 }
 
