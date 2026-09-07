@@ -24,6 +24,8 @@ data class NativeProgress(
     val percent: Double,
     /** Audiobook position, if the store has one. */
     val positionMs: Long? = null,
+    /** Comic / PDF 1-based page, if the store has one. */
+    val page: Int? = null,
     /** When the server last updated it (epoch millis), if known. */
     val updatedAtMillis: Long? = null,
 )
@@ -81,7 +83,7 @@ class NativeProgressSync @Inject constructor(
             }
         }.onSuccess {
             syncStateStore.markSynced(server.id)
-            Log.i(TAG, "push ${server.type} $bookId $format pct=$percent posMs=$positionMs ok")
+            Log.i(TAG, "push ${server.type} $bookId $format pct=$percent pos=${position ?: positionMs} ok")
         }.onFailure { Log.w(TAG, "push ${server.type} $bookId $format failed: ${it.message}") }
         Unit
     }
@@ -109,7 +111,10 @@ class NativeProgressSync @Inject constructor(
             server.resolve("/api/v1/books/files/$fileId/progress"),
         ).takeIf { it.isSuccessful }?.body() ?: return null
         val pct = dto.percentage ?: return null
-        return NativeProgress(percent = (pct / 100.0).coerceIn(0.0, 1.0))
+        return NativeProgress(
+            percent = (pct / 100.0).coerceIn(0.0, 1.0),
+            page = dto.pageNumber?.takeIf { it > 0 },
+        )
     }
 
     private suspend fun pushBookOrbit(
@@ -123,7 +128,7 @@ class NativeProgressSync @Inject constructor(
     ) {
         val fileId = fileIdFrom(digestUrl) ?: return
         val pct100 = (percent.coerceIn(0.0, 1.0) * 100.0)
-        if (format == ContentFormat.AUDIOBOOK) {
+        val response = if (format == ContentFormat.AUDIOBOOK) {
             api.bookOrbitSaveAudioProgress(
                 server.resolve("/api/v1/books/$bookId/audio-progress"),
                 BookOrbitAudioProgressUpdate(
@@ -142,6 +147,10 @@ class NativeProgressSync @Inject constructor(
                 ),
             )
         }
+        if (!response.isSuccessful) {
+            val err = runCatching { response.errorBody()?.string() }.getOrNull()
+            error("BookOrbit progress save HTTP ${response.code()}: $err")
+        }
     }
 
     // ---- Grimmory / BookLore ----
@@ -151,21 +160,28 @@ class NativeProgressSync @Inject constructor(
         bookId: String,
         format: ContentFormat,
     ): NativeProgress? {
-        val dto = api.grimmoryProgress(server.resolve("/api/v1/app/books/$bookId/progress"))
-            .takeIf { it.isSuccessful }?.body() ?: return null
+        val response = api.grimmoryProgress(server.resolve("/api/v1/app/books/$bookId/progress"))
+        val dto = response.takeIf { it.isSuccessful }?.body() ?: return null
+
+        // Grimmory only fills the format sub-object (cbxProgress/pdfProgress/epubProgress)
+        // when a *position* was stored — for a percent-only row it drops back to the
+        // top-level `readProgress`. Fall through to it so the % still round-trips.
+        val fallbackAt = isoToMillis(dto.lastReadTime)
+        fun pct(sub: Double?): Double? = (sub ?: dto.readProgress)?.let { (it / 100.0).coerceIn(0.0, 1.0) }
+
         return when (format) {
             ContentFormat.AUDIOBOOK -> dto.audiobookProgress?.let {
-                val pct = it.percentage ?: return null
-                NativeProgress((pct / 100.0).coerceIn(0.0, 1.0), it.positionMs, isoToMillis(it.updatedAt))
+                val p = it.percentage ?: return null
+                NativeProgress((p / 100.0).coerceIn(0.0, 1.0), positionMs = it.positionMs, updatedAtMillis = isoToMillis(it.updatedAt))
             }
-            ContentFormat.PDF -> dto.pdfProgress?.let {
-                NativeProgress(((it.percentage ?: return null) / 100.0).coerceIn(0.0, 1.0), null, isoToMillis(it.updatedAt))
+            ContentFormat.PDF -> pct(dto.pdfProgress?.percentage)?.let {
+                NativeProgress(it, page = dto.pdfProgress?.page, updatedAtMillis = isoToMillis(dto.pdfProgress?.updatedAt) ?: fallbackAt)
             }
-            ContentFormat.COMIC -> dto.cbxProgress?.let {
-                NativeProgress(((it.percentage ?: return null) / 100.0).coerceIn(0.0, 1.0), null, isoToMillis(it.updatedAt))
+            ContentFormat.COMIC -> pct(dto.cbxProgress?.percentage)?.let {
+                NativeProgress(it, page = dto.cbxProgress?.page, updatedAtMillis = isoToMillis(dto.cbxProgress?.updatedAt) ?: fallbackAt)
             }
-            else -> dto.epubProgress?.let {
-                NativeProgress(((it.percentage ?: return null) / 100.0).coerceIn(0.0, 1.0), null, isoToMillis(it.updatedAt))
+            else -> pct(dto.epubProgress?.percentage)?.let {
+                NativeProgress(it, updatedAtMillis = isoToMillis(dto.epubProgress?.updatedAt) ?: fallbackAt)
             }
         }
     }
@@ -183,16 +199,18 @@ class NativeProgressSync @Inject constructor(
             ContentFormat.AUDIOBOOK -> positionMs?.toString()
             else -> position
         }
-        api.grimmorySaveProgress(
-            server.resolve("/api/v1/app/books/$bookId/progress"),
-            GrimmoryUpdateProgress(
-                GrimmoryFileProgress(
-                    bookFileId = bookFileId,
-                    positionData = positionData,
-                    progressPercent = percent.coerceIn(0.0, 1.0) * 100.0,
-                ),
+        val body = GrimmoryUpdateProgress(
+            GrimmoryFileProgress(
+                bookFileId = bookFileId,
+                positionData = positionData,
+                progressPercent = percent.coerceIn(0.0, 1.0) * 100.0,
             ),
         )
+        val response = api.grimmorySaveProgress(server.resolve("/api/v1/app/books/$bookId/progress"), body)
+        if (!response.isSuccessful) {
+            val err = runCatching { response.errorBody()?.string() }.getOrNull()
+            error("Grimmory progress PUT HTTP ${response.code()}: $err")
+        }
     }
 
     private suspend fun grimmoryBookFileId(server: Server, bookId: String, format: ContentFormat): Long? {

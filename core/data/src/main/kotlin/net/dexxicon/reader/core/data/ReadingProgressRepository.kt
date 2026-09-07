@@ -133,6 +133,25 @@ class ReadingProgressRepository @Inject constructor(
     }
 
     /**
+     * The server's position when it is meaningfully ahead of [localPercent] — for the
+     * comic / PDF readers' "Continue from page N" prompt. Native-sync servers only;
+     * carries the exact page when the server has one.
+     */
+    suspend fun nativeRemoteAhead(
+        serverId: String,
+        bookId: String,
+        format: ContentFormat,
+        digestUrl: String?,
+        localPercent: Double?,
+    ): NativeProgress? = withContext(io) {
+        val server = serverRepository.get(serverId) ?: return@withContext null
+        if (!usesNative(server)) return@withContext null
+        val local = localPercent ?: 0.0
+        nativeSync.pull(server, bookId, format, digestUrl)
+            ?.takeIf { it.percent - local > 0.01 && it.percent <= 1.0 }
+    }
+
+    /**
      * A resume percentage the server has that is meaningfully ahead of [localPercent] — for
      * the readers' "Continue from NN%" prompt.
      */
@@ -188,10 +207,23 @@ class ReadingProgressRepository @Inject constructor(
                 val native = nativeSync.pull(server, row.bookId, format, row.digestUrl)
                 when {
                     native == null || localPercent - native.percent > 0.005 -> runCatching {
-                        nativeSync.push(server, row.bookId, format, row.digestUrl, localPercent, positionMsOf(domain), null)
+                        nativeSync.push(server, row.bookId, format, row.digestUrl, localPercent, positionMsOf(domain), pageOf(domain))
                     }
-                    shouldAdoptNative(native, row) ->
-                        dao.upsert(row.copy(percent = native.percent, updatedAt = native.updatedAtMillis ?: row.updatedAt))
+                    shouldAdoptNative(native, row) -> {
+                        // Adopt the server's %, and — for comics/PDF where it also sent an
+                        // exact page — move the local position so reopening resumes there.
+                        val locator = native.page
+                            ?.takeIf { format == ContentFormat.COMIC || format == ContentFormat.PDF }
+                            ?.let { locatorAtPage(it, native.percent, format) }
+                            ?: row.locator
+                        dao.upsert(
+                            row.copy(
+                                percent = native.percent,
+                                locator = locator,
+                                updatedAt = native.updatedAtMillis ?: row.updatedAt,
+                            ),
+                        )
+                    }
                 }
             } else if (usesKoSync(server)) {
                 val source = digestSourceFor(row.serverId, row.bookId, row.digestUrl) ?: continue
@@ -230,7 +262,7 @@ class ReadingProgressRepository @Inject constructor(
             runCatching {
                 nativeSync.push(
                     server, progress.bookId, format, progress.digestUrl,
-                    percent, positionMsOf(progress), null,
+                    percent, positionMsOf(progress), pageOf(progress),
                 )
             }
         } else if (usesKoSync(server)) {
@@ -246,6 +278,34 @@ class ReadingProgressRepository @Inject constructor(
         val loc = progress.locator ?: return null
         return runCatching { JSONObject(loc).optLong("position", 0L).takeIf { it > 0L } }.getOrNull()
     }
+
+    /**
+     * Comic / PDF 1-based page as a plain string, parsed from the Readium locator's
+     * `locations.position`. The native servers store this as an integer, so it must be
+     * clean — anything else is dropped (they `Integer.parseInt` it).
+     */
+    private fun pageOf(progress: ReadingProgress): String? {
+        if (progress.format != ContentFormat.COMIC && progress.format != ContentFormat.PDF) return null
+        val loc = progress.locator ?: return null
+        return runCatching {
+            JSONObject(loc).optJSONObject("locations")?.optInt("position", 0)?.takeIf { it > 0 }?.toString()
+        }.getOrNull()
+    }
+
+    /**
+     * A comic/PDF locator pointing at [page]. The `href` is a placeholder — the reader
+     * re-resolves the page against the open publication's reading order, so a stale href
+     * from the previous position can't win. Kept valid so `Locator.fromJSON` accepts it.
+     */
+    private fun locatorAtPage(page: Int, percent: Double, format: ContentFormat): String =
+        JSONObject()
+            .put("href", "sync")
+            .put("type", if (format == ContentFormat.PDF) "application/pdf" else "image/jpeg")
+            .put(
+                "locations",
+                JSONObject().put("position", page).put("totalProgression", percent.coerceIn(0.0, 1.0)),
+            )
+            .toString()
 
     private suspend fun digestSourceFor(
         serverId: String,

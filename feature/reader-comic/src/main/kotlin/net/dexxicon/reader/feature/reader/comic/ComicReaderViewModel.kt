@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
+import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.ContentFormat
 import kotlinx.coroutines.flow.SharingStarted
@@ -49,6 +50,7 @@ class ComicReaderViewModel @Inject constructor(
     private val streamer: PublicationStreamer,
     private val archiveNormalizer: ComicArchiveNormalizer,
     private val preferencesStore: ReaderPreferencesStore,
+    private val progressRepository: ReadingProgressRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -121,9 +123,23 @@ class ComicReaderViewModel @Inject constructor(
         when (opened) {
             is Outcome.Success -> {
                 publication = opened.value
+                val local = locatorStore.initialLocator(route.serverId, route.bookId)
+                // If the server (web reader / another device) is further along, open there.
+                val remote = runCatching {
+                    progressRepository.nativeRemoteAhead(
+                        route.serverId, route.bookId, ContentFormat.COMIC, remoteHref,
+                        local?.locations?.totalProgression,
+                    )
+                }.getOrNull()
+                // Resolve whichever page we should resume on to the right image resource — a
+                // page-only locator (from a cross-device sync) has no usable href otherwise.
+                val targetPage = remote?.page ?: local?.locations?.position
+                val resumeLocator = targetPage
+                    ?.let { pg -> opened.value.readingOrder.getOrNull(pg - 1)?.let(opened.value::locatorFromLink) }
+                    ?: local
                 _state.value = ComicReaderState.Ready(
                     publication = opened.value,
-                    initialLocator = locatorStore.initialLocator(route.serverId, route.bookId),
+                    initialLocator = resumeLocator,
                     title = detail?.summary?.title ?: downloadTitle ?: "",
                     pageCount = opened.value.readingOrder.size,
                 )

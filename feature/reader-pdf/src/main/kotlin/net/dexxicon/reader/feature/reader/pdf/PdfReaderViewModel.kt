@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
+import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.reader.PublicationStreamer
@@ -42,6 +43,7 @@ class PdfReaderViewModel @Inject constructor(
     private val locatorStore: ReaderLocatorStore,
     private val downloadRepository: DownloadRepository,
     private val streamer: PublicationStreamer,
+    private val progressRepository: ReadingProgressRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -90,9 +92,25 @@ class PdfReaderViewModel @Inject constructor(
         when (opened) {
             is Outcome.Success -> {
                 publication = opened.value
+                val local = locatorStore.initialLocator(route.serverId, route.bookId)
+                // If the server (web reader / another device) is further along, open there.
+                val remote = runCatching {
+                    progressRepository.nativeRemoteAhead(
+                        route.serverId, route.bookId, ContentFormat.PDF, remoteHref,
+                        local?.locations?.totalProgression,
+                    )
+                }.getOrNull()
+                val targetPage = remote?.page ?: local?.locations?.position
+                val resumeLocator = targetPage?.let { pg ->
+                    opened.value.readingOrder.firstOrNull()?.let(opened.value::locatorFromLink)
+                        ?.copyWithLocations(
+                            position = pg,
+                            totalProgression = remote?.percent ?: local?.locations?.totalProgression,
+                        )
+                } ?: local
                 _state.value = PdfReaderState.Ready(
                     publication = opened.value,
-                    initialLocator = locatorStore.initialLocator(route.serverId, route.bookId),
+                    initialLocator = resumeLocator,
                     title = detail?.summary?.title ?: downloadTitle ?: "",
                     pageCount = (opened.value.metadata.numberOfPages
                         ?: opened.value.readingOrder.size).coerceAtLeast(1),
