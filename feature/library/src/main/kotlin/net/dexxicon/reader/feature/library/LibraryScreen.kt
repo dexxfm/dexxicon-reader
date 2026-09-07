@@ -143,6 +143,7 @@ private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit) {
             coverUrl = entry.coverUrl,
             contentDescription = null,
             progress = entry.percent,
+            format = entry.format,
         )
         Text(
             entry.title,
@@ -186,6 +187,7 @@ private fun DownloadCard(download: Download, readingProgress: Float?, onClick: (
                 contentDescription = null,
                 progress = if (done) readingProgress else null,
                 downloaded = done,
+                format = download.format,
             )
             when (download.status) {
                 DownloadStatus.DONE -> {}

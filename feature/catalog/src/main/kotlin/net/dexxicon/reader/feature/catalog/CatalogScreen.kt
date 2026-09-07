@@ -215,6 +215,7 @@ private fun BookCard(
             contentDescription = null,
             progress = progress,
             downloaded = downloaded,
+            format = book.format,
         )
         Text(
             book.title,

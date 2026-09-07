@@ -23,10 +23,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import net.dexxicon.reader.core.model.ContentFormat
 
 /**
- * A book cover with optional overlays: a reading-progress bar along the bottom and a
- * "downloaded" badge. Used on the catalog and library grids so both look the same.
+ * A book cover with optional overlays: a reading-progress bar along the bottom, a
+ * "downloaded" badge (top-right), and a color-coded format badge (bottom-right). Used on
+ * the catalog and library grids so both look the same.
  */
 @Composable
 fun CoverImage(
@@ -36,6 +38,8 @@ fun CoverImage(
     /** 0f–1f reading progress; null hides the bar. */
     progress: Float? = null,
     downloaded: Boolean = false,
+    /** Content type — shows a color-coded badge bottom-right; null / UNKNOWN hides it. */
+    format: ContentFormat? = null,
 ) {
     Box(
         modifier
@@ -72,6 +76,15 @@ fun CoverImage(
                     .background(MaterialTheme.colorScheme.surface, CircleShape)
                     .padding(2.dp)
                     .size(16.dp),
+            )
+        }
+
+        if (format != null && format != ContentFormat.UNKNOWN) {
+            FormatBadge(
+                format = format,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 4.dp, bottom = 6.dp),
             )
         }
 
