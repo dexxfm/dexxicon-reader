@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.1 — 2026-09-07
+
+- **Downloads no longer jump around.** The Library "Downloaded" shelf and the progress
+  notification keep a fixed order (the order you queued them) instead of reshuffling on
+  every progress tick.
+- **One download notification for everything.** Concurrent downloads show as a single
+  "Downloading N books" notification that lists up to five at once with their individual
+  progress, rather than flickering between titles.
+- **Browse recovers after adding a server.** It now refreshes itself when you add or remove
+  a server, and pull-to-refresh works even when the list is empty.
+- Removed the grid/list toggle from Library (it stays on Browse and the per-server catalog).
+
 ## 0.9.0 — 2026-09-07
 
 Reading status, better Browse controls, and the Library fills itself in.
