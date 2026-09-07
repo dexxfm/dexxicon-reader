@@ -48,19 +48,26 @@ class ComicArchiveNormalizer @Inject constructor(
         out
     }
 
-    /** Download [url] in full and return a ZIP-based CBZ for it. */
+    /**
+     * Download [url] in full and return a ZIP-based CBZ for it. The result is cached by URL,
+     * so a second open is free — nothing is re-downloaded.
+     */
     suspend fun fromUrl(url: String): File = withContext(io) {
-        val tmp = File(cacheDir, "dl-${sha1(url.toByteArray())}.bin")
-        if (!tmp.exists() || tmp.length() == 0L) {
+        val out = File(cacheDir, "u-${sha1(url.toByteArray())}.cbz")
+        if (out.exists() && out.length() > 0L) return@withContext out
+
+        val tmp = File.createTempFile("cbr", ".bin", cacheDir)
+        try {
             httpClient.newCall(Request.Builder().url(url).build()).execute().use { response ->
                 check(response.isSuccessful) { "HTTP ${response.code} fetching comic" }
                 val body = response.body ?: error("empty comic response")
                 tmp.outputStream().use { sink -> body.byteStream().use { it.copyTo(sink) } }
             }
+            if (isRar(tmp)) rarToCbz(tmp, out) else tmp.copyTo(out, overwrite = true)
+            out
+        } finally {
+            tmp.delete()
         }
-        val normalized = fromFile(tmp)
-        if (normalized != tmp) tmp.delete()
-        normalized
     }
 
     private fun isRar(file: File): Boolean {

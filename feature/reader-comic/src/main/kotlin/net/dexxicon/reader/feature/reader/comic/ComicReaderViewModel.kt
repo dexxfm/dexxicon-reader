@@ -103,7 +103,9 @@ class ComicReaderViewModel @Inject constructor(
                 return
             }
             remoteHref = acquisition.href
-            if (archiveNormalizer.looksLikeRar(acquisition.href, acquisition.mediaType)) {
+            val isRar = detail.fileExtension?.lowercase() in setOf("cbr", "rar") ||
+                archiveNormalizer.looksLikeRar(acquisition.href, acquisition.mediaType)
+            if (isRar) {
                 // RAR can't be range-streamed — fetch in full, then repack to CBZ.
                 val cbz = runCatching { archiveNormalizer.fromUrl(acquisition.href) }.getOrNull()
                 if (cbz == null) {
