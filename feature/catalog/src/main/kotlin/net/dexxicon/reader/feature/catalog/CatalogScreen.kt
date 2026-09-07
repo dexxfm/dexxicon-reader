@@ -43,12 +43,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
 
@@ -60,6 +63,7 @@ fun CatalogScreen(
     viewModel: CatalogViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val overlays by viewModel.overlays.collectAsStateWithLifecycle()
     val gridState = rememberLazyGridState()
 
     val shouldLoadMore by remember {
@@ -120,7 +124,12 @@ fun CatalogScreen(
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
                         items(state.books, key = { it.id }) { book ->
-                            BookCard(book) { onOpenBook(book.serverId, book.id) }
+                            BookCard(
+                                book = book,
+                                progress = overlays.progress[book.id],
+                                downloaded = book.id in overlays.downloaded,
+                                onClick = { onOpenBook(book.serverId, book.id) },
+                            )
                         }
                     }
                 }
@@ -183,32 +192,30 @@ private fun FilterRow(
 }
 
 @Composable
-private fun BookCard(book: BookSummary, onClick: () -> Unit) {
-    Column(Modifier.clickable(onClick = onClick)) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.66f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (book.coverUrl != null) {
-                AsyncImage(
-                    model = book.coverUrl,
-                    contentDescription = book.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Icon(
-                    Icons.AutoMirrored.Filled.MenuBook,
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+private fun BookCard(
+    book: BookSummary,
+    progress: Float?,
+    downloaded: Boolean,
+    onClick: () -> Unit,
+) {
+    val pct = progress?.let { (it * 100).toInt() }
+    val label = buildString {
+        append(book.title)
+        if (book.authorLine.isNotBlank()) append(", ${book.authorLine}")
+        if (pct != null) append(", $pct% read")
+        if (downloaded) append(", downloaded")
+    }
+    Column(
+        Modifier
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = label },
+    ) {
+        CoverImage(
+            coverUrl = book.coverUrl,
+            contentDescription = null,
+            progress = progress,
+            downloaded = downloaded,
+        )
         Text(
             book.title,
             style = MaterialTheme.typography.bodyMedium,

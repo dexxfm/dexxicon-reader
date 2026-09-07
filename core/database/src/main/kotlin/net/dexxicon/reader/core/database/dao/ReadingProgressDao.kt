@@ -21,6 +21,9 @@ interface ReadingProgressDao {
     @Query("SELECT * FROM reading_progress")
     suspend fun all(): List<ReadingProgressEntity>
 
+    @Query("SELECT * FROM reading_progress")
+    fun observeAll(): Flow<List<ReadingProgressEntity>>
+
     /** Books that have been started but not finished, most recently touched first. */
     @Query(
         "SELECT * FROM reading_progress " +

@@ -30,6 +30,8 @@ data class LibraryUiState(
     val continueReading: List<ContinueItem> = emptyList(),
     val continueListening: List<ContinueItem> = emptyList(),
     val downloads: List<Download> = emptyList(),
+    /** Reading progress (0–1) for the Downloaded grid, keyed by "serverId::bookId". */
+    val downloadProgress: Map<String, Float> = emptyMap(),
     val loading: Boolean = true,
     val refreshing: Boolean = false,
 )
@@ -45,14 +47,20 @@ class LibraryViewModel @Inject constructor(
     val uiState: StateFlow<LibraryUiState> =
         combine(
             downloadRepository.downloads,
-            progressRepository.observeInProgress(),
+            progressRepository.observeAll(),
             refreshing,
-        ) { downloads, progress, isRefreshing ->
-            val items = progress.mapNotNull { it.toContinueItem() }
+        ) { downloads, progressByKey, isRefreshing ->
+            val inProgress = progressByKey.values
+                .filter { it.isInProgress }
+                .sortedByDescending { it.updatedAt }
+            val items = inProgress.mapNotNull { it.toContinueItem() }
             LibraryUiState(
                 continueReading = items.filter { it.format != ContentFormat.AUDIOBOOK },
                 continueListening = items.filter { it.format == ContentFormat.AUDIOBOOK },
                 downloads = downloads,
+                downloadProgress = progressByKey
+                    .mapValues { (_, p) -> (p.percent ?: 0.0).toFloat().coerceIn(0f, 1f) }
+                    .filterValues { it > 0f },
                 loading = false,
                 refreshing = isRefreshing,
             )

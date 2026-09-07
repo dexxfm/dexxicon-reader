@@ -54,6 +54,10 @@ class ReadingProgressRepository @Inject constructor(
     fun observeInProgress(): Flow<List<ReadingProgress>> =
         dao.observeInProgress().map { list -> list.map { it.toDomain() } }
 
+    /** Every progress row, keyed by "serverId::bookId". */
+    fun observeAll(): Flow<Map<String, ReadingProgress>> =
+        dao.observeAll().map { list -> list.map { it.toDomain() }.associateBy { it.key } }
+
     suspend fun get(serverId: String, bookId: String): ReadingProgress? = withContext(io) {
         dao.find(key(serverId, bookId))?.toDomain()
     }

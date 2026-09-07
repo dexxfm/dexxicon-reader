@@ -6,11 +6,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -18,14 +16,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.DownloadDone
-import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -36,14 +28,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
+import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
@@ -93,7 +85,10 @@ fun LibraryScreen(
                     if (state.downloads.isNotEmpty()) {
                         fullWidthItem { SectionHeader("Downloaded") }
                         items(state.downloads, key = { it.key }) { download ->
-                            DownloadCard(download) { onOpenBook(download.serverId, download.bookId) }
+                            DownloadCard(
+                                download = download,
+                                readingProgress = state.downloadProgress[download.key],
+                            ) { onOpenBook(download.serverId, download.bookId) }
                         }
                     }
                 }
@@ -133,39 +128,22 @@ private fun SectionHeader(text: String) {
 
 @Composable
 private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit) {
-    Column(Modifier.width(112.dp).clickable(onClick = onClick)) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.66f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (entry.coverUrl != null) {
-                AsyncImage(
-                    model = entry.coverUrl,
-                    contentDescription = entry.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Icon(
-                    if (entry.format == ContentFormat.AUDIOBOOK) {
-                        Icons.Filled.Headphones
-                    } else {
-                        Icons.AutoMirrored.Filled.MenuBook
-                    },
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            LinearProgressIndicator(
-                progress = { entry.percent },
-                modifier = Modifier.align(Alignment.BottomCenter).fillMaxWidth(),
-            )
-        }
+    val pct = (entry.percent * 100).toInt()
+    Column(
+        Modifier
+            .width(112.dp)
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) {
+                contentDescription = "${entry.title}, $pct% ${
+                    if (entry.format == ContentFormat.AUDIOBOOK) "listened" else "read"
+                }"
+            },
+    ) {
+        CoverImage(
+            coverUrl = entry.coverUrl,
+            contentDescription = null,
+            progress = entry.percent,
+        )
         Text(
             entry.title,
             style = MaterialTheme.typography.bodyMedium,
@@ -174,7 +152,7 @@ private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit) {
             modifier = Modifier.padding(top = 6.dp),
         )
         Text(
-            "${(entry.percent * 100).toInt()}%",
+            "$pct%",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -182,42 +160,35 @@ private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit) {
 }
 
 @Composable
-private fun DownloadCard(download: Download, onClick: () -> Unit) {
-    Column(Modifier.clickable(onClick = onClick)) {
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .aspectRatio(0.66f)
-                .clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (download.coverUrl != null) {
-                AsyncImage(
-                    model = download.coverUrl,
-                    contentDescription = download.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Icon(
-                    Icons.AutoMirrored.Filled.MenuBook,
-                    contentDescription = null,
-                    modifier = Modifier.size(32.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+private fun DownloadCard(download: Download, readingProgress: Float?, onClick: () -> Unit) {
+    val done = download.status == DownloadStatus.DONE
+    val pct = readingProgress?.let { (it * 100).toInt() }
+    val label = buildString {
+        append(download.title)
+        if (download.authorLine.isNotBlank()) append(", ${download.authorLine}")
+        when (download.status) {
+            DownloadStatus.DONE -> {
+                append(", downloaded")
+                if (pct != null) append(", $pct% read")
             }
+            DownloadStatus.FAILED -> append(", download failed")
+            else -> append(", downloading")
+        }
+    }
+    Column(
+        Modifier
+            .clickable(onClick = onClick)
+            .semantics(mergeDescendants = true) { contentDescription = label },
+    ) {
+        Box(Modifier.fillMaxWidth()) {
+            CoverImage(
+                coverUrl = download.coverUrl,
+                contentDescription = null,
+                progress = if (done) readingProgress else null,
+                downloaded = done,
+            )
             when (download.status) {
-                DownloadStatus.DONE -> Icon(
-                    Icons.Filled.DownloadDone,
-                    contentDescription = "Downloaded",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(4.dp)
-                        .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
-                        .padding(2.dp),
-                )
+                DownloadStatus.DONE -> {}
                 DownloadStatus.FAILED -> Text(
                     "Failed",
                     style = MaterialTheme.typography.labelSmall,

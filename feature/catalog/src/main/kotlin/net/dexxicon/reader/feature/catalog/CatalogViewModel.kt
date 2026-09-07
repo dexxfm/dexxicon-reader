@@ -7,21 +7,33 @@ import androidx.navigation.toRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
+import net.dexxicon.reader.core.data.ReadingProgressRepository
+import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.CatalogShelf
+import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.feature.catalog.navigation.CatalogRoute
 import javax.inject.Inject
+
+/** Per-book overlays for the grid: reading progress (0–1) and offline availability. */
+data class BookOverlays(
+    val progress: Map<String, Float> = emptyMap(),
+    val downloaded: Set<String> = emptySet(),
+)
 
 data class CatalogUiState(
     val serverName: String = "",
@@ -41,6 +53,8 @@ data class CatalogUiState(
 @HiltViewModel
 class CatalogViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
+    progressRepository: ReadingProgressRepository,
+    downloadRepository: DownloadRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -49,6 +63,22 @@ class CatalogViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(CatalogUiState(serverName = route.serverName))
     val uiState: StateFlow<CatalogUiState> = _uiState.asStateFlow()
+
+    val overlays: StateFlow<BookOverlays> =
+        combine(
+            progressRepository.observeForServer(serverId),
+            downloadRepository.downloads,
+        ) { progress, downloads ->
+            BookOverlays(
+                progress = progress
+                    .mapValues { (_, p) -> (p.percent ?: 0.0).toFloat().coerceIn(0f, 1f) }
+                    .filterValues { it > 0f },
+                downloaded = downloads
+                    .filter { it.serverId == serverId && it.status == DownloadStatus.DONE }
+                    .map { it.bookId }
+                    .toSet(),
+            )
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BookOverlays())
 
     private var nextPage = 0
 

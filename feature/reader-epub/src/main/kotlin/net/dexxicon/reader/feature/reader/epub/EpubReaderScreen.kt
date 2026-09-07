@@ -56,6 +56,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -524,6 +527,10 @@ private fun DisplaySettings(
             onValueChange = { v -> onChange { it.copy(fontScale = v.toDouble()) } },
             valueRange = 0.6f..2.4f,
             steps = 8,
+            modifier = Modifier.semantics {
+                contentDescription = "Text size"
+                stateDescription = "${(preferences.fontScale * 100).toInt()} percent"
+            },
         )
 
         Text("Theme", style = MaterialTheme.typography.titleSmall)

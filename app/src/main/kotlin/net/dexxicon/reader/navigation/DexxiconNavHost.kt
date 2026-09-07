@@ -1,5 +1,9 @@
 package net.dexxicon.reader.navigation
 
+import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavHostController
@@ -35,6 +39,24 @@ fun DexxiconNavHost(
         navController = navController,
         startDestination = TopLevelRoute.Library,
         modifier = modifier,
+        // Horizontal slide so the back gesture (incl. predictive back) reveals the previous
+        // screen sliding in from the left.
+        enterTransition = {
+            slideIntoContainer(SlideDirection.Start, tween(320)) +
+                fadeIn(tween(320))
+        },
+        exitTransition = {
+            slideOutOfContainer(SlideDirection.Start, tween(320)) +
+                fadeOut(tween(320))
+        },
+        popEnterTransition = {
+            slideIntoContainer(SlideDirection.End, tween(320)) +
+                fadeIn(tween(320))
+        },
+        popExitTransition = {
+            slideOutOfContainer(SlideDirection.End, tween(320)) +
+                fadeOut(tween(320))
+        },
     ) {
         composable<TopLevelRoute.Library> {
             LibraryScreen(

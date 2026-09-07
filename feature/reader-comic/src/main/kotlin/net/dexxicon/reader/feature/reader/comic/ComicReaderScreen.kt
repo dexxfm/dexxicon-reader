@@ -38,6 +38,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
@@ -190,6 +193,10 @@ private fun ReaderContent(
                             }
                         },
                         valueRange = 1f..state.pageCount.toFloat(),
+                        modifier = Modifier.semantics {
+                            contentDescription = "Page slider"
+                            stateDescription = "Page $page of ${state.pageCount}"
+                        },
                     )
                 }
             }
