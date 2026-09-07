@@ -10,14 +10,25 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer as LayoutSpacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Scaffold
@@ -37,17 +48,24 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.dexxicon.reader.core.datastore.AppTheme
+import net.dexxicon.reader.core.designsystem.component.FormatLegend
+import net.dexxicon.reader.core.model.Server
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     versionName: String,
+    onAddServer: () -> Unit = {},
+    onEditServer: (String) -> Unit = {},
+    onOpenServerCatalog: (id: String, name: String) -> Unit = { _, _ -> },
     viewModel: SettingsViewModel = hiltViewModel(),
     koSyncViewModel: KoSyncSettingsViewModel = hiltViewModel(),
+    serverListViewModel: ServerListViewModel = hiltViewModel(),
 ) {
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val koSyncRows by koSyncViewModel.rows.collectAsStateWithLifecycle()
     val refreshing by koSyncViewModel.refreshing.collectAsStateWithLifecycle()
+    val servers by serverListViewModel.servers.collectAsStateWithLifecycle()
 
     Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
         PullToRefreshBox(
@@ -62,6 +80,31 @@ fun SettingsScreen(
                 .widthIn(max = 720.dp)
                 .padding(20.dp),
         ) {
+            SectionTitle("Servers")
+            if (servers.isEmpty()) {
+                Text(
+                    "Add your BookOrbit or Grimmory instance to start browsing.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            servers.forEach { server ->
+                ServerRow(
+                    server = server,
+                    onOpen = { onOpenServerCatalog(server.id, server.displayName) },
+                    onEdit = { onEditServer(server.id) },
+                    onRemove = { serverListViewModel.remove(server.id) },
+                )
+            }
+            OutlinedButton(
+                onClick = onAddServer,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Icon(Icons.Filled.Add, contentDescription = null)
+                Text("  Add server")
+            }
+
+            Spacer()
             SectionTitle("Appearance")
             Text("Theme", style = MaterialTheme.typography.bodyMedium)
             Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -115,6 +158,16 @@ fun SettingsScreen(
                 }
                 LayoutSpacer(Modifier.height(10.dp))
             }
+
+            Spacer()
+            SectionTitle("Format badges")
+            Text(
+                "The coloured tag on a cover's bottom-right corner shows its file type.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            FormatLegend()
 
             Spacer()
             SectionTitle("About")
@@ -268,6 +321,39 @@ private fun relativeTime(atMillis: Long): String {
         android.text.format.DateUtils.MINUTE_IN_MILLIS,
         android.text.format.DateUtils.FORMAT_ABBREV_RELATIVE,
     ).toString().replaceFirstChar { it.lowercase() }
+}
+
+@Composable
+private fun ServerRow(
+    server: Server,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    ListItem(
+        headlineContent = { Text(server.displayName) },
+        supportingContent = {
+            Text(server.normalizedBaseUrl, style = MaterialTheme.typography.bodySmall)
+        },
+        leadingContent = { Icon(Icons.Filled.Dns, contentDescription = null) },
+        trailingContent = {
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Edit") },
+                        onClick = { menuOpen = false; onEdit() },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Remove") },
+                        onClick = { menuOpen = false; onRemove() },
+                    )
+                }
+            }
+        },
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+    )
 }
 
 @Composable

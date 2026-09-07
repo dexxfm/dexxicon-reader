@@ -10,12 +10,15 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
+import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.Acquisition
 import net.dexxicon.reader.core.model.AcquisitionRelation
+import net.dexxicon.reader.core.model.BookCopy
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.Download
@@ -28,12 +31,15 @@ data class BookDetailUiState(
     val loading: Boolean = true,
     val detail: BookDetail? = null,
     val error: String? = null,
+    /** Every server carrying this exact book. Size 1 unless opened from merged Browse. */
+    val copies: List<BookCopy> = emptyList(),
 )
 
 @HiltViewModel
 class BookDetailViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val downloadRepository: DownloadRepository,
+    private val serverRepository: ServerRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -48,24 +54,50 @@ class BookDetailViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
+            _uiState.update { it.copy(copies = resolveCopies()) }
+
             when (val result = catalogRepository.detail(route.serverId, route.bookId)) {
-                is Outcome.Success -> _uiState.value =
-                    BookDetailUiState(loading = false, detail = result.value)
+                is Outcome.Success -> _uiState.update {
+                    it.copy(loading = false, detail = result.value, error = null)
+                }
                 is Outcome.Failure -> {
                     // Offline? Fall back to what the downloaded copy remembers.
                     val offline = downloadRepository.get(route.serverId, route.bookId)
                         ?.takeIf { it.status == DownloadStatus.DONE }
                         ?.toBookDetail()
-                    _uiState.value = if (offline != null) {
-                        BookDetailUiState(loading = false, detail = offline)
-                    } else {
-                        BookDetailUiState(
-                            loading = false,
-                            error = result.error.message ?: "Couldn't load this book",
-                        )
+                    _uiState.update {
+                        if (offline != null) {
+                            it.copy(loading = false, detail = offline, error = null)
+                        } else {
+                            it.copy(
+                                loading = false,
+                                error = result.error.message ?: "Couldn't load this book",
+                            )
+                        }
                     }
                 }
             }
+        }
+    }
+
+    /**
+     * The set of servers carrying this book. From the encoded `copies` route arg when
+     * opened from merged Browse; otherwise just the one copy in the route.
+     */
+    private suspend fun resolveCopies(): List<BookCopy> {
+        val encoded = route.copies
+            .split('|')
+            .mapNotNull { part ->
+                val (sid, bid) = part.split(':', limit = 2).takeIf { it.size == 2 } ?: return@mapNotNull null
+                sid to bid
+            }
+            .ifEmpty { listOf(route.serverId to route.bookId) }
+        return encoded.map { (sid, bid) ->
+            BookCopy(
+                serverId = sid,
+                serverName = serverRepository.get(sid)?.displayName ?: "Library",
+                bookId = bid,
+            )
         }
     }
 

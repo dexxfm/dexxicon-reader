@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -33,12 +35,16 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import net.dexxicon.reader.core.model.BookCopy
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
@@ -81,17 +88,21 @@ fun BookDetailScreen(
             state.error != null -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
                 Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
             }
-            state.detail != null -> DetailContent(
-                detail = state.detail!!,
-                download = download,
-                onRead = {
-                    val d = state.detail!!.summary
-                    onRead(d.serverId, d.id, d.format)
-                },
-                onDownload = viewModel::onDownload,
-                onRemoveDownload = viewModel::onRemoveDownload,
-                modifier = Modifier.padding(padding),
-            )
+            state.detail != null -> {
+                val detail = state.detail!!
+                val copies = state.copies.ifEmpty {
+                    listOf(BookCopy(detail.summary.serverId, "Library", detail.summary.id))
+                }
+                DetailContent(
+                    detail = detail,
+                    copies = copies,
+                    download = download,
+                    onOpen = { copy -> onRead(copy.serverId, copy.bookId, detail.summary.format) },
+                    onDownload = viewModel::onDownload,
+                    onRemoveDownload = viewModel::onRemoveDownload,
+                    modifier = Modifier.padding(padding),
+                )
+            }
         }
     }
 }
@@ -99,8 +110,9 @@ fun BookDetailScreen(
 @Composable
 private fun DetailContent(
     detail: BookDetail,
+    copies: List<BookCopy>,
     download: Download?,
-    onRead: () -> Unit,
+    onOpen: (BookCopy) -> Unit,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
     modifier: Modifier = Modifier,
@@ -123,9 +135,9 @@ private fun DetailContent(
                         .fillMaxHeight()
                         .verticalScroll(rememberScrollState()),
                 ) {
-                    HeroBlock(detail, stacked = true)
+                    HeroBlock(detail, copies, stacked = true)
                     Spacer(Modifier.height(16.dp))
-                    ActionButtons(detail, download, onRead, onDownload, onRemoveDownload)
+                    ActionButtons(detail, copies, download, onOpen, onDownload, onRemoveDownload)
                 }
                 Column(
                     Modifier
@@ -147,9 +159,9 @@ private fun DetailContent(
                         .verticalScroll(rememberScrollState())
                         .padding(20.dp),
                 ) {
-                    HeroBlock(detail, stacked = false)
+                    HeroBlock(detail, copies, stacked = false)
                     Spacer(Modifier.height(20.dp))
-                    ActionButtons(detail, download, onRead, onDownload, onRemoveDownload)
+                    ActionButtons(detail, copies, download, onOpen, onDownload, onRemoveDownload)
                     Spacer(Modifier.height(20.dp))
                     AboutSection(detail)
                     Spacer(Modifier.height(20.dp))
@@ -161,7 +173,7 @@ private fun DetailContent(
 }
 
 @Composable
-private fun HeroBlock(detail: BookDetail, stacked: Boolean) {
+private fun HeroBlock(detail: BookDetail, copies: List<BookCopy>, stacked: Boolean) {
     val s = detail.summary
     val cover: @Composable (Modifier) -> Unit = { m ->
         Box(
@@ -201,6 +213,14 @@ private fun HeroBlock(detail: BookDetail, stacked: Boolean) {
             }
             Spacer(Modifier.height(8.dp))
             AssistChip(onClick = {}, label = { Text(formatLabel(detail)) })
+            if (copies.size > 1) {
+                Text(
+                    "On ${copies.joinToString(", ") { it.serverName }}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
         }
     }
 
@@ -217,11 +237,13 @@ private fun HeroBlock(detail: BookDetail, stacked: Boolean) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ActionButtons(
     detail: BookDetail,
+    copies: List<BookCopy>,
     download: Download?,
-    onRead: () -> Unit,
+    onOpen: (BookCopy) -> Unit,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
 ) {
@@ -231,15 +253,19 @@ private fun ActionButtons(
         format == ContentFormat.COMIC ||
         format == ContentFormat.PDF ||
         format == ContentFormat.AUDIOBOOK
+    var showPicker by remember { mutableStateOf(false) }
+
     Button(
-        onClick = onRead,
+        onClick = {
+            if (copies.size > 1) showPicker = true else onOpen(copies.first())
+        },
         enabled = canOpen,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Icon(Icons.Filled.PlayArrow, contentDescription = null)
         Text(
             when {
-                isAudio -> "  Listen"
+                isAudio -> "  Play"
                 canOpen -> "  Read"
                 else -> "  Read (reader coming soon)"
             },
@@ -247,6 +273,36 @@ private fun ActionButtons(
     }
     Spacer(Modifier.height(8.dp))
     DownloadButton(download, onDownload, onRemoveDownload)
+
+    if (showPicker) {
+        ModalBottomSheet(onDismissRequest = { showPicker = false }) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .padding(bottom = 24.dp)
+                    .navigationBarsPadding(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    if (isAudio) "Play From" else "Read From",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(bottom = 6.dp),
+                )
+                copies.forEach { copy ->
+                    Button(
+                        onClick = { showPicker = false; onOpen(copy) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 56.dp),
+                    ) {
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
+                        Text("  ${copy.serverName}", style = MaterialTheme.typography.titleMedium)
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

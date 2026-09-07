@@ -8,6 +8,8 @@ import net.dexxicon.reader.core.data.catalog.BookOrbitCatalogSource
 import net.dexxicon.reader.core.data.catalog.CatalogSource
 import net.dexxicon.reader.core.data.catalog.GrimmoryCatalogSource
 import net.dexxicon.reader.core.data.catalog.OpdsCatalogSource
+import net.dexxicon.reader.core.data.catalog.mergeAggregated
+import net.dexxicon.reader.core.model.AggregatedBookPage
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
@@ -15,6 +17,10 @@ import net.dexxicon.reader.core.model.CatalogShelf
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -27,14 +33,15 @@ class CatalogRepository @Inject constructor(
     private val opdsSource: OpdsCatalogSource,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
 ) {
+    private fun sourceFor(server: Server): CatalogSource = when (server.type) {
+        ServerType.GRIMMORY -> grimmorySource
+        ServerType.BOOKORBIT -> bookOrbitSource
+        else -> opdsSource
+    }
+
     private suspend fun resolve(serverId: String): Pair<Server, CatalogSource>? {
         val server = serverRepository.get(serverId) ?: return null
-        val source = when (server.type) {
-            ServerType.GRIMMORY -> grimmorySource
-            ServerType.BOOKORBIT -> bookOrbitSource
-            else -> opdsSource
-        }
-        return server to source
+        return server to sourceFor(server)
     }
 
     suspend fun shelves(serverId: String): Outcome<List<CatalogShelf>> = withContext(io) {
@@ -57,6 +64,42 @@ class CatalogRepository @Inject constructor(
     suspend fun detail(serverId: String, bookId: String): Outcome<BookDetail> = withContext(io) {
         val (server, source) = resolve(serverId) ?: return@withContext notFound()
         source.detail(server, bookId)
+    }
+
+    /**
+     * The merged Browse list: page [page] from every configured server, fetched
+     * concurrently, then de-duplicated by (title, first author, format). Every server
+     * that carries a book is recorded in [AggregatedBook.copies].
+     *
+     * Ordering is approximate: each server is asked for its own page [page] in the
+     * requested [sort], and the merged result is re-sorted — books further down one
+     * server's catalogue can still surface a page early. Search narrows this in practice.
+     */
+    suspend fun allBooks(
+        query: String?,
+        sort: BookSort,
+        page: Int,
+        pageSize: Int = DEFAULT_PAGE_SIZE,
+    ): Outcome<AggregatedBookPage> = withContext(io) {
+        val servers = serverRepository.servers.first()
+        if (servers.isEmpty()) {
+            return@withContext Outcome.Success(AggregatedBookPage(emptyList(), hasMore = false))
+        }
+
+        val results = coroutineScope {
+            servers.map { server ->
+                async { server to sourceFor(server).books(server, null, query, sort, page, pageSize) }
+            }.awaitAll()
+        }
+
+        val pages = results.mapNotNull { (server, outcome) ->
+            (outcome as? Outcome.Success)?.value?.let { server to it }
+        }
+        if (pages.isEmpty()) {
+            return@withContext results.firstNotNullOfOrNull { it.second as? Outcome.Failure }
+                ?: Outcome.Failure(DexxiconError.Network("Couldn't reach any server"))
+        }
+        Outcome.Success(mergeAggregated(pages, sort))
     }
 
     private fun <T> notFound(): Outcome<T> =

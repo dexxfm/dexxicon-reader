@@ -15,6 +15,40 @@ data class BookPage(
     val total: Int? = null,
 )
 
+/** One server's copy of a book, as merged into an [AggregatedBook]. */
+data class BookCopy(
+    val serverId: String,
+    val serverName: String,
+    val bookId: String,
+)
+
+/**
+ * A book as shown in the merged Browse list: one entry per (title, author, format),
+ * with every server that carries it listed in [copies].
+ */
+data class AggregatedBook(
+    val title: String,
+    val authors: List<String> = emptyList(),
+    val series: String? = null,
+    val seriesIndex: Double? = null,
+    val coverUrl: String? = null,
+    val format: ContentFormat = ContentFormat.UNKNOWN,
+    val copies: List<BookCopy> = emptyList(),
+) {
+    val authorLine: String get() = authors.joinToString(", ")
+
+    /** Stable list key across recompositions / reorders. */
+    val key: String get() = copies.joinToString(",") { "${it.serverId}:${it.bookId}" }
+
+    val primary: BookCopy get() = copies.first()
+}
+
+/** One page of merged Browse results. */
+data class AggregatedBookPage(
+    val books: List<AggregatedBook>,
+    val hasMore: Boolean,
+)
+
 /** A book/comic/audiobook as shown in a grid — enough to render a card and open detail. */
 data class BookSummary(
     val id: String,
