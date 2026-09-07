@@ -3,9 +3,11 @@ package net.dexxicon.reader.feature.player
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -316,114 +318,181 @@ private fun NowPlaying(
     val book = playback.audiobook
     val duration = playback.durationMs.takeIf { it > 0 } ?: book?.durationMs ?: 0L
 
-    Column(
-        modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        Box(
-            Modifier
-                .fillMaxWidth(0.7f)
-                .aspectRatio(1f)
-                .clip(RoundedCornerShape(16.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center,
-        ) {
-            book?.coverUrl?.let {
-                AsyncImage(
-                    model = it,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        // Landscape / large screens: cover on the left, everything else on the right.
+        val landscape = maxWidth > maxHeight && maxWidth >= 560.dp
+
+        if (landscape) {
+            Row(
+                Modifier.fillMaxSize().padding(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(28.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CoverArt(
+                    coverUrl = book?.coverUrl,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .aspectRatio(1f, matchHeightConstraintsFirst = true),
                 )
+                Column(
+                    Modifier.weight(1f).fillMaxHeight(),
+                    verticalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    TrackInfo(playback, centered = false)
+                    Scrubber(playback, duration, onSeek)
+                    TransportControls(playback, onPlayPause, onSkipForward, onSkipBack, onNextChapter, onPrevChapter)
+                    SecondaryControls(playback, onSpeed, onSleep)
+                }
+            }
+        } else {
+            Column(
+                Modifier.fillMaxSize().padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceEvenly,
+            ) {
+                CoverArt(
+                    coverUrl = book?.coverUrl,
+                    modifier = Modifier.fillMaxWidth(0.7f).aspectRatio(1f),
+                )
+                TrackInfo(playback, centered = true)
+                Scrubber(playback, duration, onSeek)
+                TransportControls(playback, onPlayPause, onSkipForward, onSkipBack, onNextChapter, onPrevChapter)
+                SecondaryControls(playback, onSpeed, onSleep)
             }
         }
+    }
+}
 
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+@Composable
+private fun CoverArt(coverUrl: String?, modifier: Modifier) {
+    Box(
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant),
+        contentAlignment = Alignment.Center,
+    ) {
+        coverUrl?.let {
+            AsyncImage(
+                model = it,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrackInfo(playback: net.dexxicon.reader.core.media.PlayerUiState, centered: Boolean) {
+    val book = playback.audiobook
+    Column(
+        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+    ) {
+        Text(
+            book?.title.orEmpty(),
+            style = MaterialTheme.typography.titleLarge,
+            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (!book?.author.isNullOrBlank()) {
             Text(
-                book?.title.orEmpty(),
-                style = MaterialTheme.typography.titleLarge,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
+                book.author,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        playback.currentChapterTitle?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp),
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            if (!book?.author.isNullOrBlank()) {
-                Text(
-                    book.author,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            playback.currentChapterTitle?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 8.dp),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
+    }
+}
 
-        Column(Modifier.fillMaxWidth()) {
-            var scrubbing by remember { mutableStateOf<Float?>(null) }
-            Slider(
-                value = scrubbing ?: playback.positionMs.toFloat(),
-                onValueChange = { scrubbing = it },
-                onValueChangeFinished = {
-                    scrubbing?.let { onSeek(it.toLong()) }
-                    scrubbing = null
-                },
-                valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
-                modifier = Modifier.semantics {
-                    contentDescription = "Playback position"
-                    stateDescription = "${formatTime((scrubbing ?: playback.positionMs.toFloat()).toLong())} of ${formatTime(duration)}"
-                },
+@Composable
+private fun Scrubber(
+    playback: net.dexxicon.reader.core.media.PlayerUiState,
+    duration: Long,
+    onSeek: (Long) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        var scrubbing by remember { mutableStateOf<Float?>(null) }
+        Slider(
+            value = scrubbing ?: playback.positionMs.toFloat(),
+            onValueChange = { scrubbing = it },
+            onValueChangeFinished = {
+                scrubbing?.let { onSeek(it.toLong()) }
+                scrubbing = null
+            },
+            valueRange = 0f..(duration.toFloat().coerceAtLeast(1f)),
+            modifier = Modifier.semantics {
+                contentDescription = "Playback position"
+                stateDescription = "${formatTime((scrubbing ?: playback.positionMs.toFloat()).toLong())} of ${formatTime(duration)}"
+            },
+        )
+        Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
+            Text(formatTime((scrubbing ?: playback.positionMs.toFloat()).toLong()), style = MaterialTheme.typography.labelSmall)
+            Text(formatTime(duration), style = MaterialTheme.typography.labelSmall)
+        }
+    }
+}
+
+@Composable
+private fun TransportControls(
+    playback: net.dexxicon.reader.core.media.PlayerUiState,
+    onPlayPause: () -> Unit,
+    onSkipForward: () -> Unit,
+    onSkipBack: () -> Unit,
+    onNextChapter: () -> Unit,
+    onPrevChapter: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onPrevChapter) {
+            Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous chapter")
+        }
+        IconButton(onClick = onSkipBack) {
+            Icon(Icons.Filled.Replay, contentDescription = "Back 15 seconds")
+        }
+        FilledIconButton(onClick = onPlayPause, modifier = Modifier.size(72.dp)) {
+            Icon(
+                if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                contentDescription = if (playback.isPlaying) "Pause" else "Play",
+                modifier = Modifier.size(36.dp),
             )
-            Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-                Text(formatTime((scrubbing ?: playback.positionMs.toFloat()).toLong()), style = MaterialTheme.typography.labelSmall)
-                Text(formatTime(duration), style = MaterialTheme.typography.labelSmall)
-            }
         }
-
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onPrevChapter) {
-                Icon(Icons.Filled.SkipPrevious, contentDescription = "Previous chapter")
-            }
-            IconButton(onClick = onSkipBack) {
-                Icon(Icons.Filled.Replay, contentDescription = "Back 15 seconds")
-            }
-            FilledIconButton(onClick = onPlayPause, modifier = Modifier.size(72.dp)) {
-                Icon(
-                    if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                    contentDescription = if (playback.isPlaying) "Pause" else "Play",
-                    modifier = Modifier.size(36.dp),
-                )
-            }
-            IconButton(onClick = onSkipForward) {
-                Icon(Icons.Filled.Forward30, contentDescription = "Forward 30 seconds")
-            }
-            IconButton(onClick = onNextChapter) {
-                Icon(Icons.Filled.SkipNext, contentDescription = "Next chapter")
-            }
+        IconButton(onClick = onSkipForward) {
+            Icon(Icons.Filled.Forward30, contentDescription = "Forward 30 seconds")
         }
+        IconButton(onClick = onNextChapter) {
+            Icon(Icons.Filled.SkipNext, contentDescription = "Next chapter")
+        }
+    }
+}
 
-        Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
-            TextButton(onClick = onSpeed) {
-                Icon(Icons.Filled.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("  ${playback.speed}×")
-            }
-            TextButton(onClick = onSleep) {
-                Icon(Icons.Filled.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text(if (playback.sleepTimerEndsAt != null) "  Sleep on" else "  Sleep timer")
-            }
+@Composable
+private fun SecondaryControls(
+    playback: net.dexxicon.reader.core.media.PlayerUiState,
+    onSpeed: () -> Unit,
+    onSleep: () -> Unit,
+) {
+    Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
+        TextButton(onClick = onSpeed) {
+            Icon(Icons.Filled.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text("  ${playback.speed}×")
+        }
+        TextButton(onClick = onSleep) {
+            Icon(Icons.Filled.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
+            Text(if (playback.sleepTimerEndsAt != null) "  Sleep on" else "  Sleep timer")
         }
     }
 }

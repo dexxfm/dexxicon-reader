@@ -3,6 +3,7 @@ package net.dexxicon.reader.feature.catalog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -104,114 +105,186 @@ private fun DetailContent(
     onRemoveDownload: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val s = detail.summary
-    // Centre and cap the width so the page reads well on tablets / foldables / desktop.
-    Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
-    Column(
-        Modifier
-            .widthIn(max = 720.dp)
-            .fillMaxHeight()
-            .verticalScroll(rememberScrollState())
-            .padding(20.dp),
-    ) {
-        Row {
-            Box(
+    BoxWithConstraints(modifier.fillMaxSize()) {
+        // On a tablet / unfolded foldable, put the cover + actions in a fixed side column
+        // and let the description + details fill the rest; otherwise stack in one column.
+        val twoPane = maxWidth >= 720.dp
+
+        if (twoPane) {
+            Row(
                 Modifier
-                    .width(120.dp)
-                    .aspectRatio(0.66f)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
             ) {
-                s.coverUrl?.let {
-                    AsyncImage(
-                        model = it,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                Column(
+                    Modifier
+                        .width(300.dp)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    HeroBlock(detail, stacked = true)
+                    Spacer(Modifier.height(16.dp))
+                    ActionButtons(detail, download, onRead, onDownload, onRemoveDownload)
+                }
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    AboutSection(detail)
+                    Spacer(Modifier.height(20.dp))
+                    DetailsSection(detail)
                 }
             }
-            Spacer(Modifier.width(16.dp))
-            Column {
-                Text(s.title, style = MaterialTheme.typography.titleLarge)
-                if (s.authorLine.isNotBlank()) {
-                    Text(
-                        s.authorLine,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
+                Column(
+                    Modifier
+                        .widthIn(max = 720.dp)
+                        .fillMaxHeight()
+                        .verticalScroll(rememberScrollState())
+                        .padding(20.dp),
+                ) {
+                    HeroBlock(detail, stacked = false)
+                    Spacer(Modifier.height(20.dp))
+                    ActionButtons(detail, download, onRead, onDownload, onRemoveDownload)
+                    Spacer(Modifier.height(20.dp))
+                    AboutSection(detail)
+                    Spacer(Modifier.height(20.dp))
+                    DetailsSection(detail)
                 }
-                s.series?.let {
-                    Text(
-                        buildString {
-                            append(it)
-                            s.seriesIndex?.let { n -> append("  #${n.toString().removeSuffix(".0")}") }
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                AssistChip(onClick = {}, label = { Text(formatLabel(detail)) })
             }
         }
+    }
+}
 
-        Spacer(Modifier.height(20.dp))
-        val isAudio = s.format == ContentFormat.AUDIOBOOK
-        val canOpen = s.format == ContentFormat.EPUB ||
-            s.format == ContentFormat.COMIC ||
-            s.format == ContentFormat.PDF ||
-            s.format == ContentFormat.AUDIOBOOK
-        Button(
-            onClick = onRead,
-            enabled = canOpen,
-            modifier = Modifier.fillMaxWidth(),
+@Composable
+private fun HeroBlock(detail: BookDetail, stacked: Boolean) {
+    val s = detail.summary
+    val cover: @Composable (Modifier) -> Unit = { m ->
+        Box(
+            m
+                .aspectRatio(0.66f)
+                .clip(RoundedCornerShape(8.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
-            Icon(Icons.Filled.PlayArrow, contentDescription = null)
-            Text(
-                when {
-                    isAudio -> "  Listen"
-                    canOpen -> "  Read"
-                    else -> "  Read (reader coming soon)"
-                },
-            )
-        }
-        Spacer(Modifier.height(8.dp))
-        DownloadButton(download, onDownload, onRemoveDownload)
-
-        Spacer(Modifier.height(20.dp))
-        Text("About", style = MaterialTheme.typography.titleMedium)
-        val description = detail.description?.takeIf { it.isNotBlank() }
-        Text(
-            description ?: "No description available.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (description != null) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                MaterialTheme.colorScheme.onSurfaceVariant
-            },
-            modifier = Modifier.padding(top = 4.dp),
-        )
-
-        Spacer(Modifier.height(20.dp))
-        Text("Details", style = MaterialTheme.typography.titleMedium)
-        Spacer(Modifier.height(4.dp))
-        MetaRow("Format", formatLabel(detail))
-        MetaRow("Series", s.series?.let {
-            buildString {
-                append(it)
-                s.seriesIndex?.let { n -> append(" #${n.toString().removeSuffix(".0")}") }
+            s.coverUrl?.let {
+                AsyncImage(
+                    model = it,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
-        })
-        MetaRow("Narrator", detail.narratorLine.takeIf { it.isNotBlank() })
-        MetaRow("Publisher", detail.publisher)
-        MetaRow("Published", detail.publishedDate)
-        MetaRow("Language", detail.language)
-        MetaRow("ISBN", detail.isbn)
-        MetaRow("Pages", detail.pageCount?.toString())
-        MetaRow("Categories", detail.categories.takeIf { it.isNotEmpty() }?.joinToString(", "))
-        MetaRow("File size", detail.fileSizeBytes?.let(::formatFileSize))
+        }
     }
+    val titleColumn: @Composable () -> Unit = {
+        Column {
+            Text(s.title, style = MaterialTheme.typography.titleLarge)
+            if (s.authorLine.isNotBlank()) {
+                Text(
+                    s.authorLine,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            s.series?.let {
+                Text(
+                    buildString {
+                        append(it)
+                        s.seriesIndex?.let { n -> append("  #${n.toString().removeSuffix(".0")}") }
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            Spacer(Modifier.height(8.dp))
+            AssistChip(onClick = {}, label = { Text(formatLabel(detail)) })
+        }
     }
+
+    if (stacked) {
+        cover(Modifier.width(160.dp))
+        Spacer(Modifier.height(12.dp))
+        titleColumn()
+    } else {
+        Row {
+            cover(Modifier.width(120.dp))
+            Spacer(Modifier.width(16.dp))
+            titleColumn()
+        }
+    }
+}
+
+@Composable
+private fun ActionButtons(
+    detail: BookDetail,
+    download: Download?,
+    onRead: () -> Unit,
+    onDownload: () -> Unit,
+    onRemoveDownload: () -> Unit,
+) {
+    val format = detail.summary.format
+    val isAudio = format == ContentFormat.AUDIOBOOK
+    val canOpen = format == ContentFormat.EPUB ||
+        format == ContentFormat.COMIC ||
+        format == ContentFormat.PDF ||
+        format == ContentFormat.AUDIOBOOK
+    Button(
+        onClick = onRead,
+        enabled = canOpen,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Icon(Icons.Filled.PlayArrow, contentDescription = null)
+        Text(
+            when {
+                isAudio -> "  Listen"
+                canOpen -> "  Read"
+                else -> "  Read (reader coming soon)"
+            },
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+    DownloadButton(download, onDownload, onRemoveDownload)
+}
+
+@Composable
+private fun AboutSection(detail: BookDetail) {
+    Text("About", style = MaterialTheme.typography.titleMedium)
+    val description = detail.description?.takeIf { it.isNotBlank() }
+    Text(
+        description ?: "No description available.",
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (description != null) {
+            MaterialTheme.colorScheme.onSurface
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        modifier = Modifier.padding(top = 4.dp),
+    )
+}
+
+@Composable
+private fun DetailsSection(detail: BookDetail) {
+    val s = detail.summary
+    Text("Details", style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.height(4.dp))
+    MetaRow("Format", formatLabel(detail))
+    MetaRow("Series", s.series?.let {
+        buildString {
+            append(it)
+            s.seriesIndex?.let { n -> append(" #${n.toString().removeSuffix(".0")}") }
+        }
+    })
+    MetaRow("Narrator", detail.narratorLine.takeIf { it.isNotBlank() })
+    MetaRow("Publisher", detail.publisher)
+    MetaRow("Published", detail.publishedDate)
+    MetaRow("Language", detail.language)
+    MetaRow("ISBN", detail.isbn)
+    MetaRow("Pages", detail.pageCount?.toString())
+    MetaRow("Categories", detail.categories.takeIf { it.isNotEmpty() }?.joinToString(", "))
+    MetaRow("File size", detail.fileSizeBytes?.let(::formatFileSize))
 }
 
 /** The file's extension (`epub`, `cbz`, `m4b`…), falling back to the content-type name. */

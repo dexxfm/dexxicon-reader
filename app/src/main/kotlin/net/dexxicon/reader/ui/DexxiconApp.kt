@@ -1,29 +1,43 @@
 package net.dexxicon.reader.ui
 
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import net.dexxicon.reader.feature.player.navigation.PlayerRoute
 import net.dexxicon.reader.feature.player.navigation.navigateToPlayer
 import net.dexxicon.reader.navigation.DexxiconNavHost
 import net.dexxicon.reader.navigation.TopLevelDestination
+
+/**
+ * At or above this width the side navigation rail replaces the bottom bar — Material's
+ * "medium" window-width class, which covers most phones in landscape plus tablets and
+ * unfolded foldables.
+ */
+private val RAIL_BREAKPOINT = 600.dp
 
 @Composable
 fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
@@ -36,48 +50,69 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
         currentDestination.isOn(destination)
     }
     val onPlayerScreen = currentDestination?.hasRoute(PlayerRoute::class) == true
+    val miniPlayerVisible = playback.audiobook != null && !onPlayerScreen
 
-    Scaffold(
-        // Each destination has its own Scaffold + TopAppBar that consumes the status-bar
-        // inset; without this the shell would add it a second time above every screen.
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        bottomBar = {
-            Column {
-                if (playback.audiobook != null && !onPlayerScreen) {
-                    MiniPlayer(
-                        playback = playback,
-                        onOpen = { serverId, bookId -> navController.navigateToPlayer(serverId, bookId) },
-                        onPlayPause = shellViewModel::playPause,
-                        onDismiss = shellViewModel::dismiss,
-                    )
-                }
-                if (currentTopLevel != null) {
-                    NavigationBar {
-                    TopLevelDestination.entries.forEach { destination ->
-                        NavigationBarItem(
-                            selected = destination == currentTopLevel,
-                            onClick = {
-                                navController.navigate(destination.route) {
-                                    popUpTo(navController.graph.findStartDestination().id) {
-                                        saveState = true
-                                    }
-                                    launchSingleTop = true
-                                    restoreState = true
-                                }
-                            },
-                            icon = { Icon(destination.icon, contentDescription = null) },
-                            label = { Text(stringResource(destination.labelRes)) },
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val wide = maxWidth >= RAIL_BREAKPOINT
+        val showRail = wide && currentTopLevel != null
+        val showBottomBar = !wide && currentTopLevel != null
+
+        Scaffold(
+            // Each destination has its own Scaffold + TopAppBar that consumes the status-bar
+            // inset; without this the shell would add it a second time above every screen.
+            contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            bottomBar = {
+                Column {
+                    if (miniPlayerVisible) {
+                        MiniPlayer(
+                            playback = playback,
+                            onOpen = { serverId, bookId -> navController.navigateToPlayer(serverId, bookId) },
+                            onPlayPause = shellViewModel::playPause,
+                            onDismiss = shellViewModel::dismiss,
                         )
                     }
+                    if (showBottomBar) {
+                        NavigationBar {
+                            TopLevelDestination.entries.forEach { destination ->
+                                NavigationBarItem(
+                                    selected = destination == currentTopLevel,
+                                    onClick = { navController.switchTopLevel(destination) },
+                                    icon = { Icon(destination.icon, contentDescription = null) },
+                                    label = { Text(stringResource(destination.labelRes)) },
+                                )
+                            }
+                        }
+                    }
                 }
+            },
+        ) { innerPadding ->
+            Row(Modifier.fillMaxSize().padding(innerPadding)) {
+                if (showRail) {
+                    NavigationRail {
+                        TopLevelDestination.entries.forEach { destination ->
+                            NavigationRailItem(
+                                selected = destination == currentTopLevel,
+                                onClick = { navController.switchTopLevel(destination) },
+                                icon = { Icon(destination.icon, contentDescription = null) },
+                                label = { Text(stringResource(destination.labelRes)) },
+                            )
+                        }
+                    }
                 }
+                DexxiconNavHost(
+                    navController = navController,
+                    modifier = Modifier.weight(1f).fillMaxSize(),
+                )
             }
-        },
-    ) { innerPadding ->
-        DexxiconNavHost(
-            navController = navController,
-            modifier = Modifier.padding(innerPadding),
-        )
+        }
+    }
+}
+
+private fun NavHostController.switchTopLevel(destination: TopLevelDestination) {
+    navigate(destination.route) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }
 
