@@ -31,6 +31,12 @@ class MediaLibraryContentSourceImpl @Inject constructor(
 
     private val audioOnly = setOf(ContentFormat.AUDIOBOOK)
 
+    private companion object {
+        const val SOURCE_PAGE_SIZE = 60
+        const val MAX_SOURCE_PAGES = 10
+        const val MAX_AUDIOBOOKS = 200
+    }
+
     override suspend fun continueListening(): List<AudiobookCard> =
         progressRepository.observeInProgress().first()
             .filter { it.format == ContentFormat.AUDIOBOOK && !it.title.isNullOrBlank() }
@@ -54,57 +60,71 @@ class MediaLibraryContentSourceImpl @Inject constructor(
             .filter { it.type == ServerType.BOOKORBIT || it.type == ServerType.GRIMMORY }
             .map { LibraryNode(id = "lib:${it.id}", title = it.displayName) }
 
+    /**
+     * Audiobooks are a small fraction of most catalogs and the servers (BookOrbit) don't
+     * all filter by format server-side, so a single fetched page is often all books, no
+     * audio. Auto-page past those — capped — and return one flat list; the car doesn't
+     * scroll hundreds of audiobooks so [page] > 0 is empty.
+     */
     override suspend fun audiobooks(
         serverId: String?,
         page: Int,
         pageSize: Int,
     ): MediaPage<AudiobookCard> {
+        if (page > 0) return MediaPage(emptyList(), hasMore = false)
+
+        val collected = mutableListOf<AudiobookCard>()
+        var sourcePage = 0
+        var hasMore = true
+        while (hasMore && sourcePage < MAX_SOURCE_PAGES && collected.size < MAX_AUDIOBOOKS) {
+            val (cards, more) = fetchAudioPage(serverId, sourcePage, SOURCE_PAGE_SIZE)
+            collected += cards
+            hasMore = more
+            sourcePage++
+        }
+        return MediaPage(collected.distinctBy { it.mediaId }.take(MAX_AUDIOBOOKS), hasMore = false)
+    }
+
+    private suspend fun fetchAudioPage(
+        serverId: String?,
+        page: Int,
+        pageSize: Int,
+    ): Pair<List<AudiobookCard>, Boolean> {
         if (serverId == null) {
-            val result = catalogRepository.allBooks(
+            val value = (
+                catalogRepository.allBooks(null, BookSort.RECENT, page, pageSize, audioOnly)
+                    as? Outcome.Success
+                )?.value ?: return emptyList<AudiobookCard>() to false
+            return value.books.map { book ->
+                val copy = book.primary
+                AudiobookCard(
+                    mediaId = "${copy.serverId}::${copy.bookId}",
+                    title = book.title,
+                    author = book.authorLine.takeIf { it.isNotBlank() },
+                    artworkUri = book.coverUrl,
+                )
+            } to value.hasMore
+        }
+
+        val value = (
+            catalogRepository.books(
+                serverId = serverId,
+                shelfId = null,
                 query = null,
                 sort = BookSort.RECENT,
                 page = page,
                 pageSize = pageSize,
                 formats = audioOnly,
+            ) as? Outcome.Success
+            )?.value ?: return emptyList<AudiobookCard>() to false
+        return value.books.map {
+            AudiobookCard(
+                mediaId = "${it.serverId}::${it.id}",
+                title = it.title,
+                author = it.authorLine.takeIf { line -> line.isNotBlank() },
+                artworkUri = it.coverUrl,
             )
-            val value = (result as? Outcome.Success)?.value
-                ?: return MediaPage(emptyList(), hasMore = false)
-            return MediaPage(
-                items = value.books.map { book ->
-                    val copy = book.primary
-                    AudiobookCard(
-                        mediaId = "${copy.serverId}::${copy.bookId}",
-                        title = book.title,
-                        author = book.authorLine.takeIf { it.isNotBlank() },
-                        artworkUri = book.coverUrl,
-                    )
-                },
-                hasMore = value.hasMore,
-            )
-        }
-
-        val result = catalogRepository.books(
-            serverId = serverId,
-            shelfId = audiobookShelf(serverId),
-            query = null,
-            sort = BookSort.RECENT,
-            page = page,
-            pageSize = pageSize,
-            formats = audioOnly,
-        )
-        val value = (result as? Outcome.Success)?.value
-            ?: return MediaPage(emptyList(), hasMore = false)
-        return MediaPage(
-            items = value.books.map {
-                AudiobookCard(
-                    mediaId = "${it.serverId}::${it.id}",
-                    title = it.title,
-                    author = it.authorLine.takeIf { line -> line.isNotBlank() },
-                    artworkUri = it.coverUrl,
-                )
-            },
-            hasMore = value.hasMore,
-        )
+        } to value.hasMore
     }
 
     override suspend fun search(query: String): List<AudiobookCard> {
@@ -182,13 +202,6 @@ class MediaLibraryContentSourceImpl @Inject constructor(
             durationMs = durationMs,
         )
     }
-
-    /** Grimmory exposes a server-side `file_type` shelf; BookOrbit doesn't. */
-    private suspend fun audiobookShelf(serverId: String): String? =
-        when (serverRepository.get(serverId)?.type) {
-            ServerType.GRIMMORY -> "AUDIOBOOK"
-            else -> null
-        }
 
     private fun ReadingProgress.toCard() = AudiobookCard(
         mediaId = key,
