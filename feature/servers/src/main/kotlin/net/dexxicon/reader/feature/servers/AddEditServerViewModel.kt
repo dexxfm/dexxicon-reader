@@ -73,8 +73,8 @@ class AddEditServerViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
-    private val serverId: String? =
-        savedStateHandle.toRoute<AddEditServerRoute>().serverId
+    private val route: AddEditServerRoute = savedStateHandle.toRoute()
+    private val serverId: String? = route.serverId
 
     private val _uiState = MutableStateFlow(AddEditServerUiState(editingId = serverId))
     val uiState: StateFlow<AddEditServerUiState> = _uiState.asStateFlow()
@@ -82,10 +82,15 @@ class AddEditServerViewModel @Inject constructor(
     /** Kept across the browser round-trip so the exchange still has the PKCE state. */
     private var pendingHandshake: OidcHandshake? = null
 
+    /** The persisted server when editing — merged into the SSO candidate so a re-auth
+     *  keeps fields the edit form doesn't surface (kosync, username). */
+    private var loadedServer: Server? = null
+
     init {
         if (serverId != null) {
             viewModelScope.launch {
                 serverRepository.get(serverId)?.let { server ->
+                    loadedServer = server
                     _uiState.update {
                         it.copy(
                             displayName = server.displayName,
@@ -96,6 +101,7 @@ class AddEditServerViewModel @Inject constructor(
                             savedType = server.type,
                         )
                     }
+                    if (route.reauth) discoverSso()
                 }
             }
         }
@@ -246,13 +252,16 @@ class AddEditServerViewModel @Inject constructor(
         }
     }
 
-    private fun candidateServer() = Server(
-        id = _uiState.value.editingId ?: "",
-        displayName = _uiState.value.displayName.trim(),
-        baseUrl = normalizeUrl(_uiState.value.baseUrl),
-        authMode = AuthMode.OIDC,
-        type = _uiState.value.savedType,
-    )
+    private fun candidateServer(): Server {
+        val base = loadedServer
+        return (base ?: Server(id = "", displayName = "", baseUrl = "")).copy(
+            id = _uiState.value.editingId ?: "",
+            displayName = _uiState.value.displayName.trim().ifBlank { base?.displayName.orEmpty() },
+            baseUrl = normalizeUrl(_uiState.value.baseUrl),
+            authMode = AuthMode.OIDC,
+            type = _uiState.value.savedType,
+        )
+    }
 
     private fun connectedLabel(type: ServerType): String =
         type.name.lowercase().replaceFirstChar(Char::uppercase) + " · connected"

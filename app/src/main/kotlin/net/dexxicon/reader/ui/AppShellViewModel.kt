@@ -1,18 +1,39 @@
 package net.dexxicon.reader.ui
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import net.dexxicon.reader.core.data.ServerRepository
+import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.media.AudiobookPlayer
 import net.dexxicon.reader.core.media.PlayerUiState
 import javax.inject.Inject
 
+/** A server whose session expired and needs the user to sign in again. */
+data class SignInPrompt(val serverId: String, val displayName: String)
+
 @HiltViewModel
 class AppShellViewModel @Inject constructor(
     private val player: AudiobookPlayer,
+    tokenManager: TokenManager,
+    serverRepository: ServerRepository,
+    reauthCoordinator: ReauthCoordinator,
 ) : ViewModel() {
 
     val playback: StateFlow<PlayerUiState> = player.state
+
+    val signInPrompts: StateFlow<List<SignInPrompt>> =
+        combine(tokenManager.needsSignIn, serverRepository.servers) { ids, servers ->
+            servers.filter { it.id in ids }.map { SignInPrompt(it.id, it.displayName) }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** Notification taps asking to re-authenticate a specific server. */
+    val reauthRequests: SharedFlow<String> = reauthCoordinator.requests
 
     fun playPause() = player.playPause()
     fun dismiss() = player.stop()

@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.common.di.ApplicationScope
+import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.DigestSource
 import net.dexxicon.reader.core.data.sync.KoSyncRepository
@@ -40,6 +41,7 @@ class ReadingProgressRepository @Inject constructor(
     private val nativeSync: NativeProgressSync,
     private val librarySeeder: LibrarySeeder,
     private val serverRepository: ServerRepository,
+    private val tokenManager: TokenManager,
     private val downloadRepository: DownloadRepository,
     @ApplicationScope private val appScope: CoroutineScope,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
@@ -214,6 +216,10 @@ class ReadingProgressRepository @Inject constructor(
      */
     suspend fun syncProgress() = withContext(io) {
         val allServers = serverRepository.servers.first()
+
+        // Renew any session that's close to expiring before it's needed below — cheap when
+        // the token is still fresh, and it keeps idle OIDC refresh tokens alive.
+        allServers.forEach { server -> runCatching { tokenManager.refreshIfStale(server) } }
 
         // Touch every configured kosync (generic OPDS) account so each records a "last synced"
         // time even with nothing in progress right now.

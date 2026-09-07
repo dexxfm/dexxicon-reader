@@ -87,7 +87,7 @@ class OidcClient @Inject constructor(
                 authorizationEndpoint = authEndpoint,
                 tokenEndpoint = discovery.token_endpoint,
                 clientId = details.clientId,
-                scopes = details.scopes.ifBlank { DEFAULT_SCOPES },
+                scopes = withOfflineAccess(details.scopes.ifBlank { DEFAULT_SCOPES }),
                 state = state,
                 exchangeUrl = server.resolve(BOOKLORE_WEB_CALLBACK),
                 // The server's own web callback — already whitelisted in the IdP (the web
@@ -113,7 +113,7 @@ class OidcClient @Inject constructor(
                 authorizationEndpoint = authEndpoint,
                 tokenEndpoint = null,
                 clientId = provider.clientId,
-                scopes = provider.scopes.ifBlank { DEFAULT_SCOPES },
+                scopes = withOfflineAccess(provider.scopes.ifBlank { DEFAULT_SCOPES }),
                 state = stateResponse.state,
                 exchangeUrl = server.resolve(BOOKORBIT_CALLBACK),
                 // BookOrbit hardcodes `${appUrl}/oauth2-callback`; capture it with a WebView.
@@ -123,6 +123,20 @@ class OidcClient @Inject constructor(
                 providerName = provider.label,
             ),
         )
+    }
+
+    /**
+     * Guarantee `offline_access` is in the requested scopes so the IdP issues a long-lived
+     * refresh token — without it an OIDC session dies for good the moment the short access
+     * token expires. Harmless when the server config already asked for it.
+     */
+    private fun withOfflineAccess(scopes: String): String {
+        val parts = scopes.split(' ', '\t', '\n').filter { it.isNotBlank() }
+        return if (parts.any { it.equals("offline_access", ignoreCase = true) }) {
+            parts.joinToString(" ")
+        } else {
+            (parts + "offline_access").joinToString(" ")
+        }
     }
 
     private fun Throwable.toFailure(): Outcome<Nothing> = when (this) {
