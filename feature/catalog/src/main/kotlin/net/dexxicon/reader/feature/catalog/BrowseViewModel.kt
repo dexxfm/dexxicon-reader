@@ -88,6 +88,13 @@ class BrowseViewModel @Inject constructor(
                 .debounce(350)
                 .collect { reload() }
         }
+        // A server added (or removed) in Settings must show up here without a manual refresh.
+        viewModelScope.launch {
+            catalogRepository.serverIds
+                .distinctUntilChanged()
+                .drop(1)
+                .collect { reload() }
+        }
     }
 
     fun onQueryChange(value: String) = _uiState.update { it.copy(query = value) }

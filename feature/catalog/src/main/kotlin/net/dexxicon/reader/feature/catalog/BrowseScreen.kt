@@ -4,6 +4,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -327,5 +329,9 @@ private fun BrowseMenu(expanded: Boolean, onDismiss: () -> Unit, actions: Browse
 
 @Composable
 private fun CenterBox(content: @Composable () -> Unit) {
-    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { content() }
+    // Scrollable even when it fits, so pull-to-refresh still works on the empty/error states.
+    Box(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()),
+        contentAlignment = Alignment.Center,
+    ) { content() }
 }

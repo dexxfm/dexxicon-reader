@@ -21,7 +21,9 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,6 +36,10 @@ class CatalogRepository @Inject constructor(
     private val opdsSource: OpdsCatalogSource,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
 ) {
+    /** The configured server ids — Browse re-queries whenever this changes (add / remove). */
+    val serverIds: Flow<Set<String>> =
+        serverRepository.servers.map { list -> list.map { it.id }.toSet() }
+
     private fun sourceFor(server: Server): CatalogSource = when (server.type) {
         ServerType.GRIMMORY -> grimmorySource
         ServerType.BOOKORBIT -> bookOrbitSource

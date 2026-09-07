@@ -17,6 +17,8 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.LinearProgressIndicator
@@ -103,7 +105,13 @@ fun LibraryScreen(
                 state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     CircularProgressIndicator()
                 }
-                empty -> Box(Modifier.fillMaxSize().padding(32.dp), Alignment.Center) {
+                empty -> Box(
+                    Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(32.dp),
+                    Alignment.Center,
+                ) {
                     Text(
                         "Books you read or make available offline show up here.",
                         textAlign = TextAlign.Center,
