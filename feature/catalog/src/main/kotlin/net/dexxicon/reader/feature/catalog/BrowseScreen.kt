@@ -1,6 +1,7 @@
 package net.dexxicon.reader.feature.catalog
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -19,15 +19,12 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ViewList
-import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -39,7 +36,9 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -50,9 +49,24 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.dexxicon.reader.core.designsystem.component.BookContextMenu
+import net.dexxicon.reader.core.designsystem.component.ContentFilterChips
 import net.dexxicon.reader.core.designsystem.component.CoverImage
+import net.dexxicon.reader.core.designsystem.component.ViewModeToggle
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.BookSort
+import net.dexxicon.reader.core.model.BookViewMode
+import net.dexxicon.reader.core.model.ContentFilter
+import net.dexxicon.reader.core.model.DownloadStatus
+
+/** What the long-press menu on a Browse card needs to act on and render. */
+private data class BrowseItemActions(
+    val downloadStatus: DownloadStatus?,
+    val onMarkRead: () -> Unit,
+    val onMarkUnread: () -> Unit,
+    val onDetails: () -> Unit,
+    val onDownloadOrRemove: () -> Unit,
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,7 +81,7 @@ fun BrowseScreen(
 
     val shouldLoadMore by remember {
         derivedStateOf {
-            val last = if (state.viewMode == BrowseViewMode.GRID) {
+            val last = if (state.viewMode == BookViewMode.GRID) {
                 gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
             } else {
                 listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index
@@ -77,6 +91,23 @@ fun BrowseScreen(
     }
     androidx.compose.runtime.LaunchedEffect(shouldLoadMore) {
         if (shouldLoadMore) viewModel.loadMore()
+    }
+
+    fun actionsFor(book: AggregatedBook): BrowseItemActions {
+        val c = book.primary
+        return BrowseItemActions(
+            downloadStatus = if (book.downloadedIn(overlays)) DownloadStatus.DONE else null,
+            onMarkRead = { viewModel.markRead(c.serverId, c.bookId) },
+            onMarkUnread = { viewModel.markUnread(c.serverId, c.bookId) },
+            onDetails = { onOpenBook(book) },
+            onDownloadOrRemove = {
+                viewModel.downloadOrRemove(
+                    c.serverId,
+                    c.bookId,
+                    if (book.downloadedIn(overlays)) DownloadStatus.DONE else null,
+                )
+            },
+        )
     }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Browse") }) }) { padding ->
@@ -94,25 +125,21 @@ fun BrowseScreen(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
             )
 
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                items(BrowseFilter.entries) { filter ->
-                    FilterChip(
-                        selected = state.filter == filter,
-                        onClick = { viewModel.onFilterSelected(filter) },
-                        label = { Text(filter.label) },
-                    )
-                }
-            }
+            ContentFilterChips(state.filter, viewModel::onFilterSelected)
 
-            ControlsRow(
-                sort = state.sort,
-                onSort = viewModel::onSortSelected,
-                viewMode = state.viewMode,
-                onToggleView = viewModel::toggleViewMode,
-            )
+            Row(
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val next = BookSort.entries[(state.sort.ordinal + 1) % BookSort.entries.size]
+                FilterChip(
+                    selected = false,
+                    onClick = { viewModel.onSortSelected(next) },
+                    label = { Text("Sort: ${state.sort.name.lowercase()}") },
+                )
+                ViewModeToggle(state.viewMode, viewModel::toggleViewMode)
+            }
 
             PullToRefreshBox(
                 isRefreshing = state.refreshing,
@@ -133,7 +160,7 @@ fun BrowseScreen(
                         Text(
                             when {
                                 state.query.isNotBlank() -> "No books match “${state.query}”."
-                                state.filter != BrowseFilter.ALL -> "No ${state.filter.label.lowercase()} here."
+                                state.filter != ContentFilter.ALL -> "No ${state.filter.label.lowercase()} here."
                                 else -> "Add a server in Settings to start browsing."
                             },
                             textAlign = TextAlign.Center,
@@ -141,7 +168,7 @@ fun BrowseScreen(
                             modifier = Modifier.padding(32.dp),
                         )
                     }
-                    state.viewMode == BrowseViewMode.GRID -> LazyVerticalGrid(
+                    state.viewMode == BookViewMode.GRID -> LazyVerticalGrid(
                         columns = GridCells.Adaptive(112.dp),
                         state = gridState,
                         modifier = Modifier.fillMaxSize(),
@@ -155,6 +182,7 @@ fun BrowseScreen(
                                 progress = book.progressFrom(overlays),
                                 downloaded = book.downloadedIn(overlays),
                                 onClick = { onOpenBook(book) },
+                                actions = actionsFor(book),
                             )
                         }
                     }
@@ -169,6 +197,7 @@ fun BrowseScreen(
                                 progress = book.progressFrom(overlays),
                                 downloaded = book.downloadedIn(overlays),
                                 onClick = { onOpenBook(book) },
+                                actions = actionsFor(book),
                             )
                             HorizontalDivider()
                         }
@@ -185,41 +214,16 @@ private fun AggregatedBook.progressFrom(overlays: BookOverlays): Float? =
 private fun AggregatedBook.downloadedIn(overlays: BookOverlays): Boolean =
     copies.any { "${it.serverId}::${it.bookId}" in overlays.downloaded }
 
-@Composable
-private fun ControlsRow(
-    sort: BookSort,
-    onSort: (BookSort) -> Unit,
-    viewMode: BrowseViewMode,
-    onToggleView: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val next = BookSort.entries[(sort.ordinal + 1) % BookSort.entries.size]
-        FilterChip(
-            selected = false,
-            onClick = { onSort(next) },
-            label = { Text("Sort: ${sort.name.lowercase()}") },
-        )
-        IconButton(onClick = onToggleView) {
-            if (viewMode == BrowseViewMode.LIST) {
-                Icon(Icons.Filled.GridView, contentDescription = "Grid view")
-            } else {
-                Icon(Icons.AutoMirrored.Filled.ViewList, contentDescription = "List view")
-            }
-        }
-    }
-}
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BrowseRow(
     book: AggregatedBook,
     progress: Float?,
     downloaded: Boolean,
     onClick: () -> Unit,
+    actions: BrowseItemActions,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     val pct = progress?.let { (it * 100).toInt() }
     val libraries = book.copies.size
     val subtitle = buildString {
@@ -229,81 +233,89 @@ private fun BrowseRow(
         if (libraries > 1) append(" · On $libraries libraries")
         if (pct != null) append(" · $pct% read")
     }
-    ListItem(
-        headlineContent = {
-            Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        },
-        supportingContent = {
-            Text(subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis)
-        },
-        leadingContent = {
-            Box(Modifier.width(44.dp)) {
-                // No format badge here — it's too cramped at 44dp and the subtitle already
-                // names the format.
-                CoverImage(
-                    coverUrl = book.coverUrl,
-                    contentDescription = null,
-                    progress = progress,
-                    downloaded = downloaded,
-                )
-            }
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .semantics(mergeDescendants = true) {
-                contentDescription = "${book.title}, ${book.authorLine}, $subtitle"
+    Box {
+        ListItem(
+            headlineContent = { Text(book.title, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+            supportingContent = { Text(subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis) },
+            leadingContent = {
+                Box(Modifier.width(44.dp)) {
+                    CoverImage(book.coverUrl, contentDescription = null, progress = progress, downloaded = downloaded)
+                }
             },
-    )
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = { menuOpen = true })
+                .semantics(mergeDescendants = true) {
+                    contentDescription = "${book.title}, ${book.authorLine}, $subtitle"
+                },
+        )
+        BrowseMenu(menuOpen, { menuOpen = false }, actions)
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun BrowseGridCard(
     book: AggregatedBook,
     progress: Float?,
     downloaded: Boolean,
     onClick: () -> Unit,
+    actions: BrowseItemActions,
 ) {
+    var menuOpen by remember { mutableStateOf(false) }
     val pct = progress?.let { (it * 100).toInt() }
-    val secondary = when {
-        book.copies.size > 1 -> "On ${book.copies.size} libraries"
-        else -> book.authorLine
-    }
+    val secondary = if (book.copies.size > 1) "On ${book.copies.size} libraries" else book.authorLine
     val label = buildString {
         append(book.title)
         if (book.authorLine.isNotBlank()) append(", ${book.authorLine}")
         if (pct != null) append(", $pct% read")
         if (downloaded) append(", downloaded")
     }
-    Column(
-        Modifier
-            .clickable(onClick = onClick)
-            .semantics(mergeDescendants = true) { contentDescription = label },
-    ) {
-        CoverImage(
-            coverUrl = book.coverUrl,
-            contentDescription = null,
-            progress = progress,
-            downloaded = downloaded,
-            format = book.format,
-        )
-        Text(
-            book.title,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp),
-        )
-        if (secondary.isNotBlank()) {
-            Text(
-                secondary,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+    Box {
+        Column(
+            Modifier
+                .combinedClickable(onClick = onClick, onLongClick = { menuOpen = true })
+                .semantics(mergeDescendants = true) { contentDescription = label },
+        ) {
+            CoverImage(
+                coverUrl = book.coverUrl,
+                contentDescription = null,
+                progress = progress,
+                downloaded = downloaded,
+                format = book.format,
             )
+            Text(
+                book.title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            if (secondary.isNotBlank()) {
+                Text(
+                    secondary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
+        BrowseMenu(menuOpen, { menuOpen = false }, actions)
     }
+}
+
+@Composable
+private fun BrowseMenu(expanded: Boolean, onDismiss: () -> Unit, actions: BrowseItemActions) {
+    BookContextMenu(
+        expanded = expanded,
+        onDismiss = onDismiss,
+        downloadStatus = actions.downloadStatus,
+        onMarkRead = actions.onMarkRead,
+        onMarkUnread = actions.onMarkUnread,
+        onDetails = actions.onDetails,
+        onDownloadOrRemove = actions.onDownloadOrRemove,
+    )
 }
 
 @Composable

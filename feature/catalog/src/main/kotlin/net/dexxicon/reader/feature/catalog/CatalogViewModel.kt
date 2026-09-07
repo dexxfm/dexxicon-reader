@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.navigation.toRoute
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -17,14 +18,18 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
+import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.CatalogShelf
+import net.dexxicon.reader.core.model.ContentFilter
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.feature.catalog.navigation.CatalogRoute
 import javax.inject.Inject
@@ -41,6 +46,8 @@ data class CatalogUiState(
     val selectedShelfId: String? = null,
     val query: String = "",
     val sort: BookSort = BookSort.RECENT,
+    val filter: ContentFilter = ContentFilter.ALL,
+    val viewMode: BookViewMode = BookViewMode.GRID,
     val books: List<BookSummary> = emptyList(),
     val loading: Boolean = true,
     val loadingMore: Boolean = false,
@@ -53,6 +60,7 @@ data class CatalogUiState(
 @HiltViewModel
 class CatalogViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
+    private val bookActions: BookActions,
     progressRepository: ReadingProgressRepository,
     downloadRepository: DownloadRepository,
     savedStateHandle: SavedStateHandle,
@@ -60,6 +68,11 @@ class CatalogViewModel @Inject constructor(
 
     private val route = savedStateHandle.toRoute<CatalogRoute>()
     val serverId: String = route.serverId
+
+    private companion object {
+        const val MAX_AUTO_PAGES = 12
+    }
+    private var autoPagesLeft = MAX_AUTO_PAGES
 
     private val _uiState = MutableStateFlow(CatalogUiState(serverName = route.serverName))
     val uiState: StateFlow<CatalogUiState> = _uiState.asStateFlow()
@@ -114,8 +127,24 @@ class CatalogViewModel @Inject constructor(
         reload()
     }
 
+    fun onFilterSelected(filter: ContentFilter) {
+        if (filter == _uiState.value.filter) return
+        _uiState.update { it.copy(filter = filter) }
+        reload()
+    }
+
+    fun toggleViewMode() = _uiState.update {
+        it.copy(viewMode = if (it.viewMode == BookViewMode.LIST) BookViewMode.GRID else BookViewMode.LIST)
+    }
+
+    fun markRead(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, true)
+    fun markUnread(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, false)
+    fun downloadOrRemove(serverId: String, bookId: String, status: DownloadStatus?) =
+        bookActions.downloadOrRemove(serverId, bookId, status)
+
     fun reload() {
         nextPage = 0
+        autoPagesLeft = MAX_AUTO_PAGES
         _uiState.update { it.copy(loading = true, error = null, books = emptyList(), endReached = false) }
         fetchPage(replace = true)
     }
@@ -124,6 +153,7 @@ class CatalogViewModel @Inject constructor(
     fun refresh() {
         if (_uiState.value.refreshing) return
         nextPage = 0
+        autoPagesLeft = MAX_AUTO_PAGES
         _uiState.update { it.copy(refreshing = true, error = null, endReached = false) }
         loadShelves()
         fetchPage(replace = true)
@@ -140,7 +170,7 @@ class CatalogViewModel @Inject constructor(
         fetchPage(replace = false)
     }
 
-    private fun fetchPage(replace: Boolean) = viewModelScope.launch {
+    private fun fetchPage(replace: Boolean): Job = viewModelScope.launch {
         val state = _uiState.value
         when (
             val result = catalogRepository.books(
@@ -149,19 +179,30 @@ class CatalogViewModel @Inject constructor(
                 query = state.query.takeIf { it.isNotBlank() },
                 sort = state.sort,
                 page = nextPage,
+                formats = state.filter.formats,
             )
         ) {
             is Outcome.Success -> {
                 nextPage += 1
-                _uiState.update {
+                val endReached = !result.value.hasMore
+                val books = _uiState.updateAndGet {
+                    val prev = if (replace) emptyList() else it.books
+                    val merged = (prev + result.value.books).distinctBy { b -> b.id }
                     it.copy(
-                        books = if (replace) result.value.books else it.books + result.value.books,
-                        loading = false,
-                        loadingMore = false,
+                        books = merged,
+                        endReached = endReached,
                         refreshing = false,
-                        endReached = !result.value.hasMore,
                         error = null,
+                        loading = merged.isEmpty() && !endReached,
+                        loadingMore = false,
                     )
+                }.books
+                // A format filter can leave a fetched page with nothing to show — keep
+                // pulling pages until we have results, run out, or hit the cap.
+                if (books.isEmpty() && !endReached && autoPagesLeft-- > 0) {
+                    fetchPage(replace = false)
+                } else if (books.isEmpty()) {
+                    _uiState.update { it.copy(loading = false) }
                 }
             }
             is Outcome.Failure -> _uiState.update {

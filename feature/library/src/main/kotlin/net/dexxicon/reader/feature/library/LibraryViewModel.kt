@@ -8,11 +8,15 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
+import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import javax.inject.Inject
 
@@ -32,6 +36,7 @@ data class LibraryUiState(
     val downloads: List<Download> = emptyList(),
     /** Reading progress (0–1) for the Downloaded grid, keyed by "serverId::bookId". */
     val downloadProgress: Map<String, Float> = emptyMap(),
+    val viewMode: BookViewMode = BookViewMode.GRID,
     val loading: Boolean = true,
     val refreshing: Boolean = false,
 )
@@ -40,16 +45,19 @@ data class LibraryUiState(
 class LibraryViewModel @Inject constructor(
     private val downloadRepository: DownloadRepository,
     private val progressRepository: ReadingProgressRepository,
+    private val bookActions: BookActions,
 ) : ViewModel() {
 
     private val refreshing = MutableStateFlow(false)
+    private val viewMode = MutableStateFlow(BookViewMode.GRID)
 
     val uiState: StateFlow<LibraryUiState> =
         combine(
             downloadRepository.downloads,
             progressRepository.observeAll(),
             refreshing,
-        ) { downloads, progressByKey, isRefreshing ->
+            viewMode,
+        ) { downloads, progressByKey, isRefreshing, mode ->
             val inProgress = progressByKey.values
                 .filter { it.isInProgress }
                 .sortedByDescending { it.updatedAt }
@@ -61,6 +69,7 @@ class LibraryViewModel @Inject constructor(
                 downloadProgress = progressByKey
                     .mapValues { (_, p) -> (p.percent ?: 0.0).toFloat().coerceIn(0f, 1f) }
                     .filterValues { it > 0f },
+                viewMode = mode,
                 loading = false,
                 refreshing = isRefreshing,
             )
@@ -79,6 +88,15 @@ class LibraryViewModel @Inject constructor(
             refreshing.value = false
         }
     }
+
+    fun toggleViewMode() = viewMode.update {
+        if (it == BookViewMode.LIST) BookViewMode.GRID else BookViewMode.LIST
+    }
+
+    fun markRead(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, true)
+    fun markUnread(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, false)
+    fun downloadOrRemove(serverId: String, bookId: String, status: DownloadStatus?) =
+        bookActions.downloadOrRemove(serverId, bookId, status)
 
     fun remove(download: Download) {
         viewModelScope.launch { downloadRepository.remove(download.serverId, download.bookId) }

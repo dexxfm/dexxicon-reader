@@ -19,35 +19,22 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.BookSort
-import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.BookViewMode
+import net.dexxicon.reader.core.model.ContentFilter
 import net.dexxicon.reader.core.model.DownloadStatus
 import javax.inject.Inject
-
-/** The chips above the Browse list. */
-enum class BrowseFilter(val label: String, val formats: Set<ContentFormat>?) {
-    ALL("All", null),
-    BOOKS("Books", setOf(ContentFormat.EPUB)),
-    COMICS("Comics", setOf(ContentFormat.COMIC)),
-    AUDIOBOOKS("Audiobooks", setOf(ContentFormat.AUDIOBOOK)),
-    PDFS("PDFs", setOf(ContentFormat.PDF)),
-    OTHER(
-        "Other",
-        setOf(ContentFormat.FB2, ContentFormat.MOBI, ContentFormat.AZW3, ContentFormat.UNKNOWN),
-    ),
-}
-
-enum class BrowseViewMode { LIST, GRID }
 
 data class BrowseUiState(
     val query: String = "",
     val sort: BookSort = BookSort.RECENT,
-    val filter: BrowseFilter = BrowseFilter.ALL,
-    val viewMode: BrowseViewMode = BrowseViewMode.LIST,
+    val filter: ContentFilter = ContentFilter.ALL,
+    val viewMode: BookViewMode = BookViewMode.LIST,
     val books: List<AggregatedBook> = emptyList(),
     val loading: Boolean = true,
     val loadingMore: Boolean = false,
@@ -60,6 +47,7 @@ data class BrowseUiState(
 @HiltViewModel
 class BrowseViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
+    private val bookActions: BookActions,
     progressRepository: ReadingProgressRepository,
     downloadRepository: DownloadRepository,
 ) : ViewModel() {
@@ -109,7 +97,7 @@ class BrowseViewModel @Inject constructor(
         reload()
     }
 
-    fun onFilterSelected(filter: BrowseFilter) {
+    fun onFilterSelected(filter: ContentFilter) {
         if (filter == _uiState.value.filter) return
         _uiState.update { it.copy(filter = filter) }
         reload()
@@ -117,9 +105,14 @@ class BrowseViewModel @Inject constructor(
 
     fun toggleViewMode() = _uiState.update {
         it.copy(
-            viewMode = if (it.viewMode == BrowseViewMode.LIST) BrowseViewMode.GRID else BrowseViewMode.LIST,
+            viewMode = if (it.viewMode == BookViewMode.LIST) BookViewMode.GRID else BookViewMode.LIST,
         )
     }
+
+    fun markRead(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, true)
+    fun markUnread(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, false)
+    fun downloadOrRemove(serverId: String, bookId: String, status: DownloadStatus?) =
+        bookActions.downloadOrRemove(serverId, bookId, status)
 
     /** Auto-paging past filter-empty pages is capped so a filter with no matches can't
      *  crawl an entire catalogue. */

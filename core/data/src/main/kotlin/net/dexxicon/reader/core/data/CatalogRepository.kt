@@ -57,9 +57,18 @@ class CatalogRepository @Inject constructor(
         sort: BookSort,
         page: Int,
         pageSize: Int = DEFAULT_PAGE_SIZE,
+        /** Keep only these content formats; null = all. Applied client-side to the page. */
+        formats: Set<ContentFormat>? = null,
     ): Outcome<BookPage> = withContext(io) {
         val (server, source) = resolve(serverId) ?: return@withContext notFound()
-        source.books(server, shelfId, query, sort, page, pageSize)
+        val result = source.books(server, shelfId, query, sort, page, pageSize)
+        when {
+            formats == null -> result
+            result is Outcome.Success -> Outcome.Success(
+                result.value.copy(books = result.value.books.filter { it.format in formats }),
+            )
+            else -> result
+        }
     }
 
     suspend fun detail(serverId: String, bookId: String): Outcome<BookDetail> = withContext(io) {
