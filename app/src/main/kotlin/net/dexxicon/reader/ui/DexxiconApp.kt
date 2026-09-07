@@ -1,6 +1,7 @@
 package net.dexxicon.reader.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -37,6 +38,9 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
     val onPlayerScreen = currentDestination?.hasRoute(PlayerRoute::class) == true
 
     Scaffold(
+        // Each destination has its own Scaffold + TopAppBar that consumes the status-bar
+        // inset; without this the shell would add it a second time above every screen.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
             Column {
                 if (playback.audiobook != null && !onPlayerScreen) {

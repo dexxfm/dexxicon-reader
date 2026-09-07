@@ -30,11 +30,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
@@ -189,29 +195,66 @@ private fun ReaderContent(
             }
         },
     ) { padding ->
-        AndroidView(
-            factory = { ctx ->
-                val container = FragmentContainerView(ctx).apply {
-                    id = View.generateViewId()
-                    layoutParams = FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                    )
-                }
-                if (fragmentManager.findFragmentByTag(NAV_FRAGMENT_TAG) == null &&
-                    !fragmentManager.isStateSaved
-                ) {
-                    fragmentManager.commit {
-                        setReorderingAllowed(true)
-                        add(container.id, ImageNavigatorFragment::class.java, null, NAV_FRAGMENT_TAG)
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(padding)
+                // A quick horizontal flick turns the page. Readium's image pager doesn't do
+                // this itself when it's embedded in Compose, so we watch the gesture in the
+                // Final pass (never consuming, so taps / pinch-zoom / pan still reach it).
+                .pointerInput(navigator) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
+                        var dx = 0f
+                        var dy = 0f
+                        var pointers = 1
+                        var lastTime = down.uptimeMillis
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            pointers = maxOf(pointers, event.changes.size)
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                            if (change == null || !change.pressed) break
+                            dx += change.positionChangeIgnoreConsumed().x
+                            dy += change.positionChangeIgnoreConsumed().y
+                            lastTime = change.uptimeMillis
+                        }
+                        val elapsed = lastTime - down.uptimeMillis
+                        val minX = size.width * SWIPE_MIN_FRACTION
+                        if (pointers == 1 && elapsed in 1..SWIPE_MAX_MS &&
+                            abs(dx) >= minX && abs(dx) > abs(dy) * 1.5f
+                        ) {
+                            if (dx < 0) navigator?.goForward(true) else navigator?.goBackward(true)
+                        }
                     }
-                }
-                container
-            },
-            modifier = Modifier.fillMaxSize().padding(padding),
-        )
+                },
+        ) {
+            AndroidView(
+                factory = { ctx ->
+                    val container = FragmentContainerView(ctx).apply {
+                        id = View.generateViewId()
+                        layoutParams = FrameLayout.LayoutParams(
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                            FrameLayout.LayoutParams.MATCH_PARENT,
+                        )
+                    }
+                    if (fragmentManager.findFragmentByTag(NAV_FRAGMENT_TAG) == null &&
+                        !fragmentManager.isStateSaved
+                    ) {
+                        fragmentManager.commit {
+                            setReorderingAllowed(true)
+                            add(container.id, ImageNavigatorFragment::class.java, null, NAV_FRAGMENT_TAG)
+                        }
+                    }
+                    container
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
+
+private const val SWIPE_MIN_FRACTION = 0.18f
+private const val SWIPE_MAX_MS = 600L
 
 @Composable
 private fun Center(content: @Composable () -> Unit) {

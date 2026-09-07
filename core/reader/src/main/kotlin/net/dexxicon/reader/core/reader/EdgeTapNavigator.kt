@@ -42,6 +42,9 @@ class EdgeTapNavigator(
 
     override fun onDrag(event: DragEvent): Boolean {
         if (event.type != DragEvent.Type.End) return false
+        // In paginated mode the navigator turns pages on a swipe itself; only step in for
+        // vertical-scroll layouts, where a horizontal swipe would otherwise do nothing.
+        if (!navigator.overflow.value.scroll) return false
         val width = viewWidth().takeIf { it > 0 } ?: return false
         val dx = event.offset.x
         val dy = event.offset.y
