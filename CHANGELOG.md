@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 — 2026-09-07
+
+Browse is now one library, and reading position round-trips fully with Grimmory.
+
+- **Browse** is a single, de-duplicated list of books merged across every server. A book
+  on more than one server appears once, tagged "On N libraries".
+- **Server setup moved to Settings** — add / edit / remove servers there; tap one to
+  browse just that library.
+- Opening a book that lives on more than one server asks **which server** to open it from
+  (a bottom sheet, matching the rest of the app's modals).
+- **Format badges**: every cover shows a colour-coded tag (EPUB, PDF, COMIC, AUDIO, …) in
+  its bottom-right corner; the legend is in Settings.
+- **Grimmory two-way sync now carries the exact page**, not just a percentage — read a
+  comic or PDF in the app and the website resumes on the right page, and vice-versa. Also
+  fixes silent progress-push failures and adds page sync for BookOrbit.
+
 ## 0.7.4 — 2026-09-06
 
 Adaptive layouts, landscape, and foldable support.
