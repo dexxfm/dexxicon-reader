@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.9.0 — 2026-09-07
+
+Reading status, better Browse controls, and the Library fills itself in.
+
+- **Reading status** — every book's status (Unread, Want to read, Reading, On hold,
+  Rereading, Read, Did not finish) shows on its detail screen and can be set there or from
+  the long-press menu's new **Reading options**. "Mark as read" / "Mark as unread" set the
+  status too, so the position and the status never disagree. On a book that lives on more
+  than one server, the change applies to **every** copy.
+- **Browse** gets format filter chips (All / Books / Comics / Audiobooks / PDFs / Other)
+  and a grid ⇆ list toggle; Library gets the same view toggle.
+- **Long-press any book** — in Browse, Library, or a single server's catalog — for mark
+  read/unread, reading options, book details, and download/remove.
+- **The Library fills in on its own** — adding a server (and every sync afterwards) pulls
+  that server's own "continue reading" / "continue listening" lists, so books you have in
+  progress on the website show up without opening them here first.
+- **Settings shows which account** each server is signed in as.
+
 ## 0.8.0 — 2026-09-07
 
 Browse is now one library, and reading position round-trips fully with Grimmory.
