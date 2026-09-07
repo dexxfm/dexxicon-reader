@@ -13,6 +13,7 @@ import net.dexxicon.reader.core.model.AggregatedBookPage
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.CatalogShelf
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
@@ -80,6 +81,8 @@ class CatalogRepository @Inject constructor(
         sort: BookSort,
         page: Int,
         pageSize: Int = DEFAULT_PAGE_SIZE,
+        /** Keep only these content formats; null = all. Applied to the merged result. */
+        formats: Set<ContentFormat>? = null,
     ): Outcome<AggregatedBookPage> = withContext(io) {
         val servers = serverRepository.servers.first()
         if (servers.isEmpty()) {
@@ -99,7 +102,11 @@ class CatalogRepository @Inject constructor(
             return@withContext results.firstNotNullOfOrNull { it.second as? Outcome.Failure }
                 ?: Outcome.Failure(DexxiconError.Network("Couldn't reach any server"))
         }
-        Outcome.Success(mergeAggregated(pages, sort))
+        val merged = mergeAggregated(pages, sort)
+        Outcome.Success(
+            if (formats == null) merged
+            else merged.copy(books = merged.books.filter { it.format in formats }),
+        )
     }
 
     private fun <T> notFound(): Outcome<T> =

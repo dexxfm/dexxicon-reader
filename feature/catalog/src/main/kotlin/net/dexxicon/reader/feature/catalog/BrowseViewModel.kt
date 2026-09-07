@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
@@ -22,12 +24,30 @@ import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.BookSort
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.DownloadStatus
 import javax.inject.Inject
+
+/** The chips above the Browse list. */
+enum class BrowseFilter(val label: String, val formats: Set<ContentFormat>?) {
+    ALL("All", null),
+    BOOKS("Books", setOf(ContentFormat.EPUB)),
+    COMICS("Comics", setOf(ContentFormat.COMIC)),
+    AUDIOBOOKS("Audiobooks", setOf(ContentFormat.AUDIOBOOK)),
+    PDFS("PDFs", setOf(ContentFormat.PDF)),
+    OTHER(
+        "Other",
+        setOf(ContentFormat.FB2, ContentFormat.MOBI, ContentFormat.AZW3, ContentFormat.UNKNOWN),
+    ),
+}
+
+enum class BrowseViewMode { LIST, GRID }
 
 data class BrowseUiState(
     val query: String = "",
     val sort: BookSort = BookSort.RECENT,
+    val filter: BrowseFilter = BrowseFilter.ALL,
+    val viewMode: BrowseViewMode = BrowseViewMode.LIST,
     val books: List<AggregatedBook> = emptyList(),
     val loading: Boolean = true,
     val loadingMore: Boolean = false,
@@ -66,6 +86,10 @@ class BrowseViewModel @Inject constructor(
 
     private var nextPage = 0
 
+    private companion object {
+        const val MAX_AUTO_PAGES = 12
+    }
+
     init {
         reload()
         viewModelScope.launch {
@@ -85,8 +109,25 @@ class BrowseViewModel @Inject constructor(
         reload()
     }
 
+    fun onFilterSelected(filter: BrowseFilter) {
+        if (filter == _uiState.value.filter) return
+        _uiState.update { it.copy(filter = filter) }
+        reload()
+    }
+
+    fun toggleViewMode() = _uiState.update {
+        it.copy(
+            viewMode = if (it.viewMode == BrowseViewMode.LIST) BrowseViewMode.GRID else BrowseViewMode.LIST,
+        )
+    }
+
+    /** Auto-paging past filter-empty pages is capped so a filter with no matches can't
+     *  crawl an entire catalogue. */
+    private var autoPagesLeft = MAX_AUTO_PAGES
+
     fun reload() {
         nextPage = 0
+        autoPagesLeft = MAX_AUTO_PAGES
         _uiState.update { it.copy(loading = true, error = null, books = emptyList(), endReached = false) }
         fetchPage(replace = true)
     }
@@ -94,6 +135,7 @@ class BrowseViewModel @Inject constructor(
     fun refresh() {
         if (_uiState.value.refreshing) return
         nextPage = 0
+        autoPagesLeft = MAX_AUTO_PAGES
         _uiState.update { it.copy(refreshing = true, error = null, endReached = false) }
         fetchPage(replace = true)
     }
@@ -109,27 +151,38 @@ class BrowseViewModel @Inject constructor(
         fetchPage(replace = false)
     }
 
-    private fun fetchPage(replace: Boolean) = viewModelScope.launch {
+    private fun fetchPage(replace: Boolean): Job = viewModelScope.launch {
         val state = _uiState.value
         when (
             val result = catalogRepository.allBooks(
                 query = state.query.takeIf { it.isNotBlank() },
                 sort = state.sort,
                 page = nextPage,
+                formats = state.filter.formats,
             )
         ) {
             is Outcome.Success -> {
                 nextPage += 1
-                _uiState.update {
-                    val merged = if (replace) result.value.books else it.books + result.value.books
+                val endReached = !result.value.hasMore
+                val books = _uiState.updateAndGet {
+                    val prev: List<AggregatedBook> = if (replace) emptyList() else it.books
+                    val merged = prev + result.value.books
                     it.copy(
                         books = merged.distinctBy { book -> book.key },
-                        loading = false,
-                        loadingMore = false,
+                        endReached = endReached,
                         refreshing = false,
-                        endReached = !result.value.hasMore,
                         error = null,
+                        // Keep showing the spinner while we auto-page past empty filtered pages.
+                        loading = merged.isEmpty() && !endReached,
+                        loadingMore = false,
                     )
+                }.books
+                // A format filter can leave a fetched page with nothing to show — pull the
+                // next one until we have results, run out, or hit the cap.
+                if (books.isEmpty() && !endReached && autoPagesLeft-- > 0) {
+                    fetchPage(replace = false)
+                } else if (books.isEmpty()) {
+                    _uiState.update { it.copy(loading = false) }
                 }
             }
             is Outcome.Failure -> _uiState.update {
