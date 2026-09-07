@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.database.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import net.dexxicon.reader.core.model.ContentFormat
@@ -24,6 +25,9 @@ data class DownloadEntity(
     val localPath: String?,
     val error: String?,
     val updatedAt: Long,
+    /** When the download was first queued. Fixed for the row's life — the list orders by it
+     *  so tiles don't jump around as progress changes. */
+    @ColumnInfo(defaultValue = "0") val createdAt: Long = 0L,
 ) {
     fun toDomain(): Download = Download(
         serverId = serverId,
@@ -67,6 +71,7 @@ data class DownloadEntity(
             localPath = null,
             error = null,
             updatedAt = System.currentTimeMillis(),
+            createdAt = System.currentTimeMillis(),
         )
     }
 }

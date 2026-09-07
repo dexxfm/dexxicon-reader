@@ -15,6 +15,7 @@ import dagger.assisted.AssistedInject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.database.dao.DownloadDao
+import net.dexxicon.reader.core.database.entity.DownloadEntity
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.fileExtension
@@ -31,7 +32,7 @@ class DownloadWorker @AssistedInject constructor(
     private val downloadDao: DownloadDao,
 ) : CoroutineWorker(appContext, params) {
 
-    override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo("Preparing download…", 0)
+    override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo()
 
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val key = inputData.getString(KEY_DOWNLOAD_KEY) ?: return@withContext Result.failure()
@@ -44,8 +45,8 @@ class DownloadWorker @AssistedInject constructor(
         val partial = File(dir, "${target.name}.part")
 
         try {
-            runCatching { setForeground(foregroundInfo("Downloading ${entity.title}", 0)) }
             mark(key, DownloadStatus.RUNNING, 0, null, null, null)
+            runCatching { setForeground(foregroundInfo()) }
 
             val response = client.newCall(Request.Builder().url(entity.sourceUrl).build()).execute()
             response.use { resp ->
@@ -68,14 +69,7 @@ class DownloadWorker @AssistedInject constructor(
                             downloaded += read
                             if (downloaded - lastReported >= REPORT_EVERY_BYTES) {
                                 mark(key, DownloadStatus.RUNNING, downloaded, total, null, null)
-                                runCatching {
-                                    setForeground(
-                                        foregroundInfo(
-                                            "Downloading ${entity.title}",
-                                            total?.let { (downloaded * 100 / it).toInt() } ?: 0,
-                                        ),
-                                    )
-                                }
+                                runCatching { setForeground(foregroundInfo()) }
                                 lastReported = downloaded
                             }
                         }
@@ -126,25 +120,69 @@ class DownloadWorker @AssistedInject constructor(
         updatedAt = System.currentTimeMillis(),
     )
 
-    private fun foregroundInfo(text: String, progress: Int): ForegroundInfo {
+    /**
+     * One notification for **all** in-flight downloads, built from the shared DB state so
+     * every concurrent worker posts the same content (no flip-flopping between books) and
+     * the rows keep a fixed order. Lists up to [MAX_TILES] at once.
+     */
+    private suspend fun foregroundInfo(): ForegroundInfo {
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL_ID) == null) {
             manager.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Downloads", NotificationManager.IMPORTANCE_LOW),
             )
         }
-        val notification: Notification = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setContentTitle("Dexxicon Reader")
-            .setContentText(text)
+
+        val active = runCatching { downloadDao.activeDownloads() }.getOrDefault(emptyList())
+        val builder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setOngoing(true)
-            .setProgress(100, progress, progress == 0)
-            .build()
+            .setOnlyAlertOnce(true)
+            .setLocalOnly(true)
+
+        when {
+            active.size <= 1 -> {
+                val one = active.firstOrNull()
+                builder.setContentTitle(one?.let { "Downloading ${it.title}" } ?: "Preparing download…")
+                val pct = one?.percent()
+                if (pct != null) builder.setContentText("$pct%")
+                builder.setProgress(100, pct ?: 0, pct == null)
+            }
+            else -> {
+                val shown = active.take(MAX_TILES)
+                val lines = buildList {
+                    shown.forEach { add("${it.title}  ·  ${it.percentLabel()}") }
+                    if (active.size > shown.size) add("+${active.size - shown.size} more")
+                }
+                builder.setContentTitle("Downloading ${active.size} books")
+                    .setContentText(lines.first())
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(lines.joinToString("\n")))
+                val totals = active.mapNotNull { it.totalBytes }
+                if (totals.size == active.size && totals.sum() > 0L) {
+                    val got = active.sumOf { it.downloadedBytes }
+                    builder.setProgress(100, (got * 100 / totals.sum()).toInt(), false)
+                } else {
+                    builder.setProgress(0, 0, true)
+                }
+            }
+        }
+
+        val notification: Notification = builder.build()
         return if (android.os.Build.VERSION.SDK_INT >= 29) {
             ForegroundInfo(NOTIFICATION_ID, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
         } else {
             ForegroundInfo(NOTIFICATION_ID, notification)
         }
+    }
+
+    /** Whole-number percent, or null when the size isn't known yet. */
+    private fun DownloadEntity.percent(): Int? =
+        totalBytes?.takeIf { it > 0 }?.let { ((downloadedBytes * 100) / it).toInt().coerceIn(0, 100) }
+
+    private fun DownloadEntity.percentLabel(): String = when {
+        status == DownloadStatus.QUEUED.name -> "waiting"
+        percent() != null -> "${percent()}%"
+        else -> "starting…"
     }
 
     companion object {
@@ -153,6 +191,7 @@ class DownloadWorker @AssistedInject constructor(
 
         private const val CHANNEL_ID = "dexxicon.downloads"
         private const val NOTIFICATION_ID = 4711
-        private const val REPORT_EVERY_BYTES = 512L * 1024
+        private const val MAX_TILES = 5
+        private const val REPORT_EVERY_BYTES = 1024L * 1024
     }
 }

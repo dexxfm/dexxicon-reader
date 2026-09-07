@@ -9,8 +9,14 @@ import net.dexxicon.reader.core.database.entity.DownloadEntity
 @Dao
 interface DownloadDao {
 
-    @Query("SELECT * FROM downloads ORDER BY updatedAt DESC")
+    // Ordered by when it was queued, not last touched, so tiles keep a fixed position while
+    // progress ticks. `updatedAt` is the tie-breaker for rows migrated in with createdAt = 0.
+    @Query("SELECT * FROM downloads ORDER BY createdAt DESC, updatedAt DESC")
     fun observeAll(): Flow<List<DownloadEntity>>
+
+    /** Downloads still queued or running, oldest-queued first — for the progress notification. */
+    @Query("SELECT * FROM downloads WHERE status IN ('QUEUED', 'RUNNING') ORDER BY createdAt ASC, updatedAt ASC")
+    suspend fun activeDownloads(): List<DownloadEntity>
 
     @Query("SELECT * FROM downloads WHERE key = :key")
     fun observe(key: String): Flow<DownloadEntity?>
