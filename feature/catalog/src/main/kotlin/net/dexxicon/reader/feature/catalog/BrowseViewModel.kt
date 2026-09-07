@@ -110,10 +110,10 @@ class BrowseViewModel @Inject constructor(
         )
     }
 
-    fun markRead(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, true)
-    fun markUnread(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, false)
-    fun setReadingStatus(serverId: String, bookId: String, status: ReadingStatus) =
-        bookActions.setReadingStatus(serverId, bookId, status)
+    fun markRead(copies: List<Pair<String, String>>) = bookActions.markFinished(copies, true)
+    fun markUnread(copies: List<Pair<String, String>>) = bookActions.markFinished(copies, false)
+    fun setReadingStatus(copies: List<Pair<String, String>>, status: ReadingStatus) =
+        bookActions.setReadingStatus(copies, status)
     fun downloadOrRemove(serverId: String, bookId: String, status: DownloadStatus?) =
         bookActions.downloadOrRemove(serverId, bookId, status)
 

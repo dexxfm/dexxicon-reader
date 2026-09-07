@@ -97,11 +97,13 @@ fun BrowseScreen(
 
     fun actionsFor(book: AggregatedBook): BrowseItemActions {
         val c = book.primary
+        // Status/mark-read applies to every copy so the servers don't disagree.
+        val targets = book.copies.map { it.serverId to it.bookId }
         return BrowseItemActions(
             downloadStatus = if (book.downloadedIn(overlays)) DownloadStatus.DONE else null,
-            onMarkRead = { viewModel.markRead(c.serverId, c.bookId) },
-            onMarkUnread = { viewModel.markUnread(c.serverId, c.bookId) },
-            onSetStatus = { viewModel.setReadingStatus(c.serverId, c.bookId, it) },
+            onMarkRead = { viewModel.markRead(targets) },
+            onMarkUnread = { viewModel.markUnread(targets) },
+            onSetStatus = { viewModel.setReadingStatus(targets, it) },
             onDetails = { onOpenBook(book) },
             onDownloadOrRemove = {
                 viewModel.downloadOrRemove(

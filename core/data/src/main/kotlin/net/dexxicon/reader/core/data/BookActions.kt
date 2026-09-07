@@ -32,22 +32,35 @@ class BookActions @Inject constructor(
      * Set the server's per-user reading status. **Read** / **Unread** also nudge the
      * reading percentage to 100 % / 0 % so the position and the status attribute agree.
      */
-    fun setReadingStatus(serverId: String, bookId: String, status: ReadingStatus) {
+    fun setReadingStatus(serverId: String, bookId: String, status: ReadingStatus) =
+        setReadingStatus(listOf(serverId to bookId), status)
+
+    /**
+     * Set the status on **every** copy of a book — for the merged Browse entry, where the
+     * same title lives on more than one server, so the servers don't disagree.
+     * [copies] is `(serverId, bookId)` pairs.
+     */
+    fun setReadingStatus(copies: List<Pair<String, String>>, status: ReadingStatus) {
         scope.launch {
-            val server = serverRepository.get(serverId) ?: return@launch
-            runCatching { nativeProgressSync.pushStatus(server, bookId, status) }
-                .onFailure { Log.w("BookActions", "set status failed: ${it.message}") }
-            when (status) {
-                ReadingStatus.READ -> pushProgress(serverId, bookId, 1.0)
-                ReadingStatus.UNREAD -> pushProgress(serverId, bookId, 0.0)
-                else -> {}
+            copies.distinct().forEach { (serverId, bookId) ->
+                val server = serverRepository.get(serverId) ?: return@forEach
+                runCatching { nativeProgressSync.pushStatus(server, bookId, status) }
+                    .onFailure { Log.w("BookActions", "set status failed: ${it.message}") }
+                when (status) {
+                    ReadingStatus.READ -> pushProgress(serverId, bookId, 1.0)
+                    ReadingStatus.UNREAD -> pushProgress(serverId, bookId, 0.0)
+                    else -> {}
+                }
             }
         }
     }
 
     /** "Mark as read" / "Mark as unread" — the quick toggle; also sets the status. */
     fun markFinished(serverId: String, bookId: String, finished: Boolean) =
-        setReadingStatus(serverId, bookId, if (finished) ReadingStatus.READ else ReadingStatus.UNREAD)
+        markFinished(listOf(serverId to bookId), finished)
+
+    fun markFinished(copies: List<Pair<String, String>>, finished: Boolean) =
+        setReadingStatus(copies, if (finished) ReadingStatus.READ else ReadingStatus.UNREAD)
 
     /** Queue an offline copy, or remove one — [currentStatus] `null` means not downloaded. */
     fun downloadOrRemove(serverId: String, bookId: String, currentStatus: DownloadStatus?) {

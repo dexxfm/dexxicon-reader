@@ -139,7 +139,10 @@ class BookDetailViewModel @Inject constructor(
     }
 
     fun setReadingStatus(status: ReadingStatus) {
-        bookActions.setReadingStatus(route.serverId, route.bookId, status)
+        val copies = _uiState.value.copies
+            .map { it.serverId to it.bookId }
+            .ifEmpty { listOf(route.serverId to route.bookId) }
+        bookActions.setReadingStatus(copies, status)
         _uiState.update { it.copy(detail = it.detail?.copy(readingStatus = status)) }
     }
 }
