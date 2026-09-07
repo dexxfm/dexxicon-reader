@@ -8,36 +8,48 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CacheBitmapLoader
+import androidx.media3.session.MediaLibraryService
+import androidx.media3.session.MediaLibraryService.MediaLibrarySession
 import androidx.media3.session.MediaSession
-import androidx.media3.session.MediaSessionService
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import net.dexxicon.reader.core.network.di.DexxiconHttpClient
 import okhttp3.OkHttpClient
 import java.util.concurrent.Executors
 import javax.inject.Inject
 
 /**
- * Background audiobook playback. Media3 handles the media notification, lock-screen
- * controls and audio focus; the stream is fetched through the shared authenticated OkHttp
- * client so range requests carry the server's bearer token.
+ * Background audiobook playback **and browsing**. A [MediaLibraryService] so Android Auto
+ * (and any `MediaBrowser`) can connect and browse the library; Media3 also drives the media
+ * notification, lock-screen controls and audio focus. Streams and cover art are fetched
+ * through the shared authenticated OkHttp client so range requests carry the bearer token.
  *
- * Audio options that aren't part of the [androidx.media3.common.Player] surface (skip
- * silence) are applied here via a custom session command from [AudiobookPlayer].
+ * The browse tree and media-id resolution live in [AutoLibraryCallback]. Audio options that
+ * aren't on the [androidx.media3.common.Player] surface (skip silence) come in as a custom
+ * session command from [AudiobookPlayer].
  */
 @AndroidEntryPoint
-class PlaybackService : MediaSessionService() {
+class PlaybackService : MediaLibraryService() {
 
     @Inject
     @DexxiconHttpClient
     lateinit var okHttpClient: OkHttpClient
 
-    private var mediaSession: MediaSession? = null
+    @Inject
+    lateinit var progressSink: PlaybackProgressSink
+
+    private var mediaSession: MediaLibrarySession? = null
     private var exoPlayer: ExoPlayer? = null
+    private var positionWriter: ServicePositionWriter? = null
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
         super.onCreate()
@@ -67,13 +79,14 @@ class PlaybackService : MediaSessionService() {
             ),
         )
 
-        mediaSession = MediaSession.Builder(this, player)
+        mediaSession = MediaLibrarySession.Builder(this, player, AutoLibraryCallback(exoPlayer))
             .setBitmapLoader(bitmapLoader)
-            .setCallback(AudioOptionsCallback())
             .build()
+
+        positionWriter = ServicePositionWriter(player, progressSink, serviceScope).apply { attach() }
     }
 
-    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? =
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
         mediaSession
 
     override fun onTaskRemoved(rootIntent: android.content.Intent?) {
@@ -84,6 +97,9 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        positionWriter?.detach()
+        positionWriter = null
+        serviceScope.cancel()
         mediaSession?.run {
             player.release()
             release()
@@ -92,34 +108,42 @@ class PlaybackService : MediaSessionService() {
         exoPlayer = null
         super.onDestroy()
     }
+}
 
-    private inner class AudioOptionsCallback : MediaSession.Callback {
-        private val skipSilence = SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY)
+/**
+ * The [MediaLibrarySession.Callback]. Phase 1: only the session/skip-silence plumbing — the
+ * browse tree (`onGetLibraryRoot` / `onGetChildren` / `onGetItem` / `onSearch`) and media-id
+ * resolution land in Phase 2.
+ */
+private class AutoLibraryCallback(
+    private val player: ExoPlayer?,
+) : MediaLibrarySession.Callback {
 
-        override fun onConnect(
-            session: MediaSession,
-            controller: MediaSession.ControllerInfo,
-        ): MediaSession.ConnectionResult {
-            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
-                .buildUpon()
-                .add(skipSilence)
-                .build()
-            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-                .setAvailableSessionCommands(commands)
-                .build()
+    private val skipSilence = SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY)
+
+    override fun onConnect(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+    ): MediaSession.ConnectionResult {
+        val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+            .buildUpon()
+            .add(skipSilence)
+            .build()
+        return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+            .setAvailableSessionCommands(commands)
+            .build()
+    }
+
+    override fun onCustomCommand(
+        session: MediaSession,
+        controller: MediaSession.ControllerInfo,
+        customCommand: SessionCommand,
+        args: Bundle,
+    ): ListenableFuture<SessionResult> {
+        if (customCommand.customAction == PlaybackCommands.SET_SKIP_SILENCE) {
+            player?.skipSilenceEnabled = args.getBoolean(PlaybackCommands.ARG_ENABLED, false)
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
-
-        override fun onCustomCommand(
-            session: MediaSession,
-            controller: MediaSession.ControllerInfo,
-            customCommand: SessionCommand,
-            args: Bundle,
-        ): ListenableFuture<SessionResult> {
-            if (customCommand.customAction == PlaybackCommands.SET_SKIP_SILENCE) {
-                exoPlayer?.skipSilenceEnabled = args.getBoolean(PlaybackCommands.ARG_ENABLED, false)
-                return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
-            }
-            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
-        }
+        return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
     }
 }

@@ -22,6 +22,11 @@
         android:theme="@style/Theme.Dexxicon"
         tools:targetApi="34">
 
+        <!-- Android Auto: declares the app as a media provider. -->
+        <meta-data
+            android:name="com.google.android.gms.car.application"
+            android:resource="@xml/automotive_app_desc" />
+
         <!-- WorkManager on-demand init: DexxiconApplication is a Configuration.Provider. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
@@ -40,13 +45,16 @@
             android:foregroundServiceType="dataSync"
             tools:node="merge" />
 
-        <!-- Media3 audiobook playback service. -->
+        <!-- Media3 audiobook playback + browse service (Android Auto connects through the
+             legacy MediaBrowserService action, which Media3's MediaLibraryService bridges). -->
         <service
             android:name="net.dexxicon.reader.core.media.PlaybackService"
             android:exported="true"
             android:foregroundServiceType="mediaPlayback">
             <intent-filter>
+                <action android:name="androidx.media3.session.MediaLibraryService" />
                 <action android:name="androidx.media3.session.MediaSessionService" />
+                <action android:name="android.media.browse.MediaBrowserService" />
             </intent-filter>
         </service>
 
