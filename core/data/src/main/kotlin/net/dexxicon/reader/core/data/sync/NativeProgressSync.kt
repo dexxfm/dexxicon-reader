@@ -97,7 +97,7 @@ class NativeProgressSync @Inject constructor(
         if (format == ContentFormat.AUDIOBOOK) {
             val dto = api.bookOrbitAudioProgress(
                 server.resolve("/api/v1/books/$bookId/audio-progress"),
-            ) ?: return null
+            ).takeIf { it.isSuccessful }?.body() ?: return null
             val pct = dto.percentage ?: return null
             return NativeProgress(
                 percent = (pct / 100.0).coerceIn(0.0, 1.0),
@@ -107,7 +107,7 @@ class NativeProgressSync @Inject constructor(
         val fileId = fileIdFrom(digestUrl) ?: return null
         val dto = api.bookOrbitFileProgress(
             server.resolve("/api/v1/books/files/$fileId/progress"),
-        ) ?: return null
+        ).takeIf { it.isSuccessful }?.body() ?: return null
         val pct = dto.percentage ?: return null
         return NativeProgress(percent = (pct / 100.0).coerceIn(0.0, 1.0))
     }
@@ -152,7 +152,7 @@ class NativeProgressSync @Inject constructor(
         format: ContentFormat,
     ): NativeProgress? {
         val dto = api.grimmoryProgress(server.resolve("/api/v1/app/books/$bookId/progress"))
-            ?: return null
+            .takeIf { it.isSuccessful }?.body() ?: return null
         return when (format) {
             ContentFormat.AUDIOBOOK -> dto.audiobookProgress?.let {
                 val pct = it.percentage ?: return null

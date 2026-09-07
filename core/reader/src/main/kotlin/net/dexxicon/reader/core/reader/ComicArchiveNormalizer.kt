@@ -34,11 +34,8 @@ class ComicArchiveNormalizer @Inject constructor(
     private val cacheDir: File by lazy { File(context.cacheDir, "comic-cbz").apply { mkdirs() } }
 
     /** True when [href]/[mediaType] name a RAR-based comic archive. */
-    fun looksLikeRar(href: String?, mediaType: String?): Boolean {
-        val h = href?.substringBefore('?')?.lowercase().orEmpty()
-        val m = mediaType?.lowercase().orEmpty()
-        return h.endsWith(".cbr") || h.endsWith(".rar") || "rar" in m
-    }
+    fun looksLikeRar(href: String?, mediaType: String?): Boolean =
+        comicSourceLooksLikeRar(href, mediaType)
 
     /** Return a ZIP-based CBZ for [file]; the same file if it is already a ZIP. */
     suspend fun fromFile(file: File): File = withContext(io) {
@@ -135,4 +132,14 @@ class ComicArchiveNormalizer @Inject constructor(
     private companion object {
         val IMAGE_EXTENSIONS = setOf("jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "jxl")
     }
+}
+
+/**
+ * Whether a comic to be opened by URL is a RAR archive, judged from the href extension or a
+ * media-type hint. Split out so it can be unit-tested without an Android context.
+ */
+internal fun comicSourceLooksLikeRar(href: String?, mediaType: String?): Boolean {
+    val h = href?.substringBefore('?')?.lowercase().orEmpty()
+    val m = mediaType?.lowercase().orEmpty()
+    return h.endsWith(".cbr") || h.endsWith(".rar") || "rar" in m || "cbr" in m
 }

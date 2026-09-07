@@ -12,6 +12,7 @@ import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcApi
+import net.dexxicon.reader.core.serverapi.NullableBodyConverterFactory
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -40,7 +41,11 @@ object ServerApiModule {
         // Placeholder — every call passes an absolute @Url.
         .baseUrl("http://localhost/")
         .client(client)
-        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+        .addConverterFactory(
+            NullableBodyConverterFactory(
+                json.asConverterFactory("application/json".toMediaType()),
+            ),
+        )
         .build()
 
     @Provides
