@@ -23,6 +23,7 @@ import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
@@ -35,7 +36,7 @@ data class BrowseUiState(
     val query: String = "",
     val sort: BookSort = BookSort.RECENT,
     val filter: ContentFilter = ContentFilter.ALL,
-    val viewMode: BookViewMode = BookViewMode.LIST,
+    val viewMode: BookViewMode = BookViewMode.GRID,
     val books: List<AggregatedBook> = emptyList(),
     val loading: Boolean = true,
     val loadingMore: Boolean = false,
@@ -49,6 +50,7 @@ data class BrowseUiState(
 class BrowseViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val bookActions: BookActions,
+    private val appPreferences: AppPreferencesStore,
     progressRepository: ReadingProgressRepository,
     downloadRepository: DownloadRepository,
 ) : ViewModel() {
@@ -82,6 +84,11 @@ class BrowseViewModel @Inject constructor(
     init {
         reload()
         viewModelScope.launch {
+            appPreferences.preferences.map { it.browseView }.distinctUntilChanged().collect { mode ->
+                _uiState.update { it.copy(viewMode = mode) }
+            }
+        }
+        viewModelScope.launch {
             _uiState.map { it.query }
                 .distinctUntilChanged()
                 .drop(1)
@@ -111,10 +118,10 @@ class BrowseViewModel @Inject constructor(
         reload()
     }
 
-    fun toggleViewMode() = _uiState.update {
-        it.copy(
-            viewMode = if (it.viewMode == BookViewMode.LIST) BookViewMode.GRID else BookViewMode.LIST,
-        )
+    /** Flips Browse's own layout — the Settings default is untouched. */
+    fun toggleViewMode() {
+        val next = if (_uiState.value.viewMode == BookViewMode.LIST) BookViewMode.GRID else BookViewMode.LIST
+        viewModelScope.launch { appPreferences.setBrowseView(next) }
     }
 
     fun markRead(copies: List<Pair<String, String>>) = bookActions.markFinished(copies, true)

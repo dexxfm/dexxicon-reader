@@ -25,6 +25,7 @@ import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.BookViewMode
@@ -62,6 +63,7 @@ data class CatalogUiState(
 class CatalogViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val bookActions: BookActions,
+    private val appPreferences: AppPreferencesStore,
     progressRepository: ReadingProgressRepository,
     downloadRepository: DownloadRepository,
     savedStateHandle: SavedStateHandle,
@@ -100,6 +102,11 @@ class CatalogViewModel @Inject constructor(
         loadShelves()
         reload()
         viewModelScope.launch {
+            appPreferences.preferences.map { it.catalogView }.distinctUntilChanged().collect { mode ->
+                _uiState.update { it.copy(viewMode = mode) }
+            }
+        }
+        viewModelScope.launch {
             _uiState.map { it.query }
                 .distinctUntilChanged()
                 .drop(1)
@@ -134,8 +141,10 @@ class CatalogViewModel @Inject constructor(
         reload()
     }
 
-    fun toggleViewMode() = _uiState.update {
-        it.copy(viewMode = if (it.viewMode == BookViewMode.LIST) BookViewMode.GRID else BookViewMode.LIST)
+    /** Flips this catalog's own layout — the Settings default is untouched. */
+    fun toggleViewMode() {
+        val next = if (_uiState.value.viewMode == BookViewMode.LIST) BookViewMode.GRID else BookViewMode.LIST
+        viewModelScope.launch { appPreferences.setCatalogView(next) }
     }
 
     fun markRead(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, true)

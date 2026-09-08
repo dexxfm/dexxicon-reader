@@ -11,6 +11,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import net.dexxicon.reader.core.model.BookViewMode
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -24,6 +25,12 @@ data class AppPreferences(
     val downloadsWifiOnly: Boolean = false,
     /** Cap on total downloaded-media size; null = no limit. */
     val downloadLimitBytes: Long? = DEFAULT_DOWNLOAD_LIMIT_BYTES,
+    /** The layout new lists start with, chosen in Settings. */
+    val bookViewDefault: BookViewMode = BookViewMode.GRID,
+    /** Browse's current layout — its own toggle, falls back to [bookViewDefault]. */
+    val browseView: BookViewMode = BookViewMode.GRID,
+    /** A server catalog's current layout — its own toggle, falls back to [bookViewDefault]. */
+    val catalogView: BookViewMode = BookViewMode.GRID,
 )
 
 private val Context.appPrefsDataStore: DataStore<Preferences> by preferencesDataStore("app_prefs")
@@ -36,9 +43,13 @@ class AppPreferencesStore @Inject constructor(
         val THEME = stringPreferencesKey("theme")
         val WIFI_ONLY = booleanPreferencesKey("downloads_wifi_only")
         val DOWNLOAD_LIMIT = longPreferencesKey("download_limit_bytes")
+        val BOOK_VIEW_DEFAULT = stringPreferencesKey("book_view")
+        val BROWSE_VIEW = stringPreferencesKey("book_view_browse")
+        val CATALOG_VIEW = stringPreferencesKey("book_view_catalog")
     }
 
     val preferences: Flow<AppPreferences> = context.appPrefsDataStore.data.map { p ->
+        val default = p.mode(Keys.BOOK_VIEW_DEFAULT) ?: BookViewMode.GRID
         AppPreferences(
             theme = p[Keys.THEME]?.let { runCatching { AppTheme.valueOf(it) }.getOrNull() }
                 ?: AppTheme.SYSTEM,
@@ -49,8 +60,14 @@ class AppPreferencesStore @Inject constructor(
             } else {
                 DEFAULT_DOWNLOAD_LIMIT_BYTES
             },
+            bookViewDefault = default,
+            browseView = p.mode(Keys.BROWSE_VIEW) ?: default,
+            catalogView = p.mode(Keys.CATALOG_VIEW) ?: default,
         )
     }
+
+    private fun Preferences.mode(key: Preferences.Key<String>): BookViewMode? =
+        this[key]?.let { runCatching { BookViewMode.valueOf(it) }.getOrNull() }
 
     suspend fun setTheme(theme: AppTheme) {
         context.appPrefsDataStore.edit { it[Keys.THEME] = theme.name }
@@ -63,5 +80,24 @@ class AppPreferencesStore @Inject constructor(
     /** [bytes] null or <= 0 removes the cap. */
     suspend fun setDownloadLimit(bytes: Long?) {
         context.appPrefsDataStore.edit { it[Keys.DOWNLOAD_LIMIT] = bytes?.coerceAtLeast(0L) ?: 0L }
+    }
+
+    /** Change the Settings default and snap every screen's current layout back to it. */
+    suspend fun setBookViewDefault(mode: BookViewMode) {
+        context.appPrefsDataStore.edit {
+            it[Keys.BOOK_VIEW_DEFAULT] = mode.name
+            it.remove(Keys.BROWSE_VIEW)
+            it.remove(Keys.CATALOG_VIEW)
+        }
+    }
+
+    /** Browse's own layout toggle — leaves the Settings default alone. */
+    suspend fun setBrowseView(mode: BookViewMode) {
+        context.appPrefsDataStore.edit { it[Keys.BROWSE_VIEW] = mode.name }
+    }
+
+    /** A server catalog's own layout toggle — leaves the Settings default alone. */
+    suspend fun setCatalogView(mode: BookViewMode) {
+        context.appPrefsDataStore.edit { it[Keys.CATALOG_VIEW] = mode.name }
     }
 }
