@@ -61,6 +61,7 @@ Mapped to the current implementation (`core/media/PlaybackService.kt`,
 | `MediaMetadata` complete (title, subtitle/artist, art) | ✅ | title + author + `artworkUri` (via `ArtworkProvider`) |
 | Playback position / completion state on browsable items | ✅ | `EXTRAS_KEY_COMPLETION_STATUS` + `EXTRAS_KEY_COMPLETION_PERCENTAGE` |
 | Standard playback controls via `MediaSession` | ✅ | play/pause, seek, 30 s / 15 s skip (`setSeekForward/BackIncrementMs`) |
+| Session activity for the now-playing card | ✅ | `setSessionActivity(launchIntent)` — also the media-notification tap target |
 | No chapter-as-track skipping that could distract | ✅ | one `MediaItem` per book; skip is time-based only |
 | Playback resumption after reboot / BT connect | ✅ | `onPlaybackResumption` → `lastPlayed()` |
 | Search | ✅ | `onSearch` / `onGetSearchResult` → audiobook-filtered catalog search |
@@ -127,6 +128,10 @@ media apps):
   (launched from the car, no app UI), no 401.
 - ✅ Offline `resolve()` fallback compiles and the streaming path is unbroken (see the
   note below on the one gap).
+- ✅ Session is now-playing-ready: `state=PLAYING`, full action set, title/artist
+  metadata, **session activity present**. The **media notification** (same session data,
+  rendered on a phone) shows cover art + title/artist + transport controls correctly —
+  the closest proxy to the car now-playing screen available without a DHU.
 
 Not yet done:
 
