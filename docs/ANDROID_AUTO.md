@@ -143,30 +143,27 @@ AVD `Automotive with Google Play`, then
 
 ## 6. Status
 
-Verified on the **AAOS emulator** (`Automotive_Distant_Display_with_Google_Play`,
-force-connected via `MEDIA_TEMPLATE` since that reference image doesn't list sideloaded
-media apps):
+**Verified on a real phone (Galaxy Z Fold 6, Android 16) over the Desktop Head Unit**, on
+the release build:
 
-- ✅ Browse tree renders (Continue / Downloaded / All audiobooks), titles + authors +
-  progress bars.
-- ✅ **Cover art loads** in the browse grid via `ArtworkProvider` (HMAC-signed
-  `content://` proxy through the authed client).
-- ✅ Playback starts from a browsed item; the service acquires its token **headlessly**
-  (launched from the car, no app UI), no 401.
-- ✅ Offline `resolve()` fallback compiles and the streaming path is unbroken (see the
-  note below on the one gap).
-- ✅ Session is now-playing-ready: `state=PLAYING`, full action set, title/artist
-  metadata, **session activity present**. The **media notification** (same session data,
-  rendered on a phone) shows cover art + title/artist + transport controls correctly —
-  the closest proxy to the car now-playing screen available without a DHU.
+- ✅ App appears in the car media-app launcher; browse tree renders — **Continue listening
+  / Downloaded / All audiobooks → per-server → grid**, with titles, authors and progress.
+- ✅ **Cover art loads** everywhere (browse grid *and* now-playing) via `ArtworkProvider`.
+- ✅ **Now-playing screen renders correctly**: cover, title/artist, scrubber, art-derived
+  background, and **pause / rewind-15 / fast-forward-30** — the seek buttons move the
+  position. (Fixed by `setSessionActivity`, plain-URL now-playing art, and
+  `setMediaButtonPreferences`.)
+- ✅ Play from a browsed item resumes at the right position; pause/resume work.
+- ✅ Headless token acquisition (service launched straight from the car, no 401).
+
+Also verified on the **AAOS emulator** earlier (browse + `ArtworkProvider` + headless
+auth); that reference image can't render a sideloaded app's now-playing template, which is
+why the DHU pass on a phone was needed.
 
 Not yet done:
 
-- [ ] **DHU pass** on a real phone (the emulator can't fully render the now-playing
-  template or the app picker — reference-image limitation).
 - [ ] **Offline downloaded-audiobook playback** end-to-end — the fix is in
-  (`resolveFromLocal`), but no emulator currently has a downloaded audiobook to click
-  through; download one and play it in airplane mode.
+  (`resolveFromLocal`); needs a downloaded audiobook clicked through in airplane mode.
 - [ ] **Media Controller Test (MCT)** pass.
 - [ ] `./gradlew :app:bundleRelease` uploaded to a Play track.
 - [ ] Android Auto form factor added + declaration completed in Play Console.
