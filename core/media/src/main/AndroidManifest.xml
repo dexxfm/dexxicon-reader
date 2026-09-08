@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+
+        <!-- Authenticated cover-art proxy for Android Auto / Automotive (see ArtworkProvider). -->
+        <provider
+            android:name="net.dexxicon.reader.core.media.ArtworkProvider"
+            android:authorities="${applicationId}.artwork"
+            android:exported="true"
+            android:grantUriPermissions="true" />
+
+    </application>
+
+</manifest>

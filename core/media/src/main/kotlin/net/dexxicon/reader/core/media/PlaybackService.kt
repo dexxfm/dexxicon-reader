@@ -7,6 +7,7 @@ import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.datasource.DataSourceBitmapLoader
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -83,12 +84,14 @@ class PlaybackService : MediaLibraryService() {
             .build()
         exoPlayer = player
 
-        // Route cover-art loading through the authed client too, so lock-screen/notification
-        // artwork doesn't 401.
+        // Cover-art loading: https goes through the authed client (no 401 on lock-screen /
+        // notification art); `content://` from [ArtworkProvider] is opened locally — that's
+        // the path the car uses since it can't send our auth headers.
+        val artworkDataSource = DefaultDataSource.Factory(this, dataSourceFactory)
         val bitmapLoader = CacheBitmapLoader(
             DataSourceBitmapLoader(
                 MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()),
-                dataSourceFactory,
+                artworkDataSource,
             ),
         )
 
@@ -105,7 +108,13 @@ class PlaybackService : MediaLibraryService() {
         mediaSession = MediaLibrarySession.Builder(
             this,
             player,
-            AutoLibraryCallback(player, contentSource, serviceScope, signInIntent),
+            AutoLibraryCallback(
+                player,
+                contentSource,
+                serviceScope,
+                signInIntent,
+                artworkUri = { src -> ArtworkProvider.uriFor(this, src) },
+            ),
         )
             .setBitmapLoader(bitmapLoader)
             .build()
@@ -147,6 +156,8 @@ private class AutoLibraryCallback(
     private val content: MediaLibraryContentSource,
     private val scope: CoroutineScope,
     private val signInIntent: android.app.PendingIntent?,
+    /** Wraps a remote cover URL as a `content://` URI the car can load without our auth. */
+    private val artworkUri: (String) -> Uri,
 ) : MediaLibrarySession.Callback {
 
     private val skipSilence = SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY)
@@ -395,7 +406,7 @@ private class AutoLibraryCallback(
                 .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
                 .setTitle(card.title)
                 .setArtist(card.author)
-                .setArtworkUri(card.artworkUri?.let(Uri::parse))
+                .setArtworkUri(card.artworkUri?.let(artworkUri))
                 .setExtras(completionExtras(card.progress))
                 .build(),
         )
@@ -410,7 +421,7 @@ private class AutoLibraryCallback(
                 .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
                 .setTitle(p.title)
                 .setArtist(p.author)
-                .setArtworkUri(p.artworkUri?.let(Uri::parse))
+                .setArtworkUri(p.artworkUri?.let(artworkUri))
                 .build(),
         )
         .build()
