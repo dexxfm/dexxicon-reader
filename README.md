@@ -79,7 +79,8 @@ MOBI / AZW3 / FB2 are recognised but not yet openable (converters are a work in 
 ### Design & privacy
 - Jetpack Compose + Material 3, dark‑blue/grey theme, light/dark, edge‑to‑edge.
 - No ads, no analytics, no third‑party SDKs. The app connects only to the servers you add;
-  credentials are encrypted on‑device with a hardware‑backed key. See [PRIVACY.md](PRIVACY.md).
+  credentials are encrypted on‑device with a hardware‑backed key. Crashes are saved locally
+  and only emailed if you choose to, after reviewing the contents. See [PRIVACY.md](PRIVACY.md).
 
 ## Status
 

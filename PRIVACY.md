@@ -8,7 +8,8 @@ handles and where it goes.
 
 **Short version:** The app has no servers of its own and no analytics. Everything it stores
 stays on your device, except the data you explicitly send to the library servers **you**
-configure. The developer never receives any of your data.
+configure. The developer never receives any of your data unless you choose to email a
+crash or problem report.
 
 ---
 
@@ -56,8 +57,16 @@ data is governed by their own policies and your configuration of them.
 
 ### Data we collect
 
-**None.** The app contains no analytics, advertising, crash‑reporting, or tracking SDKs,
-and makes no network connections to the developer or any third party.
+**Only what you choose to send.** The app contains no analytics, advertising, or tracking
+SDKs, and makes no automatic connections to the developer or any third party.
+
+If the app crashes, it saves a report **on your device**. On the next launch it offers to
+send that report; you see its full contents first (the error, your app version, device
+model, Android version, locale, and memory figures — no account details, library contents,
+or server addresses), and it is sent only as an email **from your own mail app, if you
+choose to send it**. You can also send a problem report at any time from
+**Settings → Feedback → Report a problem**. Reports go to the contact address above.
+Nothing is uploaded in the background and there is no server collecting them.
 
 ## Permissions
 

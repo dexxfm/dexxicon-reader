@@ -256,6 +256,27 @@ fun SettingsScreen(
             FormatLegend()
 
             Spacer()
+            SectionTitle("Feedback")
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { sendProblemReport(context, versionName) }
+                    .padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Report a problem", style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        "Opens an email with your device and app details filled in. Nothing " +
+                            "is sent until you send it.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            Spacer()
             SectionTitle("About")
             SettingRow(title = "Dexxicon Reader", subtitle = "Version $versionName") {}
             SettingRow(
@@ -265,6 +286,27 @@ fun SettingsScreen(
         }
         }
     }
+}
+
+/** Opens the user's email app with device/app context prefilled — no crash required. */
+private fun sendProblemReport(context: android.content.Context, versionName: String) {
+    val body = buildString {
+        appendLine("Describe the problem here:")
+        appendLine()
+        appendLine()
+        appendLine("---")
+        appendLine(net.dexxicon.reader.core.common.crash.CrashReporter.deviceBlock(context))
+    }
+    val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
+        data = android.net.Uri.parse("mailto:")
+        putExtra(
+            android.content.Intent.EXTRA_EMAIL,
+            arrayOf(net.dexxicon.reader.core.common.crash.CrashReporter.CONTACT_EMAIL),
+        )
+        putExtra(android.content.Intent.EXTRA_SUBJECT, "Dexxicon Reader $versionName — problem report")
+        putExtra(android.content.Intent.EXTRA_TEXT, body)
+    }
+    runCatching { context.startActivity(intent) }
 }
 
 @Composable
