@@ -113,6 +113,11 @@ fun PlayerScreen(
                     }
                 },
                 actions = {
+                    val context = LocalContext.current
+                    val audioOutput = rememberAudioOutput()
+                    IconButton(onClick = { openOutputSwitcher(context) }) {
+                        Icon(audioOutput.icon, contentDescription = "Change audio output (${audioOutput.label})")
+                    }
                     IconButton(onClick = { showAudioOptions = true }) {
                         Icon(Icons.Filled.Tune, contentDescription = "Audio options")
                     }
@@ -302,8 +307,9 @@ private fun AudioOptions(
  * paired Bluetooth, wired headset, Cast targets). Android exposes no supported way to pin
  * media output from the app, so switching is delegated to the OS panel.
  */
+/** The live audio route, refreshed as devices connect/disconnect. */
 @Composable
-private fun AudioOutputRow(modifier: Modifier = Modifier) {
+private fun rememberAudioOutput(): AudioOutput {
     val context = LocalContext.current
     val audioManager = remember { context.getSystemService(AudioManager::class.java) }
     var output by remember { mutableStateOf(currentAudioOutput(audioManager)) }
@@ -321,6 +327,13 @@ private fun AudioOutputRow(modifier: Modifier = Modifier) {
         am.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
         onDispose { am.unregisterAudioDeviceCallback(callback) }
     }
+    return output
+}
+
+@Composable
+private fun AudioOutputRow(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val output = rememberAudioOutput()
 
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Icon(output.icon, contentDescription = null)
