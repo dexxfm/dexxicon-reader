@@ -39,7 +39,11 @@ class ServerRepository @Inject constructor(
     /** Insert or update a server. Pass [password] to (re)store the secret. */
     suspend fun save(server: Server, password: String?, koSyncPassword: String? = null): Server {
         val withId = if (server.id.isBlank()) {
-            server.copy(id = UUID.randomUUID().toString(), createdAt = System.currentTimeMillis())
+            server.copy(
+                id = UUID.randomUUID().toString(),
+                createdAt = System.currentTimeMillis(),
+                sortOrder = serverDao.getAll().size,
+            )
         } else {
             server
         }
@@ -69,6 +73,11 @@ class ServerRepository @Inject constructor(
             listOfNotNull(me.username, me.name, me.email)
                 .firstOrNull { it.isNotBlank() }
         }
+    }
+
+    /** Persist a new display priority. [orderedIds] is the full server list, first = highest. */
+    suspend fun reorder(orderedIds: List<String>) = withContext(io) {
+        serverDao.applyOrder(orderedIds)
     }
 
     suspend fun delete(id: String) {

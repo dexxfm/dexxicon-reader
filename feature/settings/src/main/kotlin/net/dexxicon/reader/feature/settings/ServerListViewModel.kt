@@ -35,4 +35,9 @@ class ServerListViewModel @Inject constructor(
     fun remove(id: String) {
         viewModelScope.launch { serverRepository.delete(id) }
     }
+
+    /** Commit a drag-to-reorder result: [orderedIds] top-to-bottom, first = highest priority. */
+    fun reorder(orderedIds: List<String>) {
+        viewModelScope.launch { serverRepository.reorder(orderedIds) }
+    }
 }
