@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.10.0 — 2026-09-08
+
+Android Auto, and sign‑ins that stay signed in.
+
+- **Android Auto.** Audiobooks are now browsable and playable from the car — Continue
+  listening, Downloaded, and All audiobooks (split per server when you have more than one),
+  plus search. The now‑playing screen shows cover art, chapter, a scrubber, and
+  rewind‑15 / play / forward‑30. Playback resumes where you left off, position syncs back
+  to the server, and downloaded books play with no signal. Cover art loads in the car even
+  though it can't send your login.
+- **SSO sessions survive being left alone.** OIDC/SSO logins are refreshed in the
+  background (and just before a sync) so an idle phone still has a live session, and the
+  refresh token is rotated safely. If a session genuinely can't be recovered, a banner and
+  a notification take you straight back into sign‑in for that server instead of a dead end.
+  The app now always requests the `offline_access` scope — see the README for the
+  identity‑provider setup.
+- **Audiobook player fixed on foldables.** On an unfolded foldable (or a phone in
+  landscape) the player kept the stacked layout instead of squashing the controls into a
+  strip next to a full‑height cover; the "Sleep timer" label no longer wraps one letter
+  per line.
+
 ## 0.9.1 — 2026-09-07
 
 - **Downloads no longer jump around.** The Library "Downloaded" shelf and the progress
