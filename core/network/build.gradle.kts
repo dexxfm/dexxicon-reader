@@ -9,6 +9,7 @@ apply(from = "$rootDir/gradle/android-common.gradle")
 
 android {
     namespace = "net.dexxicon.reader.core.network"
+    buildFeatures { buildConfig = true }
 }
 
 dependencies {

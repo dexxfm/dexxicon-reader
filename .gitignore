@@ -26,3 +26,4 @@ keystore.properties
 
 # local scratch screenshots
 .scratch/
+.kotlin/

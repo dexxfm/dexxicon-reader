@@ -36,6 +36,13 @@ class TokenManager @Inject constructor(
     private val sessions = ConcurrentHashMap<String, NativeSession>()
     private val locks = ConcurrentHashMap<String, Mutex>()
 
+    /**
+     * serverId -> when its last re-auth attempt failed. A dead session makes every pending
+     * request 401 at once, and each 401 asks for a refresh; without this every one of them
+     * hits `/auth/refresh` again. Cleared on a successful sign-in.
+     */
+    private val refreshFailedAt = ConcurrentHashMap<String, Long>()
+
     private val _needsSignIn = MutableStateFlow<Set<String>>(emptySet())
 
     /** Ids of OIDC servers whose session expired and can't be refreshed without the user. */
@@ -45,6 +52,7 @@ class TokenManager @Inject constructor(
     suspend fun seedSession(serverId: String, session: NativeSession) {
         sessions[serverId] = session
         session.refreshToken?.let { credentialStore.putRefreshToken(serverId, it) }
+        refreshFailedAt.remove(serverId)
         clearNeedsSignIn(serverId)
     }
 
@@ -63,13 +71,34 @@ class TokenManager @Inject constructor(
                     return@withLock Outcome.Success(cached.accessToken)
                 }
             }
-            obtainSession(server).also { it.storeIfSuccess(server.id) }.map { it.accessToken }
+            backoffFailure(server)?.let { return@withLock it.map { s -> s.accessToken } }
+            obtainSession(server).also { it.record(server.id) }.map { it.accessToken }
         }
     }
 
     suspend fun forceRefresh(server: Server): Outcome<String> = lockFor(server.id).withLock {
+        backoffFailure(server)?.let { return@withLock it.map { s -> s.accessToken } }
         sessions.remove(server.id)
-        obtainSession(server).also { it.storeIfSuccess(server.id) }.map { it.accessToken }
+        obtainSession(server).also { it.record(server.id) }.map { it.accessToken }
+    }
+
+    /** A cached "re-auth failed recently" result, or null to go ahead and try. */
+    private fun backoffFailure(server: Server): Outcome<NativeSession>? {
+        val failedAt = refreshFailedAt[server.id] ?: return null
+        if (System.currentTimeMillis() - failedAt >= REFRESH_BACKOFF_MILLIS) return null
+        return Outcome.Failure(
+            DexxiconError.Unauthorized("Your ${server.displayName} session expired — sign in again"),
+        )
+    }
+
+    private fun Outcome<NativeSession>.record(serverId: String) {
+        storeIfSuccess(serverId)
+        when {
+            this is Outcome.Success -> refreshFailedAt.remove(serverId)
+            // Only an actual auth rejection backs off. A network blip should retry freely.
+            this is Outcome.Failure && error is DexxiconError.Unauthorized ->
+                refreshFailedAt[serverId] = System.currentTimeMillis()
+        }
     }
 
     /**
@@ -82,9 +111,10 @@ class TokenManager @Inject constructor(
     suspend fun refreshIfStale(server: Server) {
         if (server.authMode != AuthMode.NATIVE && server.authMode != AuthMode.OIDC) return
         if (!isStale(sessions[server.id])) return
+        if (backoffFailure(server) != null) return
         lockFor(server.id).withLock {
             if (!isStale(sessions[server.id])) return@withLock
-            obtainSession(server).also { it.storeIfSuccess(server.id) }
+            obtainSession(server).also { it.record(server.id) }
         }
     }
 
@@ -94,6 +124,7 @@ class TokenManager @Inject constructor(
 
     fun invalidate(serverId: String) {
         sessions.remove(serverId)
+        refreshFailedAt.remove(serverId)
     }
 
     private suspend fun obtainSession(server: Server): Outcome<NativeSession> {
@@ -162,5 +193,8 @@ class TokenManager @Inject constructor(
     private companion object {
         /** Refresh proactively once the access token has less than this left. */
         const val STALE_WINDOW_MILLIS = 30 * 60 * 1000L
+
+        /** After a failed re-auth, don't try again for this long (kills 401 refresh storms). */
+        const val REFRESH_BACKOFF_MILLIS = 30 * 1000L
     }
 }

@@ -6,6 +6,8 @@ import androidx.work.Configuration
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
+import coil3.disk.DiskCache
+import coil3.memory.MemoryCache
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import dagger.Lazy
@@ -14,7 +16,9 @@ import net.dexxicon.reader.core.data.auth.SessionRefreshWorker
 import net.dexxicon.reader.core.data.auth.SignInNotifier
 import net.dexxicon.reader.core.network.di.DexxiconHttpClient
 import okhttp3.OkHttpClient
+import okio.Path.Companion.toOkioPath
 import javax.inject.Inject
+import kotlin.concurrent.thread
 
 @HiltAndroidApp
 class DexxiconApplication :
@@ -35,7 +39,11 @@ class DexxiconApplication :
 
     override fun onCreate() {
         super.onCreate()
-        SessionRefreshWorker.schedule(this)
+        // WorkManager.getInstance() + a periodic enqueue does disk I/O; keep it off the
+        // startup path — the 6-hour cadence doesn't care about a few ms of delay.
+        thread(name = "session-refresh-schedule", isDaemon = true) {
+            SessionRefreshWorker.schedule(this)
+        }
     }
 
     override val workManagerConfiguration: Configuration
@@ -47,6 +55,15 @@ class DexxiconApplication :
         ImageLoader.Builder(context)
             .components {
                 add(OkHttpNetworkFetcherFactory(callFactory = { okHttpClient.get() }))
+            }
+            .memoryCache {
+                MemoryCache.Builder().maxSizePercent(context, 0.25).build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache").toOkioPath())
+                    .maxSizeBytes(256L * 1024 * 1024)
+                    .build()
             }
             .crossfade(true)
             .build()
