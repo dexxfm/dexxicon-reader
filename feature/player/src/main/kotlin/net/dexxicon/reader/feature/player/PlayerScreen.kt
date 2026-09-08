@@ -328,15 +328,26 @@ private fun AudioOutputRow(modifier: Modifier = Modifier) {
             Text("Playing on", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(output.label, style = MaterialTheme.typography.bodyLarge)
         }
-        TextButton(onClick = {
-            runCatching {
-                // Settings.Panel.ACTION_MEDIA_OUTPUT — the system output switcher (API 29+).
-                context.startActivity(
-                    Intent("android.settings.panel.action.MEDIA_OUTPUT")
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                )
-            }
-        }) { Text("Change") }
+        TextButton(onClick = { openOutputSwitcher(context) }) { Text("Change") }
+    }
+}
+
+/**
+ * Opens the system's audio-output chooser. `ACTION_MEDIA_OUTPUT` is the dedicated
+ * switcher on devices that ship it; the volume panel and sound settings are fallbacks
+ * for those that don't (and both carry an output selector).
+ */
+private fun openOutputSwitcher(context: android.content.Context) {
+    val candidates = listOf(
+        Intent("android.settings.panel.action.MEDIA_OUTPUT"),
+        Intent("android.settings.panel.action.VOLUME"),
+        Intent(android.provider.Settings.ACTION_SOUND_SETTINGS),
+    )
+    for (intent in candidates) {
+        val started = runCatching {
+            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
+        if (started) return
     }
 }
 
