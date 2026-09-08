@@ -163,13 +163,17 @@ class MediaLibraryContentSourceImpl @Inject constructor(
         val (serverId, bookId) = mediaId.split("::", limit = 2)
             .takeIf { it.size == 2 } ?: return null
 
+        val localFile = downloadRepository.localFile(serverId, bookId)
+
         val detail = (catalogRepository.detail(serverId, bookId) as? Outcome.Success)?.value
-            ?: return null
+        // Offline / expired session: a downloaded book is still playable from its local file
+        // and the position we last saved — no server round-trip.
+        if (detail == null) return localFile?.let { resolveFromLocal(mediaId, serverId, bookId, it) }
+
         val acquisition = detail.acquisitions.firstOrNull { it.format == ContentFormat.AUDIOBOOK }
             ?: detail.primaryAcquisition
-            ?: return null
+            ?: return localFile?.let { resolveFromLocal(mediaId, serverId, bookId, it) }
 
-        val localFile = downloadRepository.localFile(serverId, bookId)
         val uri = localFile?.let { Uri.fromFile(it).toString() } ?: acquisition.href
         val durationMs = detail.audio?.durationMs ?: 0L
 
@@ -206,6 +210,30 @@ class MediaLibraryContentSourceImpl @Inject constructor(
             artworkUri = detail.summary.coverUrl,
             startPositionMs = startMs,
             durationMs = durationMs,
+        )
+    }
+
+    /** Build a playable straight from the downloaded file + locally-saved metadata/position. */
+    private suspend fun resolveFromLocal(
+        mediaId: String,
+        serverId: String,
+        bookId: String,
+        file: java.io.File,
+    ): PlayableAudiobook {
+        val progress = progressRepository.get(serverId, bookId)
+        val download = downloadRepository.downloads.first()
+            .firstOrNull { it.serverId == serverId && it.bookId == bookId }
+        val localMs = progress?.locator
+            ?.let { runCatching { JSONObject(it).optLong("position", 0L) }.getOrDefault(0L) }
+            ?: 0L
+        return PlayableAudiobook(
+            mediaId = mediaId,
+            uri = Uri.fromFile(file).toString(),
+            title = progress?.title ?: download?.title ?: "Audiobook",
+            author = (progress?.author ?: download?.authorLine)?.takeIf { it.isNotBlank() },
+            artworkUri = progress?.coverUrl ?: download?.coverUrl,
+            startPositionMs = localMs,
+            durationMs = 0L,
         )
     }
 
