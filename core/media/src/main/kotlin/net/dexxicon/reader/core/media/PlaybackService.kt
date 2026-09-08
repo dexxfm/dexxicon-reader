@@ -6,12 +6,14 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CacheBitmapLoader
+import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaConstants
 import androidx.media3.session.MediaLibraryService
@@ -108,6 +110,21 @@ class PlaybackService : MediaLibraryService() {
             )
         }
 
+        // An audiobook is one long track: put rewind-15 / forward-30 in the transport slots
+        // where a music app would show skip-to-previous / -next.
+        val seekButtons = listOf(
+            CommandButton.Builder(CommandButton.ICON_SKIP_BACK_15)
+                .setPlayerCommand(Player.COMMAND_SEEK_BACK)
+                .setSlots(CommandButton.SLOT_BACK)
+                .setDisplayName("Rewind 15 seconds")
+                .build(),
+            CommandButton.Builder(CommandButton.ICON_SKIP_FORWARD_30)
+                .setPlayerCommand(Player.COMMAND_SEEK_FORWARD)
+                .setSlots(CommandButton.SLOT_FORWARD)
+                .setDisplayName("Fast-forward 30 seconds")
+                .build(),
+        )
+
         mediaSession = MediaLibrarySession.Builder(
             this,
             player,
@@ -120,6 +137,7 @@ class PlaybackService : MediaLibraryService() {
             ),
         )
             .setBitmapLoader(bitmapLoader)
+            .setMediaButtonPreferences(seekButtons)
             .apply { openAppIntent?.let { setSessionActivity(it) } }
             .build()
 
@@ -199,12 +217,22 @@ private class AutoLibraryCallback(
         session: MediaSession,
         controller: MediaSession.ControllerInfo,
     ): MediaSession.ConnectionResult {
-        val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
+        val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
             .buildUpon()
             .add(skipSilence)
             .build()
+        // An audiobook is one long track: hide "skip to previous/next track" so the car and
+        // the media notification surface rewind / fast-forward (15s / 30s) instead.
+        val playerCommands = MediaSession.ConnectionResult.DEFAULT_PLAYER_COMMANDS
+            .buildUpon()
+            .remove(Player.COMMAND_SEEK_TO_PREVIOUS)
+            .remove(Player.COMMAND_SEEK_TO_PREVIOUS_MEDIA_ITEM)
+            .remove(Player.COMMAND_SEEK_TO_NEXT)
+            .remove(Player.COMMAND_SEEK_TO_NEXT_MEDIA_ITEM)
+            .build()
         return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
-            .setAvailableSessionCommands(commands)
+            .setAvailableSessionCommands(sessionCommands)
+            .setAvailablePlayerCommands(playerCommands)
             .build()
     }
 
