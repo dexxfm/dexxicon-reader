@@ -5,14 +5,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -319,45 +324,60 @@ private fun NowPlaying(
     val duration = playback.durationMs.takeIf { it > 0 } ?: book?.durationMs ?: 0L
 
     BoxWithConstraints(modifier.fillMaxSize()) {
-        // Landscape / large screens: cover on the left, everything else on the right.
-        val landscape = maxWidth > maxHeight && maxWidth >= 560.dp
+        // Cover on the left, controls on the right — only for a genuinely wide area
+        // (tablet / phone landscape). A near-square area (an unfolded foldable) stays
+        // stacked, otherwise the controls get crushed into a strip beside the cover.
+        val sideBySide = maxWidth >= 720.dp && maxWidth > maxHeight * 1.4f
+        // Keep the stacked cover from crowding out the controls on shorter areas.
+        val stackedCover = minOf(maxWidth * 0.7f, maxHeight * 0.42f, 360.dp)
+        // Inner content is at least the viewport minus its 24dp padding, so it stays
+        // centered by SpaceEvenly when it fits and only scrolls when it genuinely can't.
+        val minContentHeight = (maxHeight - 48.dp).coerceAtLeast(0.dp)
 
-        if (landscape) {
+        val controls: @Composable ColumnScope.(centered: Boolean) -> Unit = { centered ->
+            TrackInfo(playback, centered = centered)
+            Scrubber(playback, duration, onSeek)
+            TransportControls(playback, onPlayPause, onSkipForward, onSkipBack, onNextChapter, onPrevChapter)
+            SecondaryControls(playback, onSpeed, onSleep)
+        }
+
+        if (sideBySide) {
             Row(
                 Modifier.fillMaxSize().padding(24.dp),
-                horizontalArrangement = Arrangement.spacedBy(28.dp),
+                horizontalArrangement = Arrangement.spacedBy(32.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                CoverArt(
-                    coverUrl = book?.coverUrl,
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .aspectRatio(1f, matchHeightConstraintsFirst = true),
-                )
-                Column(
-                    Modifier.weight(1f).fillMaxHeight(),
-                    verticalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    TrackInfo(playback, centered = false)
-                    Scrubber(playback, duration, onSeek)
-                    TransportControls(playback, onPlayPause, onSkipForward, onSkipBack, onNextChapter, onPrevChapter)
-                    SecondaryControls(playback, onSpeed, onSleep)
+                Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    CoverArt(
+                        coverUrl = book?.coverUrl,
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .aspectRatio(1f, matchHeightConstraintsFirst = true),
+                    )
+                }
+                // Scrolls only if a short landscape area can't fit the controls.
+                Column(Modifier.weight(1f).fillMaxHeight().verticalScroll(rememberScrollState())) {
+                    Column(
+                        Modifier.fillMaxWidth().heightIn(min = minContentHeight).widthIn(max = 520.dp),
+                        verticalArrangement = Arrangement.SpaceEvenly,
+                    ) {
+                        controls(false)
+                    }
                 }
             }
         } else {
-            Column(
-                Modifier.fillMaxSize().padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.SpaceEvenly,
-            ) {
-                CoverArt(
-                    coverUrl = book?.coverUrl,
-                    modifier = Modifier.fillMaxWidth(0.7f).aspectRatio(1f),
-                )
-                TrackInfo(playback, centered = true)
-                Scrubber(playback, duration, onSeek)
-                TransportControls(playback, onPlayPause, onSkipForward, onSkipBack, onNextChapter, onPrevChapter)
-                SecondaryControls(playback, onSpeed, onSleep)
+            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(min = minContentHeight).padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    CoverArt(
+                        coverUrl = book?.coverUrl,
+                        modifier = Modifier.size(stackedCover),
+                    )
+                    controls(true)
+                }
             }
         }
     }
@@ -485,14 +505,15 @@ private fun SecondaryControls(
     onSpeed: () -> Unit,
     onSleep: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly) {
+    Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly, Alignment.CenterVertically) {
         TextButton(onClick = onSpeed) {
             Icon(Icons.Filled.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text("  ${playback.speed}×")
+            Text("  ${playback.speed}×", maxLines = 1, softWrap = false)
         }
+        val sleepOn = playback.sleepTimerEndsAt != null || playback.sleepAtChapterEnd
         TextButton(onClick = onSleep) {
             Icon(Icons.Filled.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(if (playback.sleepTimerEndsAt != null) "  Sleep on" else "  Sleep timer")
+            Text(if (sleepOn) "  Sleep on" else "  Sleep timer", maxLines = 1, softWrap = false)
         }
     }
 }
