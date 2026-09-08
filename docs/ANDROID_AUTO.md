@@ -155,23 +155,14 @@ the release build:
   `setMediaButtonPreferences`.)
 - ✅ Play from a browsed item resumes at the right position; pause/resume work.
 - ✅ Headless token acquisition (service launched straight from the car, no 401).
-
+- ✅ **Offline playback** — in airplane mode a downloaded audiobook plays from its local
+  file (`resolveFromLocal()` → `Uri.fromFile()` → `DefaultDataSource.Factory` /
+  `FileDataSource`); downloaded comics and ebooks also open offline.
 - ✅ `./gradlew :app:bundleRelease` produces a signed `app-release.aab` ready for Play.
 
 > The AAOS `Automotive_Distant_Display` emulator can't render a sideloaded app's now-playing
 > template or list it in the media-app picker — always test Android Auto on the **DHU with a
 > real phone**, not that emulator.
-
-### Offline downloaded-audiobook playback — inspection-verified
-
-The car resolves a browsed id via `MediaLibraryContentSourceImpl.resolve()`. When
-`catalogRepository.detail()` fails (no network / expired session) it falls back to
-`resolveFromLocal()`, which returns a `PlayableAudiobook` pointing at
-`Uri.fromFile(downloadedFile)` with the last saved position — no server call. The player's
-`DefaultDataSource.Factory` opens that `file://` URI via `FileDataSource`, and the same
-factory's streaming path is DHU-verified. Not clicked through end-to-end (the only
-audiobook on the test account is 1.2 GB); **spot-check next time a book is downloaded**:
-airplane mode → car → *Downloaded* → play.
 
 ### Remaining (your action)
 
