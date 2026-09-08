@@ -86,13 +86,40 @@ opens an Activity on the car display. The only app-launched `PendingIntent` is t
 
 ## 5. Testing before submission
 
-### Desktop Head Unit (DHU)
-1. Android Studio → **SDK Manager → SDK Tools → Android Auto Desktop Head Unit Emulator**.
-2. On the test phone: Android Auto → tap the version 10× to enable **Developer settings** →
-   *Start head unit server*.
-3. `cd "$ANDROID_SDK/extras/google/auto"` → `./desktop-head-unit` (with the phone connected
-   over USB and `adb` reachable).
-4. Walk the checklist:
+### Desktop Head Unit (DHU) — full setup
+
+**On the computer (one time):**
+1. Android Studio → **Tools → SDK Manager → SDK Tools** tab → tick **"Android Auto Desktop
+   Head Unit Emulator"** (and **"Android SDK Command-line Tools (latest)"**) → **Apply**.
+   Installs to `<SDK>\extras\google\auto\` (`desktop-head-unit.exe` on Windows).
+
+**On the phone (one time):**
+2. **Developer options**: Settings → About phone → tap **Build number** 7×.
+   Then Settings → System → Developer options → enable **USB debugging**.
+3. **Android Auto app**: install / update **Android Auto** from the Play Store. Open it once
+   and complete first-run setup (it may say "connect to a car" — that's fine).
+4. **Android Auto developer mode**: open Android Auto's settings —
+   Settings → **Connected devices → Connection preferences → Android Auto**
+   (or search "Android Auto" in Settings). Scroll to the bottom and tap **"Version"** /
+   *"Version and permission info"* about 10× until it toasts *"Developer mode enabled"*.
+   A **⋮ menu → Developer settings** now appears. In there enable:
+   - **"Unknown sources"** — required, or a sideloaded app won't show in the car.
+   - **"Start head unit server"** — tick it (a persistent notification appears).
+   > If the Version row isn't tappable / dev settings never appear: the phone hasn't
+   > completed AA setup, or the OEM hid it. Connecting to DHU once (step 6) usually unlocks
+   > it; otherwise try the standalone *Android Auto* entry in the app drawer or
+   > `adb shell am start -n com.google.android.projection.gearhead/.companion.DeveloperHeadunitLauncherActivity`.
+
+**Each session:**
+5. Plug the phone in over USB; accept the debugging prompt. Confirm `adb devices` lists it.
+6. `adb forward tcp:5277 tcp:5277`
+7. `cd "<SDK>\extras\google\auto"` then `desktop-head-unit.exe`
+   (macOS/Linux: `./desktop-head-unit`). The DHU window opens; the phone shows "Android
+   Auto" projecting.
+8. `adb install -r app\build\outputs\apk\debug\app-debug.apk` — then in the DHU, open the
+   **media app switcher** (top bar) and pick **Dexxicon Reader**.
+
+Walk the checklist:
    - browse **Continue listening / Downloaded / All audiobooks** (→ per-server when >1),
    - play from each; confirm it resumes at the right position and pushes back on pause,
    - cover art loads in the grid and on the now-playing screen,
