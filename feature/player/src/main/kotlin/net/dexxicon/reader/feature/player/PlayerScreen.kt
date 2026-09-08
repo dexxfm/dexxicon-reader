@@ -1,5 +1,11 @@
 package net.dexxicon.reader.feature.player
 
+import android.content.Intent
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,7 +30,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Bedtime
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Forward30
+import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.Speaker
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
@@ -50,12 +59,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -238,8 +250,12 @@ private fun AudioOptions(
     Column(Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 24.dp)) {
         Text("Audio options", style = MaterialTheme.typography.titleMedium)
 
+        AudioOutputRow(Modifier.padding(top = 16.dp))
+
+        HorizontalDivider(Modifier.padding(vertical = 16.dp))
+
         Row(
-            Modifier.fillMaxWidth().padding(top = 16.dp),
+            Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -278,6 +294,81 @@ private fun AudioOptions(
             onSelect = onSmartRewind,
             modifier = Modifier.padding(top = 12.dp),
         )
+    }
+}
+
+/**
+ * Shows where audio is currently playing and opens the system output switcher (speaker,
+ * paired Bluetooth, wired headset, Cast targets). Android exposes no supported way to pin
+ * media output from the app, so switching is delegated to the OS panel.
+ */
+@Composable
+private fun AudioOutputRow(modifier: Modifier = Modifier) {
+    val context = LocalContext.current
+    val audioManager = remember { context.getSystemService(AudioManager::class.java) }
+    var output by remember { mutableStateOf(currentAudioOutput(audioManager)) }
+
+    DisposableEffect(audioManager) {
+        val am = audioManager ?: return@DisposableEffect onDispose {}
+        val callback = object : AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) {
+                output = currentAudioOutput(am)
+            }
+            override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) {
+                output = currentAudioOutput(am)
+            }
+        }
+        am.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
+        onDispose { am.unregisterAudioDeviceCallback(callback) }
+    }
+
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(output.icon, contentDescription = null)
+        Column(Modifier.weight(1f).padding(start = 16.dp)) {
+            Text("Playing on", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(output.label, style = MaterialTheme.typography.bodyLarge)
+        }
+        TextButton(onClick = {
+            runCatching {
+                // Settings.Panel.ACTION_MEDIA_OUTPUT — the system output switcher (API 29+).
+                context.startActivity(
+                    Intent("android.settings.panel.action.MEDIA_OUTPUT")
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+        }) { Text("Change") }
+    }
+}
+
+private data class AudioOutput(val label: String, val icon: ImageVector)
+
+@Suppress("DEPRECATION") // isBluetoothA2dpOn / isWiredHeadsetOn: still the simplest "which route is live" read
+private fun currentAudioOutput(am: AudioManager?): AudioOutput {
+    if (am == null) return AudioOutput("Phone speaker", Icons.Filled.Speaker)
+    val outputs = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+    fun device(vararg types: Int) = outputs.firstOrNull { it.type in types }
+
+    val bluetooth = device(
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        AudioDeviceInfo.TYPE_BLE_HEADSET,
+        AudioDeviceInfo.TYPE_BLE_SPEAKER,
+    )
+    val wired = device(
+        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+        AudioDeviceInfo.TYPE_WIRED_HEADSET,
+        AudioDeviceInfo.TYPE_USB_HEADSET,
+        AudioDeviceInfo.TYPE_USB_DEVICE,
+    )
+    return when {
+        am.isBluetoothA2dpOn && bluetooth != null ->
+            AudioOutput(
+                bluetooth.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Bluetooth",
+                Icons.Filled.Bluetooth,
+            )
+        am.isWiredHeadsetOn && wired != null ->
+            AudioOutput("Headphones", Icons.Filled.Headphones)
+        else -> AudioOutput("Phone speaker", Icons.Filled.Speaker)
     }
 }
 
