@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.10.1 — 2026-09-08
+
+Settings you asked for, and a stop button that stops.
+
+- **The mini-player "X" now stops the audiobook.** It used to just detach the controls
+  while the service kept playing in the background; now it ends playback and clears the
+  media notification.
+- **Audio output on the player.** The now-playing screen shows where sound is going —
+  phone speaker, a Bluetooth device, or headphones — with a one-tap icon (and a row in
+  Audio options) that opens the system output switcher. Android has no supported way to
+  pin a default output from an app, so switching is handed to the OS chooser.
+- **Storage limit for downloads (Settings › Downloads).** A cap on total downloaded-media
+  size, default 10 GB, with a "X used of Y" readout. A download that would push you over
+  the limit is skipped with a message rather than filling the disk.
+- **Server display priority (Settings › Servers).** Press and hold the handle to drag
+  servers into the order you want. That order is used everywhere — the server list, the
+  reading-sync list, and which library's books come first when browsing.
+- **Default book layout (Settings › Appearance).** Choose whether Browse and a server's
+  catalogue start as a grid or a list. Each screen still has its own toggle; changing the
+  default here snaps them all back to it.
+- Release builds now embed native debug symbol tables so crash traces from the bundled
+  PDF/graphics libraries are readable in Play Console.
+
 ## 0.10.0 — 2026-09-08
 
 Android Auto, and sign‑ins that stay signed in.
