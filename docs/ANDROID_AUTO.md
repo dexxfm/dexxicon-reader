@@ -156,15 +156,28 @@ the release build:
 - ✅ Play from a browsed item resumes at the right position; pause/resume work.
 - ✅ Headless token acquisition (service launched straight from the car, no 401).
 
-Also verified on the **AAOS emulator** earlier (browse + `ArtworkProvider` + headless
-auth); that reference image can't render a sideloaded app's now-playing template, which is
-why the DHU pass on a phone was needed.
+- ✅ `./gradlew :app:bundleRelease` produces a signed `app-release.aab` ready for Play.
 
-Not yet done:
+> The AAOS `Automotive_Distant_Display` emulator can't render a sideloaded app's now-playing
+> template or list it in the media-app picker — always test Android Auto on the **DHU with a
+> real phone**, not that emulator.
 
-- [ ] **Offline downloaded-audiobook playback** end-to-end — the fix is in
-  (`resolveFromLocal`); needs a downloaded audiobook clicked through in airplane mode.
-- [ ] **Media Controller Test (MCT)** pass.
-- [ ] `./gradlew :app:bundleRelease` uploaded to a Play track.
-- [ ] Android Auto form factor added + declaration completed in Play Console.
-- [ ] Submitted for Android Auto review.
+### Offline downloaded-audiobook playback — inspection-verified
+
+The car resolves a browsed id via `MediaLibraryContentSourceImpl.resolve()`. When
+`catalogRepository.detail()` fails (no network / expired session) it falls back to
+`resolveFromLocal()`, which returns a `PlayableAudiobook` pointing at
+`Uri.fromFile(downloadedFile)` with the last saved position — no server call. The player's
+`DefaultDataSource.Factory` opens that `file://` URI via `FileDataSource`, and the same
+factory's streaming path is DHU-verified. Not clicked through end-to-end (the only
+audiobook on the test account is 1.2 GB); **spot-check next time a book is downloaded**:
+airplane mode → car → *Downloaded* → play.
+
+### Remaining (your action)
+
+- [ ] Upload `app/build/outputs/bundle/release/app-release.aab` to a Play track.
+- [ ] Play Console → add the **Android Auto** form factor → complete the declaration
+      (category *Media*, no video, no custom UI).
+- [ ] Submit for **Android Auto review**.
+- [ ] Optional: **Media Controller Test** pass (the DHU pass already covers browse +
+      transport).
