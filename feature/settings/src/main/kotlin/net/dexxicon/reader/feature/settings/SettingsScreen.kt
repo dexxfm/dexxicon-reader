@@ -51,6 +51,27 @@ import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.component.FormatLegend
 import net.dexxicon.reader.core.model.Server
 
+private const val GB = 1024L * 1024 * 1024
+
+/** Storage-limit presets. `null` = no limit. */
+private val DOWNLOAD_LIMIT_OPTIONS: List<Pair<String, Long?>> = listOf(
+    "1 GB" to 1 * GB,
+    "5 GB" to 5 * GB,
+    "10 GB" to 10 * GB,
+    "20 GB" to 20 * GB,
+    "50 GB" to 50 * GB,
+    "None" to null,
+)
+
+private fun formatGigabytes(bytes: Long): String {
+    val gb = bytes / GB.toDouble()
+    return when {
+        bytes < GB / 10 -> "%.0f MB".format(bytes / (1024.0 * 1024))
+        gb < 10 -> "%.1f GB".format(gb)
+        else -> "%.0f GB".format(gb)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -129,6 +150,29 @@ fun SettingsScreen(
                     checked = prefs.downloadsWifiOnly,
                     onCheckedChange = viewModel::setDownloadsWifiOnly,
                 )
+            }
+
+            val usedBytes by viewModel.downloadUsedBytes.collectAsStateWithLifecycle()
+            LayoutSpacer(Modifier.height(16.dp))
+            Text("Storage limit", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                buildString {
+                    append(formatGigabytes(usedBytes)).append(" used")
+                    prefs.downloadLimitBytes?.let { append(" of ").append(formatGigabytes(it)) }
+                    append(". A download that would go over is skipped.")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                DOWNLOAD_LIMIT_OPTIONS.forEach { (label, bytes) ->
+                    FilterChip(
+                        selected = prefs.downloadLimitBytes == bytes,
+                        onClick = { viewModel.setDownloadLimit(bytes) },
+                        label = { Text(label) },
+                    )
+                }
             }
 
             Spacer()

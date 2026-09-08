@@ -12,6 +12,9 @@ import androidx.work.workDataOf
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.common.DexxiconDispatcher
@@ -40,6 +43,18 @@ class DownloadRepository @Inject constructor(
     val downloads: Flow<List<Download>> =
         dao.observeAll().map { list -> list.map { it.toDomain() } }
 
+    /** Approximate bytes held by downloads (done + in flight). */
+    val usedBytes: Flow<Long> =
+        dao.observeAll().map { list -> list.sumOf { it.approxBytes() } }
+
+    private fun DownloadEntity.approxBytes(): Long =
+        totalBytes ?: downloadedBytes.takeIf { it > 0L } ?: 0L
+
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    /** User-facing notices from download attempts (e.g. the storage limit was hit). */
+    val messages: SharedFlow<String> = _messages.asSharedFlow()
+
     fun download(serverId: String, bookId: String): Flow<Download?> =
         dao.observe(key(serverId, bookId)).map { it?.toDomain() }
 
@@ -48,12 +63,36 @@ class DownloadRepository @Inject constructor(
     }
 
     /** Queue (or re-queue) an offline copy of [detail]. */
-    suspend fun enqueue(detail: BookDetail) = withContext(io) {
-        val wifiOnly = appPreferences.preferences.first().downloadsWifiOnly
+    suspend fun enqueue(detail: BookDetail): EnqueueResult = withContext(io) {
+        val prefs = appPreferences.preferences.first()
+        val wifiOnly = prefs.downloadsWifiOnly
         val s = detail.summary
         val acquisition = detail.acquisitions.firstOrNull { it.format == s.format }
             ?: detail.primaryAcquisition
-            ?: return@withContext
+            ?: return@withContext EnqueueResult.NoFile
+
+        val limit = prefs.downloadLimitBytes
+        val needed = detail.fileSizeBytes ?: 0L
+        if (limit != null && needed > 0L) {
+            fun sizeOf(d: Download) = d.totalBytes ?: d.downloadedBytes.coerceAtLeast(0L)
+            val all = downloads.first()
+            // Don't count an existing copy of this same book against the limit (re-download).
+            val alreadyHeld = all.firstOrNull { it.serverId == s.serverId && it.bookId == s.id }
+                ?.let(::sizeOf) ?: 0L
+            val projected = all.sumOf(::sizeOf) - alreadyHeld + needed
+            if (projected > limit) {
+                _messages.tryEmit(
+                    "Not downloaded — it would exceed your ${formatGb(limit)} storage limit. " +
+                        "Free up space or raise the limit in Settings.",
+                )
+                return@withContext EnqueueResult.OverLimit(
+                    neededBytes = needed,
+                    usedBytes = (all.sumOf(::sizeOf) - alreadyHeld).coerceAtLeast(0L),
+                    limitBytes = limit,
+                )
+            }
+        }
+
         val entity = DownloadEntity.new(
             serverId = s.serverId,
             bookId = s.id,
@@ -81,6 +120,7 @@ class DownloadRepository @Inject constructor(
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build(),
         )
+        EnqueueResult.Queued
     }
 
     suspend fun remove(serverId: String, bookId: String) = withContext(io) {
@@ -101,4 +141,24 @@ class DownloadRepository @Inject constructor(
     }
 
     private fun key(serverId: String, bookId: String) = "$serverId::$bookId"
+
+    private fun formatGb(bytes: Long): String {
+        val gb = bytes / (1024.0 * 1024 * 1024)
+        return if (gb >= 10 || gb == gb.toLong().toDouble()) "${gb.toLong()} GB" else "%.1f GB".format(gb)
+    }
+}
+
+/** Outcome of [DownloadRepository.enqueue]. */
+sealed interface EnqueueResult {
+    data object Queued : EnqueueResult
+
+    /** Nothing downloadable on the book. */
+    data object NoFile : EnqueueResult
+
+    /** The download would push total downloaded media past the storage limit. */
+    data class OverLimit(
+        val neededBytes: Long,
+        val usedBytes: Long,
+        val limitBytes: Long,
+    ) : EnqueueResult
 }
