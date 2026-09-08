@@ -65,11 +65,11 @@ Mapped to the current implementation (`core/media/PlaybackService.kt`,
 | Playback resumption after reboot / BT connect | ✅ | `onPlaybackResumption` → `lastPlayed()` |
 | Search | ✅ | `onSearch` / `onGetSearchResult` → audiobook-filtered catalog search |
 | Sign-in / setup errors surfaced with a resolution action | ✅ | `LibraryResult.RESULT_ERROR_SESSION_AUTHENTICATION_EXPIRED` / `_SESSION_SETUP_REQUIRED` + `EXTRAS_KEY_ERROR_RESOLUTION_ACTION_*` deep-linking to the app; `Downloaded` stays usable offline |
-| Works offline for downloaded content | ✅ | local-file resolution never touches the network or a token |
+| Works offline for downloaded content | ✅ | `resolve()` falls back to `resolveFromLocal()` — plays the downloaded file at the last saved position with no server round-trip |
 | No ads, no video, no autoplay of full-screen/promotional content | ✅ | — |
 | Audio focus + becoming-noisy handled | ✅ | `handleAudioFocus = true`, `setHandleAudioBecomingNoisy(true)` |
 | Custom actions within limits | ✅ | skip-silence is an in-app session command, **not** a car-surfaced custom action |
-| Headless auth on a cold car start | ⚠️ verify | NATIVE: password login is headless. OIDC: refresh-token flow is headless; a dead refresh token → error node + `Downloaded` still works. See PR #2 (proactive refresh + rotation hardening) and `docs/SETUP.md`. **Needs a DHU pass against a live session.** |
+| Headless auth on a cold car start | ✅ | Verified on the AAOS emulator: launching `PlaybackService` straight from the car (no app UI) streams + plays with a token the service acquired itself. NATIVE = password login; OIDC = refresh-token flow (proactive refresh + rotation hardening from PR #2); a dead refresh token → error node + `Downloaded` still works. |
 
 ---
 
@@ -113,10 +113,29 @@ AVD `Automotive with Google Play`, then
 
 ---
 
-## 6. Open items before we submit
+## 6. Status
 
-- [ ] DHU pass against a **live** server session (covers, headless NATIVE + OIDC refresh).
-- [ ] MCT pass.
+Verified on the **AAOS emulator** (`Automotive_Distant_Display_with_Google_Play`,
+force-connected via `MEDIA_TEMPLATE` since that reference image doesn't list sideloaded
+media apps):
+
+- ✅ Browse tree renders (Continue / Downloaded / All audiobooks), titles + authors +
+  progress bars.
+- ✅ **Cover art loads** in the browse grid via `ArtworkProvider` (HMAC-signed
+  `content://` proxy through the authed client).
+- ✅ Playback starts from a browsed item; the service acquires its token **headlessly**
+  (launched from the car, no app UI), no 401.
+- ✅ Offline `resolve()` fallback compiles and the streaming path is unbroken (see the
+  note below on the one gap).
+
+Not yet done:
+
+- [ ] **DHU pass** on a real phone (the emulator can't fully render the now-playing
+  template or the app picker — reference-image limitation).
+- [ ] **Offline downloaded-audiobook playback** end-to-end — the fix is in
+  (`resolveFromLocal`), but no emulator currently has a downloaded audiobook to click
+  through; download one and play it in airplane mode.
+- [ ] **Media Controller Test (MCT)** pass.
 - [ ] `./gradlew :app:bundleRelease` uploaded to a Play track.
 - [ ] Android Auto form factor added + declaration completed in Play Console.
 - [ ] Submitted for Android Auto review.
