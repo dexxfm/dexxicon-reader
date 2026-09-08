@@ -68,7 +68,10 @@ class PlaybackService : MediaLibraryService() {
     override fun onCreate() {
         super.onCreate()
 
-        val dataSourceFactory = OkHttpDataSource.Factory(okHttpClient)
+        // https streams go through the authed client; a downloaded book plays from its
+        // `file://` copy — DefaultDataSource routes each to the right source.
+        val httpDataSource = OkHttpDataSource.Factory(okHttpClient)
+        val dataSourceFactory = DefaultDataSource.Factory(this, httpDataSource)
         val player = ExoPlayer.Builder(this)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setAudioAttributes(
@@ -84,19 +87,19 @@ class PlaybackService : MediaLibraryService() {
             .build()
         exoPlayer = player
 
-        // Cover-art loading: https goes through the authed client (no 401 on lock-screen /
-        // notification art); `content://` from [ArtworkProvider] is opened locally — that's
-        // the path the car uses since it can't send our auth headers.
-        val artworkDataSource = DefaultDataSource.Factory(this, dataSourceFactory)
+        // Now-playing / lock-screen / notification art is loaded here through the authed
+        // client and handed to the session as a bitmap. (Browse-grid art is different: the
+        // car fetches that itself, so those items get a `content://` [ArtworkProvider] URI.)
         val bitmapLoader = CacheBitmapLoader(
             DataSourceBitmapLoader(
                 MoreExecutors.listeningDecorator(Executors.newSingleThreadExecutor()),
-                artworkDataSource,
+                dataSourceFactory,
             ),
         )
 
-        // Deep link for the "sign in" button the car shows when a server rejects us.
-        val signInIntent = packageManager.getLaunchIntentForPackage(packageName)?.let {
+        // Opening the app: notification tap, and the "sign in" button the car shows when a
+        // server rejects us.
+        val openAppIntent = packageManager.getLaunchIntentForPackage(packageName)?.let {
             android.app.PendingIntent.getActivity(
                 this,
                 0,
@@ -112,11 +115,12 @@ class PlaybackService : MediaLibraryService() {
                 player,
                 contentSource,
                 serviceScope,
-                signInIntent,
-                artworkUri = { src -> ArtworkProvider.uriFor(this, src) },
+                openAppIntent,
+                browseArtworkUri = { src -> ArtworkProvider.uriFor(this, src) },
             ),
         )
             .setBitmapLoader(bitmapLoader)
+            .apply { openAppIntent?.let { setSessionActivity(it) } }
             .build()
 
         positionWriter = ServicePositionWriter(player, progressSink, serviceScope).apply { attach() }
@@ -155,9 +159,14 @@ private class AutoLibraryCallback(
     private val player: ExoPlayer?,
     private val content: MediaLibraryContentSource,
     private val scope: CoroutineScope,
-    private val signInIntent: android.app.PendingIntent?,
-    /** Wraps a remote cover URL as a `content://` URI the car can load without our auth. */
-    private val artworkUri: (String) -> Uri,
+    private val openAppIntent: android.app.PendingIntent?,
+    /**
+     * Wraps a remote cover URL as a `content://` URI the car can load without our auth
+     * headers — used only for **browse-grid** items, which the car fetches itself. The
+     * now-playing item's art is delivered as a bitmap by the session's BitmapLoader, so
+     * that keeps the plain URL.
+     */
+    private val browseArtworkUri: (String) -> Uri,
 ) : MediaLibrarySession.Callback {
 
     private val skipSilence = SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY)
@@ -406,7 +415,7 @@ private class AutoLibraryCallback(
                 .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
                 .setTitle(card.title)
                 .setArtist(card.author)
-                .setArtworkUri(card.artworkUri?.let(artworkUri))
+                .setArtworkUri(card.artworkUri?.let(browseArtworkUri))
                 .setExtras(completionExtras(card.progress))
                 .build(),
         )
@@ -421,7 +430,7 @@ private class AutoLibraryCallback(
                 .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
                 .setTitle(p.title)
                 .setArtist(p.author)
-                .setArtworkUri(p.artworkUri?.let(artworkUri))
+                .setArtworkUri(p.artworkUri?.let(Uri::parse))
                 .build(),
         )
         .build()
@@ -431,7 +440,7 @@ private class AutoLibraryCallback(
         .setExtras(
             Bundle().apply {
                 putString(MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_LABEL_COMPAT, label)
-                signInIntent?.let {
+                openAppIntent?.let {
                     putParcelable(MediaConstants.EXTRAS_KEY_ERROR_RESOLUTION_ACTION_INTENT_COMPAT, it)
                 }
             },
