@@ -19,6 +19,11 @@ data class Server(
     val koboEndpoint: String? = null,
     val enabledProviders: Set<SyncProviderKind> = emptySet(),
     val createdAt: Long = 0L,
+    /**
+     * User-defined display priority. Lower comes first everywhere servers are listed or
+     * their books merged. New servers go to the end; [createdAt] breaks ties.
+     */
+    val sortOrder: Int = 0,
 ) {
     /** Base URL with any trailing slash removed. */
     val normalizedBaseUrl: String get() = baseUrl.trimEnd('/')

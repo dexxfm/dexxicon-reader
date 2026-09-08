@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.datastore.AppPreferences
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.AppTheme
@@ -16,10 +17,15 @@ import javax.inject.Inject
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val store: AppPreferencesStore,
+    downloadRepository: DownloadRepository,
 ) : ViewModel() {
 
     val preferences: StateFlow<AppPreferences> = store.preferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppPreferences())
+
+    /** Bytes currently held by downloaded media. */
+    val downloadUsedBytes: StateFlow<Long> = downloadRepository.usedBytes
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     fun setTheme(theme: AppTheme) {
         viewModelScope.launch { store.setTheme(theme) }
@@ -31,5 +37,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setBookViewDefault(mode: BookViewMode) {
         viewModelScope.launch { store.setBookViewDefault(mode) }
+    }
+
+    /** [bytes] null = no limit. */
+    fun setDownloadLimit(bytes: Long?) {
+        viewModelScope.launch { store.setDownloadLimit(bytes) }
     }
 }

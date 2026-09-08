@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.TokenManager
+import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.media.AudiobookPlayer
 import net.dexxicon.reader.core.media.PlayerUiState
 import javax.inject.Inject
@@ -23,9 +24,13 @@ class AppShellViewModel @Inject constructor(
     tokenManager: TokenManager,
     serverRepository: ServerRepository,
     reauthCoordinator: ReauthCoordinator,
+    downloadRepository: DownloadRepository,
 ) : ViewModel() {
 
     val playback: StateFlow<PlayerUiState> = player.state
+
+    /** One-off notices (e.g. a download blocked by the storage limit) to show as a snackbar. */
+    val messages: SharedFlow<String> = downloadRepository.messages
 
     val signInPrompts: StateFlow<List<SignInPrompt>> =
         combine(tokenManager.needsSignIn, serverRepository.servers) { ids, servers ->

@@ -21,11 +21,14 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
@@ -60,10 +63,15 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
     val playback by shellViewModel.playback.collectAsStateWithLifecycle()
     val signInPrompts by shellViewModel.signInPrompts.collectAsStateWithLifecycle()
 
+    val snackbarHostState = remember { SnackbarHostState() }
+
     LaunchedEffect(Unit) {
         shellViewModel.reauthRequests.collect { serverId ->
             navController.navigateToReauthServer(serverId)
         }
+    }
+    LaunchedEffect(Unit) {
+        shellViewModel.messages.collect { snackbarHostState.showSnackbar(it) }
     }
 
     val currentTopLevel = TopLevelDestination.entries.firstOrNull { destination ->
@@ -81,6 +89,7 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
             // Each destination has its own Scaffold + TopAppBar that consumes the status-bar
             // inset; without this the shell would add it a second time above every screen.
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 Column {
                     if (miniPlayerVisible) {

@@ -115,13 +115,26 @@ object DatabaseModule {
         }
     }
 
+    private val MIGRATION_7_8 = object : Migration(7, 8) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE `servers` ADD COLUMN `sortOrder` INTEGER NOT NULL DEFAULT 0")
+            // Seed the priority from the existing add order so nothing visibly reshuffles.
+            db.execSQL(
+                """
+                UPDATE `servers` SET `sortOrder` =
+                    (SELECT COUNT(*) FROM `servers` AS s2 WHERE s2.`createdAt` < `servers`.`createdAt`)
+                """.trimIndent(),
+            )
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): DexxiconDatabase =
         Room.databaseBuilder(context, DexxiconDatabase::class.java, DexxiconDatabase.NAME)
             .addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
-                MIGRATION_6_7,
+                MIGRATION_6_7, MIGRATION_7_8,
             )
             .build()
 

@@ -208,6 +208,11 @@ class AudiobookPlayer @Inject constructor(
         pollJob?.cancel()
         sleepJob?.cancel()
         controller?.let {
+            // Releasing the controller only disconnects it — the service keeps playing.
+            // Stop and clear so the "X" on the mini-player actually ends playback and drops
+            // the media notification.
+            it.stop()
+            it.clearMediaItems()
             it.removeListener(playerListener)
             it.release()
         }

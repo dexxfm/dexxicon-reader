@@ -60,6 +60,13 @@ android {
             )
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")
+
+            // Ship symbol tables for the prebuilt .so libs (PDFium, AndroidX) so native
+            // crash/ANR traces in Play Vitals are readable. Bundled into the AAB; Play
+            // ingests them on upload.
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE"
+            }
         }
     }
 
