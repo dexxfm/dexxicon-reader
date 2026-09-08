@@ -10,6 +10,7 @@ import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.datastore.AppPreferences
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.AppTheme
+import net.dexxicon.reader.core.model.BookViewMode
 import javax.inject.Inject
 
 @HiltViewModel
@@ -26,5 +27,9 @@ class SettingsViewModel @Inject constructor(
 
     fun setDownloadsWifiOnly(enabled: Boolean) {
         viewModelScope.launch { store.setDownloadsWifiOnly(enabled) }
+    }
+
+    fun setBookViewDefault(mode: BookViewMode) {
+        viewModelScope.launch { store.setBookViewDefault(mode) }
     }
 }

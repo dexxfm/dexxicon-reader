@@ -49,6 +49,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.component.FormatLegend
+import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.Server
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -115,6 +116,25 @@ fun SettingsScreen(
                         selected = prefs.theme == theme,
                         onClick = { viewModel.setTheme(theme) },
                         label = { Text(theme.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                    )
+                }
+            }
+
+            LayoutSpacer(Modifier.height(16.dp))
+            Text("Book layout", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "The default for Browse and a server's catalog. Each screen keeps its own " +
+                    "grid/list toggle; changing this here resets them all.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                BookViewMode.entries.forEach { mode ->
+                    FilterChip(
+                        selected = prefs.bookViewDefault == mode,
+                        onClick = { viewModel.setBookViewDefault(mode) },
+                        label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
                     )
                 }
             }
