@@ -14,7 +14,18 @@ APIs — the same ones their web readers use — rather than generic OPDS.
 
 ### Browse & open
 - Add multiple servers; per‑server sign‑in with username + password (native JWT, auto‑refresh)
-  or **OIDC / SSO** through an in‑app WebView.
+  or **OIDC / SSO** through an in‑app WebView. Sessions are refreshed proactively in the
+  background; if an SSO session can no longer be renewed the app prompts you to sign in
+  again rather than failing silently.
+
+> **SSO / OIDC needs `offline_access`.** A long‑lived refresh token is only issued when the
+> authorize request includes the `offline_access` scope *and* the identity provider allows
+> it. The app now appends `offline_access` to the scopes automatically, but the IdP side
+> must permit it: in **Authentik**, add the *offline_access* scope mapping to the OAuth2
+> provider (and to the application's allowed scopes); on **BookLore / BookOrbit**, leave
+> the OIDC "scopes" setting blank or include `offline_access` so it isn't stripped.
+> Without it an SSO session dies the moment its short access token expires and the only
+> recovery is a manual re‑sign‑in.
 - Browse the whole library with shelves/facets, search, sort and infinite scroll; covers
   load through the authenticated client.
 - **Stream‑first**: books open over authenticated HTTP range requests. "Make available

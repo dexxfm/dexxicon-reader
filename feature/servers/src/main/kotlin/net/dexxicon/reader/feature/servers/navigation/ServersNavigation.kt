@@ -8,12 +8,19 @@ import kotlinx.serialization.Serializable
 import net.dexxicon.reader.feature.servers.AddEditServerScreen
 
 @Serializable
-data class AddEditServerRoute(val serverId: String? = null)
+data class AddEditServerRoute(
+    val serverId: String? = null,
+    /** Open straight into SSO sign-in for an existing server whose session expired. */
+    val reauth: Boolean = false,
+)
 
 fun NavController.navigateToAddServer() = navigate(AddEditServerRoute())
 
 fun NavController.navigateToEditServer(serverId: String) =
     navigate(AddEditServerRoute(serverId))
+
+fun NavController.navigateToReauthServer(serverId: String) =
+    navigate(AddEditServerRoute(serverId, reauth = true))
 
 /** Add / edit a server. The server *list* lives in Settings, not its own screen. */
 fun NavGraphBuilder.serversSection(navController: NavController) {
