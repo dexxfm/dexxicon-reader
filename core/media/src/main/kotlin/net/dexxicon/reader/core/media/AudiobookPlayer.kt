@@ -46,7 +46,6 @@ data class PlayerUiState(
 @Singleton
 class AudiobookPlayer @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val progressSink: PlaybackProgressSink,
     private val playerPreferences: PlayerPreferencesStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -209,7 +208,6 @@ class AudiobookPlayer @Inject constructor(
         pollJob?.cancel()
         sleepJob?.cancel()
         controller?.let {
-            persistPosition(it.currentPosition)
             it.removeListener(playerListener)
             it.release()
         }
@@ -218,10 +216,14 @@ class AudiobookPlayer @Inject constructor(
         _state.value = PlayerUiState()
     }
 
+    /**
+     * Drives the UI scrubber and the end-of-chapter sleep timer while playing. The listening
+     * position is persisted by the playback service ([ServicePositionWriter]) so it is saved
+     * regardless of whether this in-app player is attached.
+     */
     private fun startPolling() {
         if (pollJob?.isActive == true) return
         pollJob = scope.launch {
-            var sinceSave = 0L
             while (true) {
                 val c = controller ?: break
                 val pos = c.currentPosition.coerceAtLeast(0L)
@@ -236,11 +238,6 @@ class AudiobookPlayer @Inject constructor(
                         _state.value = _state.value.copy(sleepAtChapterEnd = false)
                     }
                 }
-                sinceSave += 1000
-                if (sinceSave >= 10_000) {
-                    persistPosition(pos)
-                    sinceSave = 0
-                }
                 delay(1_000)
             }
         }
@@ -248,19 +245,5 @@ class AudiobookPlayer @Inject constructor(
 
     private fun stopPolling() {
         pollJob?.cancel()
-        controller?.let { persistPosition(it.currentPosition) }
-    }
-
-    private fun persistPosition(positionMs: Long) {
-        val a = current ?: return
-        if (positionMs <= 0L) return
-        scope.launch {
-            progressSink.save(
-                serverId = a.serverId,
-                bookId = a.bookId,
-                positionMs = positionMs,
-                percent = a.durationMs.takeIf { it > 0 }?.let { positionMs.toDouble() / it },
-            )
-        }
     }
 }
