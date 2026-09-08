@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.database.entity
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import net.dexxicon.reader.core.model.AuthMode
@@ -22,6 +23,7 @@ data class ServerEntity(
     val koboEndpoint: String?,
     val enabledProviders: String,
     val createdAt: Long,
+    @ColumnInfo(defaultValue = "0") val sortOrder: Int = 0,
 ) {
     fun toDomain(): Server = Server(
         id = id,
@@ -40,6 +42,7 @@ data class ServerEntity(
             .mapNotNull { runCatching { SyncProviderKind.valueOf(it) }.getOrNull() }
             .toSet(),
         createdAt = createdAt,
+        sortOrder = sortOrder,
     )
 
     companion object {
@@ -57,6 +60,7 @@ data class ServerEntity(
             koboEndpoint = server.koboEndpoint,
             enabledProviders = server.enabledProviders.joinToString(",") { it.name },
             createdAt = server.createdAt,
+            sortOrder = server.sortOrder,
         )
     }
 }

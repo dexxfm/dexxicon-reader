@@ -10,11 +10,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Spacer as LayoutSpacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
@@ -40,16 +44,24 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.component.FormatLegend
 import net.dexxicon.reader.core.model.Server
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,15 +101,23 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            servers.forEach { server ->
-                ServerRow(
-                    server = server,
-                    account = serverAccounts[server.id],
-                    onOpen = { onOpenServerCatalog(server.id, server.displayName) },
-                    onEdit = { onEditServer(server.id) },
-                    onRemove = { serverListViewModel.remove(server.id) },
+            if (servers.size > 1) {
+                Text(
+                    "Press and hold the handle to reorder. This order sets which library's " +
+                        "books come first when browsing.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp),
                 )
             }
+            ReorderableServers(
+                servers = servers,
+                accounts = serverAccounts,
+                onOpen = { onOpenServerCatalog(it.id, it.displayName) },
+                onEdit = { onEditServer(it.id) },
+                onRemove = { serverListViewModel.remove(it.id) },
+                onReorder = serverListViewModel::reorder,
+            )
             OutlinedButton(
                 onClick = onAddServer,
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
@@ -325,6 +345,90 @@ private fun relativeTime(atMillis: Long): String {
     ).toString().replaceFirstChar { it.lowercase() }
 }
 
+/**
+ * The Servers list with long-press drag-to-reorder. The order shown here is the display
+ * priority used everywhere servers are listed or their books merged.
+ */
+@Composable
+private fun ReorderableServers(
+    servers: List<Server>,
+    accounts: Map<String, String>,
+    onOpen: (Server) -> Unit,
+    onEdit: (Server) -> Unit,
+    onRemove: (Server) -> Unit,
+    onReorder: (List<String>) -> Unit,
+) {
+    // A local copy so the drag reflows instantly; re-synced from upstream when not dragging.
+    var order by remember(servers) { mutableStateOf(servers) }
+    var dragIndex by remember { mutableStateOf<Int?>(null) }
+    var dragDelta by remember { mutableStateOf(0f) }
+    val rowHeights = remember { mutableStateMapOf<String, Int>() }
+    val canReorder = servers.size > 1
+
+    Column(Modifier.fillMaxWidth()) {
+        order.forEachIndexed { index, server ->
+            val dragging = dragIndex == index
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { rowHeights[server.id] = it.height }
+                    .zIndex(if (dragging) 1f else 0f)
+                    .offset { IntOffset(0, if (dragging) dragDelta.roundToInt() else 0) }
+                    .then(if (dragging) Modifier.shadow(6.dp) else Modifier)
+                    .background(
+                        if (dragging) MaterialTheme.colorScheme.surfaceContainerHighest
+                        else MaterialTheme.colorScheme.surface,
+                    ),
+            ) {
+                ServerRow(
+                    server = server,
+                    account = accounts[server.id],
+                    onOpen = { onOpen(server) },
+                    onEdit = { onEdit(server) },
+                    onRemove = { onRemove(server) },
+                    dragHandle = if (!canReorder) null else { modifier ->
+                        Icon(
+                            Icons.Filled.DragHandle,
+                            contentDescription = "Drag to reorder",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = modifier.pointerInput(order.size) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { dragIndex = index; dragDelta = 0f },
+                                    onDragEnd = {
+                                        if (dragIndex != null) onReorder(order.map { it.id })
+                                        dragIndex = null
+                                        dragDelta = 0f
+                                    },
+                                    onDragCancel = {
+                                        order = servers
+                                        dragIndex = null
+                                        dragDelta = 0f
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        val cur = dragIndex ?: return@detectDragGesturesAfterLongPress
+                                        dragDelta += amount.y
+                                        val h = rowHeights[order[cur].id] ?: return@detectDragGesturesAfterLongPress
+                                        if (dragDelta > h / 2 && cur < order.lastIndex) {
+                                            order = order.toMutableList().apply { add(cur + 1, removeAt(cur)) }
+                                            dragIndex = cur + 1
+                                            dragDelta -= h
+                                        } else if (dragDelta < -h / 2 && cur > 0) {
+                                            order = order.toMutableList().apply { add(cur - 1, removeAt(cur)) }
+                                            dragIndex = cur - 1
+                                            dragDelta += h
+                                        }
+                                    },
+                                )
+                            },
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun ServerRow(
     server: Server,
@@ -332,6 +436,7 @@ private fun ServerRow(
     onOpen: () -> Unit,
     onEdit: () -> Unit,
     onRemove: () -> Unit,
+    dragHandle: (@Composable (Modifier) -> Unit)? = null,
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     ListItem(
@@ -348,7 +453,9 @@ private fun ServerRow(
                 }
             }
         },
-        leadingContent = { Icon(Icons.Filled.Dns, contentDescription = null) },
+        leadingContent = {
+            if (dragHandle != null) dragHandle(Modifier) else Icon(Icons.Filled.Dns, contentDescription = null)
+        },
         trailingContent = {
             IconButton(onClick = { menuOpen = true }) {
                 Icon(Icons.Filled.MoreVert, contentDescription = "More")
