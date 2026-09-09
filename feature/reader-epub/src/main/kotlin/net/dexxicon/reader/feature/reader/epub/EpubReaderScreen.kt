@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Bookmarks
+import androidx.compose.material.icons.filled.BorderColor
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
@@ -152,6 +153,7 @@ private fun ReaderContent(
     var showToc by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     var showHighlights by remember { mutableStateOf(false) }
+    var showBookmarks by remember { mutableStateOf(false) }
     var activeHighlightId by remember { mutableStateOf<String?>(null) }
     var currentLocator by remember { mutableStateOf<Locator?>(null) }
     var chromeVisible by remember { mutableStateOf(true) }
@@ -298,11 +300,11 @@ private fun ReaderContent(
                                 contentDescription = if (currentBookmark != null) "Remove bookmark" else "Add bookmark",
                             )
                         }
+                        IconButton(onClick = { showBookmarks = true }) {
+                            Icon(Icons.Filled.Bookmarks, contentDescription = "Bookmarks")
+                        }
                         IconButton(onClick = { showHighlights = true }) {
-                            Icon(
-                                androidx.compose.material.icons.Icons.Filled.Bookmarks,
-                                contentDescription = "Highlights",
-                            )
+                            Icon(Icons.Filled.BorderColor, contentDescription = "Highlights")
                         }
                         IconButton(onClick = { showToc = true }) {
                             Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Contents")
@@ -372,53 +374,8 @@ private fun ReaderContent(
     if (showToc) {
         ModalBottomSheet(onDismissRequest = { showToc = false }) {
             LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                if (bookmarks.isNotEmpty()) {
-                    item {
-                        Text(
-                            "Bookmarks",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
-                        )
-                    }
-                    items(bookmarks, key = { it.id }) { b ->
-                        Row(
-                            Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(
-                                Icons.Filled.Bookmark,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp),
-                            )
-                            Text(
-                                b.title,
-                                style = MaterialTheme.typography.bodyMedium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .padding(start = 12.dp)
-                                    .clickableText { goToBookmark(b); showToc = false },
-                            )
-                            IconButton(onClick = { onDeleteBookmark(b.id) }) {
-                                Icon(Icons.Filled.Close, contentDescription = "Remove bookmark")
-                            }
-                        }
-                    }
-                    item {
-                        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                        Text(
-                            "Contents",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
-                        )
-                    }
-                }
                 val tocLinks = flatten(state.publication.tableOfContents)
-                if (tocLinks.isEmpty() && bookmarks.isEmpty()) {
+                if (tocLinks.isEmpty()) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
                             Text("No table of contents")
@@ -450,6 +407,26 @@ private fun ReaderContent(
         }
     }
 
+    if (showBookmarks) {
+        ModalBottomSheet(onDismissRequest = { showBookmarks = false }) {
+            if (bookmarks.isEmpty()) {
+                Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
+                    Text("Tap the bookmark icon to save your place")
+                }
+            } else {
+                LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                    items(bookmarks, key = { it.id }) { b ->
+                        BookmarkRow(
+                            bookmark = b,
+                            onOpen = { goToBookmark(b); showBookmarks = false },
+                            onDelete = { onDeleteBookmark(b.id) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     if (showHighlights) {
         ModalBottomSheet(onDismissRequest = { showHighlights = false }) {
             HighlightList(
@@ -476,6 +453,65 @@ private fun ReaderContent(
             )
         }
     }
+}
+
+@Composable
+private fun BookmarkRow(
+    bookmark: net.dexxicon.reader.core.model.Bookmark,
+    onOpen: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val subtitle = remember(bookmark.id) { bookmarkLocationLabel(bookmark) }
+    Row(
+        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.Bookmark,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(18.dp),
+        )
+        Column(
+            Modifier.weight(1f).padding(start = 12.dp).clickableText(onOpen),
+        ) {
+            Text(
+                bookmark.title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        IconButton(onClick = onDelete) {
+            Icon(Icons.Filled.Close, contentDescription = "Remove bookmark")
+        }
+    }
+}
+
+/**
+ * A "where in the book" hint for a bookmark row: how far through the chapter, then Readium's
+ * page number when the publication has a position list — e.g. "43% – Page 87". Null for
+ * bookmarks made in a server's web reader (they carry no precise position).
+ */
+private fun bookmarkLocationLabel(bookmark: net.dexxicon.reader.core.model.Bookmark): String? {
+    if (bookmark.isForeign) return null
+    return runCatching {
+        val locations = org.json.JSONObject(bookmark.locatorJson).optJSONObject("locations")
+        val chapterProgression = locations?.optDouble("progression", Double.NaN)
+            ?.takeUnless { it.isNaN() }
+        val percent = ((chapterProgression ?: bookmark.progression) * 100).toInt()
+        val page = locations?.optInt("position", -1) ?: -1
+        if (page > 0) "$percent% – Page $page" else "$percent%"
+    }.getOrNull()
 }
 
 @Composable
