@@ -1,7 +1,10 @@
 package net.dexxicon.reader.feature.catalog
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.LinearProgressIndicator
@@ -180,6 +184,7 @@ private fun DetailContent(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HeroBlock(
     detail: BookDetail,
@@ -229,13 +234,15 @@ private fun HeroBlock(
                 AssistChip(onClick = {}, label = { Text(formatLabel(detail)) })
                 ReadingStatusChip(detail.readingStatus, onSetStatus)
             }
-            if (copies.size > 1) {
-                Text(
-                    "On ${copies.joinToString(", ") { it.serverName }}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
+            val serverNames = copies.map { it.serverName }.distinct()
+            if (serverNames.isNotEmpty()) {
+                FlowRow(
+                    modifier = Modifier.padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    serverNames.forEach { ServerChip(it) }
+                }
             }
         }
     }
@@ -250,6 +257,31 @@ private fun HeroBlock(
             Spacer(Modifier.width(16.dp))
             titleColumn()
         }
+    }
+}
+
+/** A compact, non-interactive take on [AssistChip] — names the server a book lives on. */
+@Composable
+private fun ServerChip(name: String) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .border(
+                1.dp,
+                MaterialTheme.colorScheme.outline,
+                RoundedCornerShape(8.dp),
+            )
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            Icons.Filled.Dns,
+            contentDescription = null,
+            modifier = Modifier.size(13.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(name, style = MaterialTheme.typography.labelMedium)
     }
 }
 
