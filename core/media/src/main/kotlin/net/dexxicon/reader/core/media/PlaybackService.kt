@@ -2,6 +2,7 @@ package net.dexxicon.reader.core.media
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.AudioAttributes
@@ -138,6 +139,7 @@ class PlaybackService : MediaLibraryService() {
                 contentSource,
                 serviceScope,
                 openAppIntent,
+                audioManager = getSystemService(AudioManager::class.java),
                 browseArtworkUri = { src -> ArtworkProvider.uriFor(this, src) },
                 loadArtwork = ::fetchArtworkBytes,
             ),
@@ -227,6 +229,7 @@ private class AutoLibraryCallback(
     private val content: MediaLibraryContentSource,
     private val scope: CoroutineScope,
     private val openAppIntent: android.app.PendingIntent?,
+    private val audioManager: AudioManager?,
     /**
      * Wraps a remote cover URL as a `content://` URI the car can load without our auth
      * headers — used for browse-grid items (which the car fetches itself) and as the
@@ -241,6 +244,7 @@ private class AutoLibraryCallback(
     private val artworkBytes = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
 
     private val skipSilence = SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY)
+    private val setAudioOutput = SessionCommand(PlaybackCommands.SET_AUDIO_OUTPUT, Bundle.EMPTY)
 
     /** Last search served, so `onGetSearchResult` doesn't re-query what `onSearch` fetched. */
     @Volatile
@@ -273,6 +277,7 @@ private class AutoLibraryCallback(
         val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
             .buildUpon()
             .add(skipSilence)
+            .add(setAudioOutput)
             .build()
         // An audiobook is one long track: hide "skip to previous/next track" so the car and
         // the media notification surface rewind / fast-forward (15s / 30s) instead.
@@ -297,6 +302,16 @@ private class AutoLibraryCallback(
     ): ListenableFuture<SessionResult> {
         if (customCommand.customAction == PlaybackCommands.SET_SKIP_SILENCE) {
             player?.skipSilenceEnabled = args.getBoolean(PlaybackCommands.ARG_ENABLED, false)
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+        if (customCommand.customAction == PlaybackCommands.SET_AUDIO_OUTPUT) {
+            val id = args.getInt(PlaybackCommands.ARG_DEVICE_ID, -1)
+            val device = id.takeIf { it >= 0 }?.let { wanted ->
+                audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                    ?.firstOrNull { it.id == wanted }
+            }
+            // id >= 0 but the device is gone (unpaired mid-selection) → keep default routing.
+            player?.setPreferredAudioDevice(device)
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))

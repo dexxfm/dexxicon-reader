@@ -37,6 +37,8 @@ data class PlayerUiState(
     val sleepTimerEndsAt: Long? = null,
     /** Playback will pause when the current chapter ends. */
     val sleepAtChapterEnd: Boolean = false,
+    /** `AudioDeviceInfo.id` playback is pinned to, or null for the system default route. */
+    val preferredAudioDeviceId: Int? = null,
     val options: PlayerPreferences = PlayerPreferences(),
 ) {
     val currentChapterIndex: Int get() = audiobook?.chapterIndexAt(positionMs) ?: 0
@@ -58,6 +60,9 @@ class AudiobookPlayer @Inject constructor(
     private var sleepJob: Job? = null
     private var current: Audiobook? = null
     private var options: PlayerPreferences = PlayerPreferences()
+
+    /** Survives a new [play] so a chosen output isn't silently lost between books. */
+    private var preferredDeviceId: Int? = null
 
     init {
         scope.launch {
@@ -104,6 +109,7 @@ class AudiobookPlayer @Inject constructor(
             audiobook = audiobook,
             durationMs = audiobook.durationMs,
             positionMs = startPositionMs,
+            preferredAudioDeviceId = preferredDeviceId,
         )
         withController { c ->
             val item = MediaItem.Builder()
@@ -122,6 +128,7 @@ class AudiobookPlayer @Inject constructor(
             c.prepare()
             c.play()
             applySkipSilence(options.skipSilence)
+            if (preferredDeviceId != null) applyAudioOutput(preferredDeviceId)
         }
     }
 
@@ -130,6 +137,22 @@ class AudiobookPlayer @Inject constructor(
             c.sendCustomCommand(
                 SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY),
                 Bundle().apply { putBoolean(PlaybackCommands.ARG_ENABLED, enabled) },
+            )
+        }
+    }
+
+    /** Pins playback to [deviceId] (`AudioDeviceInfo.id`), or null for the default route. */
+    fun setAudioOutput(deviceId: Int?) {
+        preferredDeviceId = deviceId
+        _state.value = _state.value.copy(preferredAudioDeviceId = deviceId)
+        applyAudioOutput(deviceId)
+    }
+
+    private fun applyAudioOutput(deviceId: Int?) = withController { c ->
+        runCatching {
+            c.sendCustomCommand(
+                SessionCommand(PlaybackCommands.SET_AUDIO_OUTPUT, Bundle.EMPTY),
+                Bundle().apply { putInt(PlaybackCommands.ARG_DEVICE_ID, deviceId ?: -1) },
             )
         }
     }

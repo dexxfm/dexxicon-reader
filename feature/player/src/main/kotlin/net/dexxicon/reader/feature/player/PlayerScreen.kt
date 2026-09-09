@@ -1,12 +1,12 @@
 package net.dexxicon.reader.feature.player
 
-import android.content.Intent
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,6 +31,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Speaker
@@ -102,6 +103,7 @@ fun PlayerScreen(
     var showSpeed by remember { mutableStateOf(false) }
     var showSleep by remember { mutableStateOf(false) }
     var showAudioOptions by remember { mutableStateOf(false) }
+    var showAudioOutput by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -113,10 +115,12 @@ fun PlayerScreen(
                     }
                 },
                 actions = {
-                    val context = LocalContext.current
-                    val audioOutput = rememberAudioOutput()
-                    IconButton(onClick = { openOutputSwitcher(context) }) {
-                        Icon(audioOutput.icon, contentDescription = "Change audio output (${audioOutput.label})")
+                    val outputs = rememberAudioOutputs()
+                    val activeOutputId = activeOutputId(outputs, playback.preferredAudioDeviceId)
+                    val activeIcon = outputs.devices.firstOrNull { it.id == activeOutputId }?.icon
+                        ?: Icons.Filled.Speaker
+                    IconButton(onClick = { showAudioOutput = true }) {
+                        Icon(activeIcon, contentDescription = "Audio output")
                     }
                     IconButton(onClick = { showAudioOptions = true }) {
                         Icon(Icons.Filled.Tune, contentDescription = "Audio options")
@@ -231,10 +235,30 @@ fun PlayerScreen(
         }
     }
 
+    if (showAudioOutput) {
+        ModalBottomSheet(onDismissRequest = { showAudioOutput = false }) {
+            val outputs = rememberAudioOutputs()
+            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                Text(
+                    "Audio output",
+                    Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                AudioOutputList(
+                    outputs = outputs,
+                    activeId = activeOutputId(outputs, playback.preferredAudioDeviceId),
+                    onPick = { id -> viewModel.setAudioOutput(id); showAudioOutput = false },
+                )
+            }
+        }
+    }
+
     if (showAudioOptions) {
         ModalBottomSheet(onDismissRequest = { showAudioOptions = false }) {
             AudioOptions(
                 options = playback.options,
+                preferredAudioDeviceId = playback.preferredAudioDeviceId,
+                onSetAudioOutput = viewModel::setAudioOutput,
                 onSkipSilence = viewModel::setSkipSilence,
                 onSkipForward = viewModel::setSkipForwardSeconds,
                 onSkipBack = viewModel::setSkipBackSeconds,
@@ -247,15 +271,34 @@ fun PlayerScreen(
 @Composable
 private fun AudioOptions(
     options: net.dexxicon.reader.core.datastore.PlayerPreferences,
+    preferredAudioDeviceId: Int?,
+    onSetAudioOutput: (Int?) -> Unit,
     onSkipSilence: (Boolean) -> Unit,
     onSkipForward: (Int) -> Unit,
     onSkipBack: (Int) -> Unit,
     onSmartRewind: (Int) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 24.dp)) {
-        Text("Audio options", style = MaterialTheme.typography.titleMedium)
+    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        Text(
+            "Audio options",
+            Modifier.padding(horizontal = 16.dp),
+            style = MaterialTheme.typography.titleMedium,
+        )
 
-        AudioOutputRow(Modifier.padding(top = 16.dp))
+        Text(
+            "Output",
+            Modifier.padding(start = 16.dp, top = 16.dp, bottom = 4.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val outputs = rememberAudioOutputs()
+        AudioOutputList(
+            outputs = outputs,
+            activeId = activeOutputId(outputs, preferredAudioDeviceId),
+            onPick = onSetAudioOutput,
+        )
+
+        Column(Modifier.padding(horizontal = 16.dp)) {
 
         HorizontalDivider(Modifier.padding(vertical = 16.dp))
 
@@ -299,100 +342,136 @@ private fun AudioOptions(
             onSelect = onSmartRewind,
             modifier = Modifier.padding(top = 12.dp),
         )
+        }
     }
 }
 
+private data class OutputDevice(
+    /** `AudioDeviceInfo.id`, or -1 for the built-in speaker when the system won't name one. */
+    val id: Int,
+    val label: String,
+    val icon: ImageVector,
+)
+
+private data class AudioOutputs(
+    val devices: List<OutputDevice>,
+    /** `AudioDeviceInfo.id` of whatever is actually playing right now (best-effort). */
+    val liveRouteId: Int?,
+)
+
 /**
- * Shows where audio is currently playing and opens the system output switcher (speaker,
- * paired Bluetooth, wired headset, Cast targets). Android exposes no supported way to pin
- * media output from the app, so switching is delegated to the OS panel.
+ * The tap target the row should highlight: the pinned device if it is still connected,
+ * otherwise wherever audio is actually coming out. A pinned id of `null` means "follow
+ * the system", so the live route wins.
  */
-/** The live audio route, refreshed as devices connect/disconnect. */
+private fun activeOutputId(outputs: AudioOutputs, preferredDeviceId: Int?): Int? =
+    preferredDeviceId?.takeIf { pinned -> outputs.devices.any { it.id == pinned } }
+        ?: outputs.liveRouteId
+
+/** The available output devices + live route, refreshed as things connect/disconnect. */
 @Composable
-private fun rememberAudioOutput(): AudioOutput {
+private fun rememberAudioOutputs(): AudioOutputs {
     val context = LocalContext.current
     val audioManager = remember { context.getSystemService(AudioManager::class.java) }
-    var output by remember { mutableStateOf(currentAudioOutput(audioManager)) }
+    var outputs by remember { mutableStateOf(readAudioOutputs(audioManager)) }
 
     DisposableEffect(audioManager) {
         val am = audioManager ?: return@DisposableEffect onDispose {}
         val callback = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) {
-                output = currentAudioOutput(am)
+                outputs = readAudioOutputs(am)
             }
             override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) {
-                output = currentAudioOutput(am)
+                outputs = readAudioOutputs(am)
             }
         }
         am.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
         onDispose { am.unregisterAudioDeviceCallback(callback) }
     }
-    return output
+    return outputs
+}
+
+@Suppress("DEPRECATION") // isBluetoothA2dpOn / isWiredHeadsetOn: still the simplest "which route is live" read
+private fun readAudioOutputs(am: AudioManager?): AudioOutputs {
+    if (am == null) {
+        return AudioOutputs(listOf(OutputDevice(-1, "Phone speaker", Icons.Filled.Speaker)), -1)
+    }
+    val all = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+    fun firstOfType(vararg types: Int) = all.firstOrNull { it.type in types }
+
+    val speaker = firstOfType(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+    val devices = mutableListOf(OutputDevice(speaker?.id ?: -1, "Phone speaker", Icons.Filled.Speaker))
+    val seenLabels = hashSetOf("Phone speaker")
+    for (d in all) {
+        val (label, icon) = when (d.type) {
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+            AudioDeviceInfo.TYPE_BLE_HEADSET,
+            AudioDeviceInfo.TYPE_BLE_SPEAKER ->
+                (d.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Bluetooth") to Icons.Filled.Bluetooth
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_WIRED_HEADSET ->
+                "Wired headphones" to Icons.Filled.Headphones
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_USB_DEVICE ->
+                "USB audio" to Icons.Filled.Headphones
+            else -> continue
+        }
+        if (seenLabels.add(label)) devices += OutputDevice(d.id, label, icon)
+    }
+
+    val liveRouteId = when {
+        am.isBluetoothA2dpOn -> firstOfType(
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLE_HEADSET,
+            AudioDeviceInfo.TYPE_BLE_SPEAKER,
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        )?.id
+        am.isWiredHeadsetOn -> firstOfType(
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_USB_DEVICE,
+        )?.id
+        else -> speaker?.id ?: -1
+    }
+    return AudioOutputs(devices, liveRouteId)
 }
 
 @Composable
-private fun AudioOutputRow(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val output = rememberAudioOutput()
-
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Icon(output.icon, contentDescription = null)
-        Column(Modifier.weight(1f).padding(start = 16.dp)) {
-            Text("Playing on", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(output.label, style = MaterialTheme.typography.bodyLarge)
+private fun AudioOutputList(
+    outputs: AudioOutputs,
+    activeId: Int?,
+    onPick: (Int?) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        outputs.devices.forEach { device ->
+            val selected = device.id == activeId
+            val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    // A speaker id of -1 means "system default" — pass null to clear the pin.
+                    .clickable { onPick(device.id.takeIf { it >= 0 }) }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(device.icon, contentDescription = null, tint = tint)
+                Text(
+                    device.label,
+                    Modifier.weight(1f).padding(start = 16.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = tint,
+                )
+                if (selected) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = "Selected",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
         }
-        TextButton(onClick = { openOutputSwitcher(context) }) { Text("Change") }
-    }
-}
-
-/**
- * Opens the system's audio-output chooser. `ACTION_MEDIA_OUTPUT` is the dedicated
- * switcher on devices that ship it; the volume panel and sound settings are fallbacks
- * for those that don't (and both carry an output selector).
- */
-private fun openOutputSwitcher(context: android.content.Context) {
-    val candidates = listOf(
-        Intent("android.settings.panel.action.MEDIA_OUTPUT"),
-        Intent("android.settings.panel.action.VOLUME"),
-        Intent(android.provider.Settings.ACTION_SOUND_SETTINGS),
-    )
-    for (intent in candidates) {
-        val started = runCatching {
-            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.isSuccess
-        if (started) return
-    }
-}
-
-private data class AudioOutput(val label: String, val icon: ImageVector)
-
-@Suppress("DEPRECATION") // isBluetoothA2dpOn / isWiredHeadsetOn: still the simplest "which route is live" read
-private fun currentAudioOutput(am: AudioManager?): AudioOutput {
-    if (am == null) return AudioOutput("Phone speaker", Icons.Filled.Speaker)
-    val outputs = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-    fun device(vararg types: Int) = outputs.firstOrNull { it.type in types }
-
-    val bluetooth = device(
-        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-        AudioDeviceInfo.TYPE_BLE_HEADSET,
-        AudioDeviceInfo.TYPE_BLE_SPEAKER,
-    )
-    val wired = device(
-        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-        AudioDeviceInfo.TYPE_WIRED_HEADSET,
-        AudioDeviceInfo.TYPE_USB_HEADSET,
-        AudioDeviceInfo.TYPE_USB_DEVICE,
-    )
-    return when {
-        am.isBluetoothA2dpOn && bluetooth != null ->
-            AudioOutput(
-                bluetooth.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Bluetooth",
-                Icons.Filled.Bluetooth,
-            )
-        am.isWiredHeadsetOn && wired != null ->
-            AudioOutput("Headphones", Icons.Filled.Headphones)
-        else -> AudioOutput("Phone speaker", Icons.Filled.Speaker)
     }
 }
 
