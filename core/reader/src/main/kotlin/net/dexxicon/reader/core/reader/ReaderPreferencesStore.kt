@@ -18,12 +18,51 @@ import javax.inject.Singleton
 data class ReaderDisplayPreferences(
     val fontScale: Double = 1.0,
     val theme: ReaderTheme = ReaderTheme.SYSTEM,
-    val scroll: Boolean = false,
+    /**
+     * How a page is sized within the viewport. Honoured directly by fixed-layout books,
+     * PDFs and comics; for reflowable EPUB text it maps onto the page margins.
+     */
+    val fitMode: ReaderFitMode = ReaderFitMode.PAGE_FIT,
+    /**
+     * One page at a time, or a two-page spread once the screen is wide enough — tablets
+     * and unfolded foldables. [ReaderPageLayout.AUTO] lets the navigator decide.
+     */
+    val pageLayout: ReaderPageLayout = ReaderPageLayout.AUTO,
+    /**
+     * Pagination vs. scrolling. Only [ReaderScrollMode.PAGED] and [ReaderScrollMode.SCROLL]
+     * reach a navigator today; the remaining entries are scaffolding for a later pass.
+     */
+    val scrollMode: ReaderScrollMode = ReaderScrollMode.PAGED,
     /** Tap near a page edge to turn the page. */
     val tapNavigation: Boolean = true,
-)
+) {
+    /** Legacy shorthand: the EPUB/PDF navigators still take a plain scroll flag. */
+    val scroll: Boolean get() = scrollMode.scrolling
+}
 
-enum class ReaderTheme { SYSTEM, LIGHT, SEPIA, DARK }
+/** Reader page colours. Doubles as the EPUB reading theme. */
+enum class ReaderTheme { SYSTEM, LIGHT, SEPIA, GREY, DARK }
+
+/**
+ * Page-fit modes, borrowed from image/PDF viewers. Reflowable EPUB has no true "fit", so
+ * the EPUB mapping approximates these with margin width; PDFs and fixed-layout books use
+ * them literally once wired.
+ */
+enum class ReaderFitMode { PAGE_FIT, PAGE_WIDTH, PAGE_HEIGHT, ACTUAL_SIZE }
+
+/** Single page, forced two-page spread, or automatic based on the screen width. */
+enum class ReaderPageLayout { AUTO, SINGLE, DOUBLE }
+
+/**
+ * Reading flow. [PAGED] and [SCROLL] are live; [CONTINUOUS] is scaffolded — persisted and
+ * selectable in code, but it currently behaves like [SCROLL] until a navigator supports a
+ * distinct continuous/webtoon layout.
+ */
+enum class ReaderScrollMode(val scrolling: Boolean) {
+    PAGED(false),
+    SCROLL(true),
+    CONTINUOUS(true),
+}
 
 private val Context.readerPrefsDataStore: DataStore<Preferences> by preferencesDataStore("reader_prefs")
 
@@ -34,6 +73,9 @@ class ReaderPreferencesStore @Inject constructor(
     private object Keys {
         val FONT_SCALE = doublePreferencesKey("font_scale")
         val THEME = stringPreferencesKey("theme")
+        val FIT_MODE = stringPreferencesKey("fit_mode")
+        val PAGE_LAYOUT = stringPreferencesKey("page_layout")
+        val SCROLL_MODE = stringPreferencesKey("scroll_mode")
         val SCROLL = booleanPreferencesKey("scroll")
         val TAP_NAV = booleanPreferencesKey("tap_navigation")
     }
@@ -46,6 +88,9 @@ class ReaderPreferencesStore @Inject constructor(
             val next = transform(prefs.toPrefs())
             prefs[Keys.FONT_SCALE] = next.fontScale
             prefs[Keys.THEME] = next.theme.name
+            prefs[Keys.FIT_MODE] = next.fitMode.name
+            prefs[Keys.PAGE_LAYOUT] = next.pageLayout.name
+            prefs[Keys.SCROLL_MODE] = next.scrollMode.name
             prefs[Keys.SCROLL] = next.scroll
             prefs[Keys.TAP_NAV] = next.tapNavigation
         }
@@ -53,9 +98,16 @@ class ReaderPreferencesStore @Inject constructor(
 
     private fun Preferences.toPrefs() = ReaderDisplayPreferences(
         fontScale = this[Keys.FONT_SCALE] ?: 1.0,
-        theme = this[Keys.THEME]?.let { runCatching { ReaderTheme.valueOf(it) }.getOrNull() }
-            ?: ReaderTheme.SYSTEM,
-        scroll = this[Keys.SCROLL] ?: false,
+        theme = this[Keys.THEME]?.let { enumOrNull<ReaderTheme>(it) } ?: ReaderTheme.SYSTEM,
+        fitMode = this[Keys.FIT_MODE]?.let { enumOrNull<ReaderFitMode>(it) } ?: ReaderFitMode.PAGE_FIT,
+        pageLayout = this[Keys.PAGE_LAYOUT]?.let { enumOrNull<ReaderPageLayout>(it) }
+            ?: ReaderPageLayout.AUTO,
+        scrollMode = this[Keys.SCROLL_MODE]?.let { enumOrNull<ReaderScrollMode>(it) }
+            // Fall back to the pre-scroll-mode boolean so existing readers keep their choice.
+            ?: (this[Keys.SCROLL] ?: false).let { if (it) ReaderScrollMode.SCROLL else ReaderScrollMode.PAGED },
         tapNavigation = this[Keys.TAP_NAV] ?: true,
     )
 }
+
+private inline fun <reified T : Enum<T>> enumOrNull(name: String): T? =
+    runCatching { enumValueOf<T>(name) }.getOrNull()
