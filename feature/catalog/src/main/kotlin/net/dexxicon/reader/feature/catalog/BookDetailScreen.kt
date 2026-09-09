@@ -229,9 +229,10 @@ private fun HeroBlock(
                 AssistChip(onClick = {}, label = { Text(formatLabel(detail)) })
                 ReadingStatusChip(detail.readingStatus, onSetStatus)
             }
-            if (copies.size > 1) {
+            val serverNames = copies.map { it.serverName }.distinct()
+            if (serverNames.isNotEmpty()) {
                 Text(
-                    "On ${copies.joinToString(", ") { it.serverName }}",
+                    "On ${serverNames.joinToString(", ")}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 6.dp),
