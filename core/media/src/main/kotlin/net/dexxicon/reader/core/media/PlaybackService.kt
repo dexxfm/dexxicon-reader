@@ -2,6 +2,7 @@ package net.dexxicon.reader.core.media
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.AudioManager
 import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.AudioAttributes
@@ -12,8 +13,12 @@ import androidx.media3.common.Player
 import androidx.media3.datasource.DataSourceBitmapLoader
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.cast.CastPlayer
+import androidx.media3.cast.DefaultMediaItemConverter
+import androidx.media3.cast.SessionAvailabilityListener
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.google.android.gms.cast.framework.CastContext
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.CommandButton
 import androidx.media3.session.LibraryResult
@@ -69,6 +74,7 @@ class PlaybackService : MediaLibraryService() {
 
     private var mediaSession: MediaLibrarySession? = null
     private var exoPlayer: ExoPlayer? = null
+    private var castPlayer: CastPlayer? = null
     private var positionWriter: ServicePositionWriter? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -138,6 +144,7 @@ class PlaybackService : MediaLibraryService() {
                 contentSource,
                 serviceScope,
                 openAppIntent,
+                audioManager = getSystemService(AudioManager::class.java),
                 browseArtworkUri = { src -> ArtworkProvider.uriFor(this, src) },
                 loadArtwork = ::fetchArtworkBytes,
             ),
@@ -148,6 +155,97 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         positionWriter = ServicePositionWriter(player, progressSink, serviceScope).apply { attach() }
+
+        initCast()
+    }
+
+    /**
+     * Hands playback to a [CastPlayer] whenever a Cast session is live, and back to the
+     * local [ExoPlayer] when it ends. No-op if Google Play services / Cast is unavailable.
+     */
+    private fun initCast() {
+        val mainExecutor = androidx.core.content.ContextCompat.getMainExecutor(this)
+        runCatching { CastContext.getSharedInstance(this, mainExecutor) }
+            .getOrNull()
+            ?.addOnSuccessListener(mainExecutor) { castContext ->
+                val cast = CastPlayer(castContext, DefaultMediaItemConverter())
+                castPlayer = cast
+                cast.setSessionAvailabilityListener(object : SessionAvailabilityListener {
+                    override fun onCastSessionAvailable() {
+                        android.util.Log.i("PlaybackService", "onCastSessionAvailable")
+                        swapPlayer(toCast = true)
+                    }
+                    override fun onCastSessionUnavailable() {
+                        android.util.Log.i("PlaybackService", "onCastSessionUnavailable")
+                        swapPlayer(toCast = false)
+                    }
+                })
+                // Belt-and-suspenders: the CastPlayer's own listener can miss a session that
+                // was already connecting; watch the SessionManager directly too.
+                castContext.sessionManager.addSessionManagerListener(
+                    object : com.google.android.gms.cast.framework.SessionManagerListener<com.google.android.gms.cast.framework.CastSession> {
+                        override fun onSessionStarted(s: com.google.android.gms.cast.framework.CastSession, id: String) {
+                            android.util.Log.i("PlaybackService", "SessionManager onSessionStarted")
+                            swapPlayer(toCast = true)
+                        }
+                        override fun onSessionResumed(s: com.google.android.gms.cast.framework.CastSession, wasSuspended: Boolean) = swapPlayer(toCast = true)
+                        override fun onSessionEnded(s: com.google.android.gms.cast.framework.CastSession, error: Int) = swapPlayer(toCast = false)
+                        override fun onSessionStarting(s: com.google.android.gms.cast.framework.CastSession) {}
+                        override fun onSessionStartFailed(s: com.google.android.gms.cast.framework.CastSession, error: Int) {}
+                        override fun onSessionEnding(s: com.google.android.gms.cast.framework.CastSession) {}
+                        override fun onSessionResuming(s: com.google.android.gms.cast.framework.CastSession, id: String) {}
+                        override fun onSessionResumeFailed(s: com.google.android.gms.cast.framework.CastSession, error: Int) {}
+                        override fun onSessionSuspended(s: com.google.android.gms.cast.framework.CastSession, reason: Int) {}
+                    },
+                    com.google.android.gms.cast.framework.CastSession::class.java,
+                )
+                if (cast.isCastSessionAvailable) swapPlayer(toCast = true)
+            }
+    }
+
+    private fun swapPlayer(toCast: Boolean) {
+        val session = mediaSession ?: return
+        val exo = exoPlayer ?: return
+        val cast = castPlayer ?: return
+        val from = session.player
+        val to: Player = if (toCast) cast else exo
+        if (from === to) return
+
+        val mediaId = from.currentMediaItem?.mediaId
+        val positionMs = from.currentPosition.coerceAtLeast(0L)
+        val wasPlaying = from.playWhenReady
+        android.util.Log.i(
+            "PlaybackService",
+            "swapPlayer toCast=$toCast mediaId=$mediaId pos=$positionMs playing=$wasPlaying",
+        )
+        from.pause()
+
+        session.player = to
+        positionWriter?.detach()
+        positionWriter = ServicePositionWriter(to, progressSink, serviceScope).apply { attach() }
+
+        if (mediaId == null) return
+        serviceScope.launch {
+            val playable = runCatching { contentSource.resolve(mediaId) }.getOrNull() ?: return@launch
+            val uri = (if (toCast) playable.castUri else playable.uri) ?: playable.uri
+            android.util.Log.i("PlaybackService", "swapPlayer -> uri=${uri.take(80)} mime=${playable.mimeType}")
+            val item = MediaItem.Builder()
+                .setUri(uri)
+                .setMediaId(mediaId)
+                .apply { if (toCast) playable.mimeType?.let(::setMimeType) }
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(playable.title)
+                        .setArtist(playable.author)
+                        .setArtworkUri(playable.artworkUri?.let(Uri::parse))
+                        .setIsPlayable(true)
+                        .build(),
+                )
+                .build()
+            to.setMediaItem(item, positionMs)
+            to.prepare()
+            to.playWhenReady = wasPlaying
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
@@ -202,12 +300,14 @@ class PlaybackService : MediaLibraryService() {
         positionWriter?.detach()
         positionWriter = null
         serviceScope.cancel()
-        mediaSession?.run {
-            player.release()
-            release()
-        }
+        castPlayer?.setSessionAvailabilityListener(null)
+        mediaSession?.release()
+        // A session doesn't release its player; release both (one may be the active one).
+        exoPlayer?.release()
+        castPlayer?.release()
         mediaSession = null
         exoPlayer = null
+        castPlayer = null
         super.onDestroy()
     }
 
@@ -227,6 +327,7 @@ private class AutoLibraryCallback(
     private val content: MediaLibraryContentSource,
     private val scope: CoroutineScope,
     private val openAppIntent: android.app.PendingIntent?,
+    private val audioManager: AudioManager?,
     /**
      * Wraps a remote cover URL as a `content://` URI the car can load without our auth
      * headers — used for browse-grid items (which the car fetches itself) and as the
@@ -241,6 +342,7 @@ private class AutoLibraryCallback(
     private val artworkBytes = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
 
     private val skipSilence = SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY)
+    private val setAudioOutput = SessionCommand(PlaybackCommands.SET_AUDIO_OUTPUT, Bundle.EMPTY)
 
     /** Last search served, so `onGetSearchResult` doesn't re-query what `onSearch` fetched. */
     @Volatile
@@ -273,6 +375,7 @@ private class AutoLibraryCallback(
         val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_AND_LIBRARY_COMMANDS
             .buildUpon()
             .add(skipSilence)
+            .add(setAudioOutput)
             .build()
         // An audiobook is one long track: hide "skip to previous/next track" so the car and
         // the media notification surface rewind / fast-forward (15s / 30s) instead.
@@ -297,6 +400,24 @@ private class AutoLibraryCallback(
     ): ListenableFuture<SessionResult> {
         if (customCommand.customAction == PlaybackCommands.SET_SKIP_SILENCE) {
             player?.skipSilenceEnabled = args.getBoolean(PlaybackCommands.ARG_ENABLED, false)
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+        if (customCommand.customAction == PlaybackCommands.SET_AUDIO_OUTPUT) {
+            val id = args.getInt(PlaybackCommands.ARG_DEVICE_ID, -1)
+            val device = id.takeIf { it >= 0 }?.let { wanted ->
+                audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+                    ?.firstOrNull { it.id == wanted }
+            }
+            android.util.Log.i(
+                "PlaybackService",
+                "SET_AUDIO_OUTPUT id=$id resolved=${device?.type}/${device?.productName}",
+            )
+            player?.let { p ->
+                // Clearing first forces the AudioTrack to be rebuilt; without it a switch off
+                // the built-in speaker sometimes doesn't take.
+                p.setPreferredAudioDevice(null)
+                if (device != null) p.setPreferredAudioDevice(device)
+            }
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
         }
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))

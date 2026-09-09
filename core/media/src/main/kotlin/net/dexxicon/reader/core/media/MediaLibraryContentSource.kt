@@ -69,4 +69,11 @@ data class PlayableAudiobook(
     val artworkUri: String?,
     val startPositionMs: Long,
     val durationMs: Long,
+    /**
+     * A URL a Google Cast receiver can fetch on its own (auth as a `?token=` query param),
+     * or null when the source can't be cast — a local `file://` copy, or no token available.
+     */
+    val castUri: String? = null,
+    /** MIME type for the Cast receiver; null lets it sniff. */
+    val mimeType: String? = null,
 )

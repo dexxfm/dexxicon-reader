@@ -41,6 +41,9 @@ dependencies {
     implementation(project(":core:media"))
     implementation(libs.media3.session)
     implementation(libs.media3.ui.compose)
+    // Cast device discovery + selection (custom picker sheet).
+    implementation(libs.androidx.mediarouter)
+    implementation(libs.play.services.cast.framework)
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)

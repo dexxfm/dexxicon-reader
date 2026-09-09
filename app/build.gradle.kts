@@ -91,6 +91,8 @@ dependencies {
 
     implementation(libs.okhttp)
     implementation(libs.coil.network.okhttp)
+    // Supplies the AppCompat theme attrs the Cast MediaRouteButton dialogs need.
+    implementation(libs.androidx.appcompat)
 
     implementation(project(":feature:servers"))
     implementation(project(":feature:catalog"))

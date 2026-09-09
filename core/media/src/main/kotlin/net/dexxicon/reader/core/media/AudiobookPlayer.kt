@@ -2,6 +2,11 @@ package net.dexxicon.reader.core.media
 
 import android.content.ComponentName
 import android.content.Context
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
@@ -37,6 +42,8 @@ data class PlayerUiState(
     val sleepTimerEndsAt: Long? = null,
     /** Playback will pause when the current chapter ends. */
     val sleepAtChapterEnd: Boolean = false,
+    /** `AudioDeviceInfo.id` playback is pinned to, or null for the system default route. */
+    val preferredAudioDeviceId: Int? = null,
     val options: PlayerPreferences = PlayerPreferences(),
 ) {
     val currentChapterIndex: Int get() = audiobook?.chapterIndexAt(positionMs) ?: 0
@@ -59,7 +66,35 @@ class AudiobookPlayer @Inject constructor(
     private var current: Audiobook? = null
     private var options: PlayerPreferences = PlayerPreferences()
 
+    /** Survives a new [play] so a chosen output isn't silently lost between books. */
+    private var preferredDeviceId: Int? = null
+
+    private val audioManager = context.getSystemService(AudioManager::class.java)
+
+    /**
+     * When a Bluetooth headset/speaker or an Android Auto / car output connects, move
+     * playback onto it — even if the user had pinned the phone speaker. A pin only lasts
+     * until the next output device change.
+     */
+    private val deviceCallback = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) {
+            added?.firstOrNull { it.isFollowable() }?.let { setAudioOutput(it.id) }
+        }
+
+        override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) {
+            if (removed?.any { it.id == preferredDeviceId } == true) setAudioOutput(null)
+        }
+    }
+
+    private fun AudioDeviceInfo.isFollowable(): Boolean = type in setOf(
+        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+        AudioDeviceInfo.TYPE_BLE_HEADSET,
+        AudioDeviceInfo.TYPE_BLE_SPEAKER,
+        AudioDeviceInfo.TYPE_BUS, // Android Automotive / car head unit
+    )
+
     init {
+        audioManager?.registerAudioDeviceCallback(deviceCallback, Handler(Looper.getMainLooper()))
         scope.launch {
             playerPreferences.preferences.collect { prefs ->
                 options = prefs
@@ -104,6 +139,7 @@ class AudiobookPlayer @Inject constructor(
             audiobook = audiobook,
             durationMs = audiobook.durationMs,
             positionMs = startPositionMs,
+            preferredAudioDeviceId = preferredDeviceId,
         )
         withController { c ->
             val item = MediaItem.Builder()
@@ -122,6 +158,7 @@ class AudiobookPlayer @Inject constructor(
             c.prepare()
             c.play()
             applySkipSilence(options.skipSilence)
+            if (preferredDeviceId != null) applyAudioOutput(preferredDeviceId)
         }
     }
 
@@ -130,6 +167,22 @@ class AudiobookPlayer @Inject constructor(
             c.sendCustomCommand(
                 SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY),
                 Bundle().apply { putBoolean(PlaybackCommands.ARG_ENABLED, enabled) },
+            )
+        }
+    }
+
+    /** Pins playback to [deviceId] (`AudioDeviceInfo.id`), or null for the default route. */
+    fun setAudioOutput(deviceId: Int?) {
+        preferredDeviceId = deviceId
+        _state.value = _state.value.copy(preferredAudioDeviceId = deviceId)
+        applyAudioOutput(deviceId)
+    }
+
+    private fun applyAudioOutput(deviceId: Int?) = withController { c ->
+        runCatching {
+            c.sendCustomCommand(
+                SessionCommand(PlaybackCommands.SET_AUDIO_OUTPUT, Bundle.EMPTY),
+                Bundle().apply { putInt(PlaybackCommands.ARG_DEVICE_ID, deviceId ?: -1) },
             )
         }
     }

@@ -7,7 +7,10 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerRepository
+import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.model.AuthMode
+import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.media.AudiobookCard
 import net.dexxicon.reader.core.media.LibraryNode
 import net.dexxicon.reader.core.media.MediaLibraryContentSource
@@ -28,6 +31,7 @@ class MediaLibraryContentSourceImpl @Inject constructor(
     private val progressRepository: ReadingProgressRepository,
     private val downloadRepository: DownloadRepository,
     private val serverRepository: ServerRepository,
+    private val tokenManager: TokenManager,
 ) : MediaLibraryContentSource {
 
     private val audioOnly = setOf(ContentFormat.AUDIOBOOK)
@@ -210,7 +214,32 @@ class MediaLibraryContentSourceImpl @Inject constructor(
             artworkUri = detail.summary.coverUrl,
             startPositionMs = startMs,
             durationMs = durationMs,
+            // Local copies can't be cast; a remote stream is cast with the token in the URL
+            // (the Cast receiver can't send our Authorization header).
+            castUri = if (localFile == null) castUrlFor(serverId, acquisition.href) else null,
+            mimeType = castMimeType(acquisition.mediaType),
         )
+    }
+
+    /** A stream URL the Cast receiver can fetch itself (auth as `?token=`), or null. */
+    private suspend fun castUrlFor(serverId: String, href: String): String? {
+        if (!href.startsWith("http")) return null
+        val server: Server = serverRepository.get(serverId) ?: return null
+        if (server.authMode != AuthMode.NATIVE && server.authMode != AuthMode.OIDC) return null
+        val token = (tokenManager.bearerToken(server) as? Outcome.Success)?.value ?: return null
+        val sep = if ('?' in href) '&' else '?'
+        return "$href${sep}token=${Uri.encode(token)}"
+    }
+
+    private fun castMimeType(mediaType: String?): String? = when {
+        mediaType.isNullOrBlank() -> null
+        mediaType.contains("m4b", true) || mediaType.contains("m4a", true) ||
+            mediaType.contains("mp4", true) || mediaType.contains("aac", true) -> "audio/mp4"
+        mediaType.contains("mpeg", true) || mediaType.contains("mp3", true) -> "audio/mpeg"
+        mediaType.contains("ogg", true) || mediaType.contains("opus", true) -> "audio/ogg"
+        mediaType.contains("flac", true) -> "audio/flac"
+        mediaType.startsWith("audio/") -> mediaType
+        else -> null
     }
 
     /** Build a playable straight from the downloaded file + locally-saved metadata/position. */

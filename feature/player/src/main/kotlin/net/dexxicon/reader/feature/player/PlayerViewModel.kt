@@ -113,6 +113,7 @@ class PlayerViewModel @Inject constructor(
     fun seekTo(ms: Long) = player.seekTo(ms)
     fun seekToChapter(index: Int) = player.seekToChapter(index)
     fun setSpeed(speed: Float) = player.setSpeed(speed)
+    fun setAudioOutput(deviceId: Int?) = player.setAudioOutput(deviceId)
     fun setSleepTimer(durationMs: Long?) = player.setSleepTimer(durationMs)
     fun setSleepTimerEndOfChapter() = player.setSleepTimerEndOfChapter()
 
