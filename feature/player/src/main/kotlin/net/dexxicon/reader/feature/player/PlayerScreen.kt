@@ -1,12 +1,17 @@
 package net.dexxicon.reader.feature.player
 
-import android.content.Intent
 import android.media.AudioDeviceCallback
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
+import androidx.mediarouter.media.MediaRouteSelector
+import androidx.mediarouter.media.MediaRouter
+import com.google.android.gms.cast.CastMediaControlIntent
+import com.google.android.gms.cast.framework.CastContext
+import net.dexxicon.reader.core.media.CAST_RECEIVER_APP_ID
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -31,6 +36,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Speaker
@@ -102,6 +110,8 @@ fun PlayerScreen(
     var showSpeed by remember { mutableStateOf(false) }
     var showSleep by remember { mutableStateOf(false) }
     var showAudioOptions by remember { mutableStateOf(false) }
+    var showAudioOutput by remember { mutableStateOf(false) }
+    var showCast by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -113,10 +123,21 @@ fun PlayerScreen(
                     }
                 },
                 actions = {
-                    val context = LocalContext.current
-                    val audioOutput = rememberAudioOutput()
-                    IconButton(onClick = { openOutputSwitcher(context) }) {
-                        Icon(audioOutput.icon, contentDescription = "Change audio output (${audioOutput.label})")
+                    val cast = rememberCastState()
+                    val outputs = rememberAudioOutputs()
+                    val activeOutputId = activeOutputId(outputs, playback.preferredAudioDeviceId)
+                    val activeIcon = outputs.devices.firstOrNull { it.id == activeOutputId }?.icon
+                        ?: Icons.Filled.Speaker
+                    if (cast.available) {
+                        IconButton(onClick = { showCast = true }) {
+                            Icon(
+                                if (cast.connected) Icons.Filled.CastConnected else Icons.Filled.Cast,
+                                contentDescription = "Cast",
+                            )
+                        }
+                    }
+                    IconButton(onClick = { showAudioOutput = true }) {
+                        Icon(activeIcon, contentDescription = "Audio output")
                     }
                     IconButton(onClick = { showAudioOptions = true }) {
                         Icon(Icons.Filled.Tune, contentDescription = "Audio options")
@@ -231,6 +252,30 @@ fun PlayerScreen(
         }
     }
 
+    if (showCast) {
+        ModalBottomSheet(onDismissRequest = { showCast = false }) {
+            CastSheet(onDone = { showCast = false })
+        }
+    }
+
+    if (showAudioOutput) {
+        ModalBottomSheet(onDismissRequest = { showAudioOutput = false }) {
+            val outputs = rememberAudioOutputs()
+            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                Text(
+                    "Audio output",
+                    Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                AudioOutputList(
+                    outputs = outputs,
+                    activeId = activeOutputId(outputs, playback.preferredAudioDeviceId),
+                    onPick = { id -> viewModel.setAudioOutput(id); showAudioOutput = false },
+                )
+            }
+        }
+    }
+
     if (showAudioOptions) {
         ModalBottomSheet(onDismissRequest = { showAudioOptions = false }) {
             AudioOptions(
@@ -255,12 +300,8 @@ private fun AudioOptions(
     Column(Modifier.fillMaxWidth().padding(16.dp).padding(bottom = 24.dp)) {
         Text("Audio options", style = MaterialTheme.typography.titleMedium)
 
-        AudioOutputRow(Modifier.padding(top = 16.dp))
-
-        HorizontalDivider(Modifier.padding(vertical = 16.dp))
-
         Row(
-            Modifier.fillMaxWidth(),
+            Modifier.fillMaxWidth().padding(top = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
@@ -302,97 +343,260 @@ private fun AudioOptions(
     }
 }
 
+private data class OutputDevice(
+    /** `AudioDeviceInfo.id`, or -1 for the built-in speaker when the system won't name one. */
+    val id: Int,
+    val label: String,
+    val icon: ImageVector,
+)
+
+private data class AudioOutputs(
+    val devices: List<OutputDevice>,
+    /** `AudioDeviceInfo.id` of whatever is actually playing right now (best-effort). */
+    val liveRouteId: Int?,
+)
+
 /**
- * Shows where audio is currently playing and opens the system output switcher (speaker,
- * paired Bluetooth, wired headset, Cast targets). Android exposes no supported way to pin
- * media output from the app, so switching is delegated to the OS panel.
+ * The tap target the row should highlight: the pinned device if it is still connected,
+ * otherwise wherever audio is actually coming out. A pinned id of `null` means "follow
+ * the system", so the live route wins.
  */
-/** The live audio route, refreshed as devices connect/disconnect. */
+private fun activeOutputId(outputs: AudioOutputs, preferredDeviceId: Int?): Int? =
+    preferredDeviceId?.takeIf { pinned -> outputs.devices.any { it.id == pinned } }
+        ?: outputs.liveRouteId
+
+/** The available output devices + live route, refreshed as things connect/disconnect. */
 @Composable
-private fun rememberAudioOutput(): AudioOutput {
+private fun rememberAudioOutputs(): AudioOutputs {
     val context = LocalContext.current
     val audioManager = remember { context.getSystemService(AudioManager::class.java) }
-    var output by remember { mutableStateOf(currentAudioOutput(audioManager)) }
+    var outputs by remember { mutableStateOf(readAudioOutputs(audioManager)) }
 
     DisposableEffect(audioManager) {
         val am = audioManager ?: return@DisposableEffect onDispose {}
         val callback = object : AudioDeviceCallback() {
             override fun onAudioDevicesAdded(added: Array<out AudioDeviceInfo>?) {
-                output = currentAudioOutput(am)
+                outputs = readAudioOutputs(am)
             }
             override fun onAudioDevicesRemoved(removed: Array<out AudioDeviceInfo>?) {
-                output = currentAudioOutput(am)
+                outputs = readAudioOutputs(am)
             }
         }
         am.registerAudioDeviceCallback(callback, Handler(Looper.getMainLooper()))
         onDispose { am.unregisterAudioDeviceCallback(callback) }
     }
-    return output
+    return outputs
+}
+
+@Suppress("DEPRECATION") // isBluetoothA2dpOn / isWiredHeadsetOn: still the simplest "which route is live" read
+private fun readAudioOutputs(am: AudioManager?): AudioOutputs {
+    if (am == null) {
+        return AudioOutputs(listOf(OutputDevice(-1, "Phone speaker", Icons.Filled.Speaker)), -1)
+    }
+    val all = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
+    fun firstOfType(vararg types: Int) = all.firstOrNull { it.type in types }
+
+    val speaker = firstOfType(AudioDeviceInfo.TYPE_BUILTIN_SPEAKER)
+    val devices = mutableListOf(OutputDevice(speaker?.id ?: -1, "Phone speaker", Icons.Filled.Speaker))
+    val seenLabels = hashSetOf("Phone speaker")
+    for (d in all) {
+        val (label, icon) = when (d.type) {
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+            AudioDeviceInfo.TYPE_BLE_HEADSET,
+            AudioDeviceInfo.TYPE_BLE_SPEAKER ->
+                (d.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Bluetooth") to Icons.Filled.Bluetooth
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_WIRED_HEADSET ->
+                "Wired headphones" to Icons.Filled.Headphones
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_USB_DEVICE ->
+                "USB audio" to Icons.Filled.Headphones
+            else -> continue
+        }
+        if (seenLabels.add(label)) devices += OutputDevice(d.id, label, icon)
+    }
+
+    val liveRouteId = when {
+        am.isBluetoothA2dpOn -> firstOfType(
+            AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+            AudioDeviceInfo.TYPE_BLE_HEADSET,
+            AudioDeviceInfo.TYPE_BLE_SPEAKER,
+            AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+        )?.id
+        am.isWiredHeadsetOn -> firstOfType(
+            AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+            AudioDeviceInfo.TYPE_WIRED_HEADSET,
+            AudioDeviceInfo.TYPE_USB_HEADSET,
+            AudioDeviceInfo.TYPE_USB_DEVICE,
+        )?.id
+        else -> speaker?.id ?: -1
+    }
+    return AudioOutputs(devices, liveRouteId)
 }
 
 @Composable
-private fun AudioOutputRow(modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val output = rememberAudioOutput()
-
-    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Icon(output.icon, contentDescription = null)
-        Column(Modifier.weight(1f).padding(start = 16.dp)) {
-            Text("Playing on", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(output.label, style = MaterialTheme.typography.bodyLarge)
+private fun AudioOutputList(
+    outputs: AudioOutputs,
+    activeId: Int?,
+    onPick: (Int?) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        outputs.devices.forEach { device ->
+            val selected = device.id == activeId
+            val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    // A speaker id of -1 means "system default" — pass null to clear the pin.
+                    .clickable { onPick(device.id.takeIf { it >= 0 }) }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(device.icon, contentDescription = null, tint = tint)
+                Text(
+                    device.label,
+                    Modifier.weight(1f).padding(start = 16.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = tint,
+                )
+                if (selected) {
+                    Icon(
+                        Icons.Filled.Check,
+                        contentDescription = "Selected",
+                        tint = MaterialTheme.colorScheme.primary,
+                    )
+                }
+            }
         }
-        TextButton(onClick = { openOutputSwitcher(context) }) { Text("Change") }
     }
 }
 
-/**
- * Opens the system's audio-output chooser. `ACTION_MEDIA_OUTPUT` is the dedicated
- * switcher on devices that ship it; the volume panel and sound settings are fallbacks
- * for those that don't (and both carry an output selector).
- */
-private fun openOutputSwitcher(context: android.content.Context) {
-    val candidates = listOf(
-        Intent("android.settings.panel.action.MEDIA_OUTPUT"),
-        Intent("android.settings.panel.action.VOLUME"),
-        Intent(android.provider.Settings.ACTION_SOUND_SETTINGS),
-    )
-    for (intent in candidates) {
-        val started = runCatching {
-            context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }.isSuccess
-        if (started) return
+// ---- Google Cast ----
+
+private data class CastRoute(val id: String, val name: String, val selected: Boolean)
+
+private data class CastState(
+    /** Cast framework initialised (Google Play services present). */
+    val available: Boolean,
+    val routes: List<CastRoute>,
+    /** A Cast device is currently selected. */
+    val connected: Boolean,
+) {
+    companion object {
+        val Unavailable = CastState(available = false, routes = emptyList(), connected = false)
     }
 }
 
-private data class AudioOutput(val label: String, val icon: ImageVector)
+@Suppress("DEPRECATION") // no-arg getSharedInstance: the service already initialised it
+@Composable
+private fun rememberCastState(): CastState {
+    val context = LocalContext.current
+    val castContext = remember {
+        runCatching { CastContext.getSharedInstance() }.getOrNull()
+    }
+    if (castContext == null) return CastState.Unavailable
 
-@Suppress("DEPRECATION") // isBluetoothA2dpOn / isWiredHeadsetOn: still the simplest "which route is live" read
-private fun currentAudioOutput(am: AudioManager?): AudioOutput {
-    if (am == null) return AudioOutput("Phone speaker", Icons.Filled.Speaker)
-    val outputs = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
-    fun device(vararg types: Int) = outputs.firstOrNull { it.type in types }
+    val router = remember { MediaRouter.getInstance(context.applicationContext) }
+    val selector = remember {
+        MediaRouteSelector.Builder()
+            .addControlCategory(CastMediaControlIntent.categoryForCast(CAST_RECEIVER_APP_ID))
+            .build()
+    }
+    var routes by remember { mutableStateOf(emptyList<CastRoute>()) }
 
-    val bluetooth = device(
-        AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-        AudioDeviceInfo.TYPE_BLE_HEADSET,
-        AudioDeviceInfo.TYPE_BLE_SPEAKER,
+    DisposableEffect(router) {
+        fun refresh() {
+            routes = router.routes
+                .filter { it.matchesSelector(selector) }
+                .map { CastRoute(it.id, it.name, it.isSelected) }
+        }
+        val cb = object : MediaRouter.Callback() {
+            override fun onRouteAdded(r: MediaRouter, route: MediaRouter.RouteInfo) = refresh()
+            override fun onRouteRemoved(r: MediaRouter, route: MediaRouter.RouteInfo) = refresh()
+            override fun onRouteChanged(r: MediaRouter, route: MediaRouter.RouteInfo) = refresh()
+            override fun onRouteSelected(r: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) = refresh()
+            override fun onRouteUnselected(r: MediaRouter, route: MediaRouter.RouteInfo, reason: Int) = refresh()
+        }
+        router.addCallback(selector, cb, MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
+        refresh()
+        onDispose { router.removeCallback(cb) }
+    }
+
+    return CastState(
+        available = true,
+        routes = routes,
+        connected = routes.any { it.selected },
     )
-    val wired = device(
-        AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-        AudioDeviceInfo.TYPE_WIRED_HEADSET,
-        AudioDeviceInfo.TYPE_USB_HEADSET,
-        AudioDeviceInfo.TYPE_USB_DEVICE,
-    )
-    return when {
-        am.isBluetoothA2dpOn && bluetooth != null ->
-            AudioOutput(
-                bluetooth.productName?.toString()?.takeIf { it.isNotBlank() } ?: "Bluetooth",
-                Icons.Filled.Bluetooth,
+}
+
+@Composable
+private fun CastSheet(onDone: () -> Unit) {
+    val context = LocalContext.current
+    val router = remember { MediaRouter.getInstance(context.applicationContext) }
+    val cast = rememberCastState()
+
+    Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+        Text(
+            "Cast to",
+            Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        if (cast.routes.isEmpty()) {
+            Text(
+                "No Cast devices found on this network.",
+                Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        am.isWiredHeadsetOn && wired != null ->
-            AudioOutput("Headphones", Icons.Filled.Headphones)
-        else -> AudioOutput("Phone speaker", Icons.Filled.Speaker)
+        }
+        cast.routes.forEach { route ->
+            val tint = if (route.selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        router.routes.firstOrNull { it.id == route.id }?.let(router::selectRoute)
+                        onDone()
+                    }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    if (route.selected) Icons.Filled.CastConnected else Icons.Filled.Cast,
+                    contentDescription = null,
+                    tint = tint,
+                )
+                Text(
+                    route.name,
+                    Modifier.weight(1f).padding(start = 16.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = tint,
+                )
+                if (route.selected) {
+                    Icon(Icons.Filled.Check, contentDescription = "Connected", tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+        }
+        if (cast.connected) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        router.unselect(MediaRouter.UNSELECT_REASON_STOPPED)
+                        onDone()
+                    }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Filled.Speaker, contentDescription = null)
+                Text(
+                    "Stop casting",
+                    Modifier.weight(1f).padding(start = 16.dp),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
+        }
     }
 }
 
