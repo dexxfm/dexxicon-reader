@@ -23,6 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
@@ -88,6 +90,7 @@ fun EpubReaderScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val prefs by viewModel.preferences.collectAsStateWithLifecycle()
     val highlights by viewModel.highlights.collectAsStateWithLifecycle()
+    val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
 
     when (val s = state) {
         is EpubReaderState.Loading -> Center { CircularProgressIndicator() }
@@ -103,6 +106,7 @@ fun EpubReaderScreen(
             state = s,
             preferences = prefs,
             highlights = highlights,
+            bookmarks = bookmarks,
             onBack = onBack,
             onLocator = viewModel::onLocatorChanged,
             onUpdatePreferences = viewModel.updatePreferences,
@@ -110,6 +114,8 @@ fun EpubReaderScreen(
             onSetNote = viewModel::setNote,
             onSetColor = viewModel::setColor,
             onDeleteHighlight = viewModel::deleteHighlight,
+            onAddBookmark = viewModel::addBookmark,
+            onDeleteBookmark = viewModel::deleteBookmark,
         )
     }
 }
@@ -120,6 +126,7 @@ private fun ReaderContent(
     state: EpubReaderState.Ready,
     preferences: ReaderDisplayPreferences,
     highlights: List<net.dexxicon.reader.core.model.Highlight>,
+    bookmarks: List<net.dexxicon.reader.core.model.Bookmark>,
     onBack: () -> Unit,
     onLocator: (Locator) -> Unit,
     onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
@@ -127,6 +134,8 @@ private fun ReaderContent(
     onSetNote: (String, String?) -> Unit,
     onSetColor: (String, net.dexxicon.reader.core.model.HighlightColor) -> Unit,
     onDeleteHighlight: (String) -> Unit,
+    onAddBookmark: (Locator) -> Unit,
+    onDeleteBookmark: (String) -> Unit,
 ) {
     val activity = LocalActivity.current as? FragmentActivity
     val scope = rememberCoroutineScope()
@@ -144,6 +153,7 @@ private fun ReaderContent(
     var showSettings by remember { mutableStateOf(false) }
     var showHighlights by remember { mutableStateOf(false) }
     var activeHighlightId by remember { mutableStateOf<String?>(null) }
+    var currentLocator by remember { mutableStateOf<Locator?>(null) }
     var chromeVisible by remember { mutableStateOf(true) }
     val tapNavEnabled by rememberUpdatedState(preferences.tapNavigation)
     val navHolder = remember { arrayOfNulls<EpubNavigatorFragment?>(1) }
@@ -186,7 +196,32 @@ private fun ReaderContent(
     }
 
     LaunchedEffect(navigator) {
-        navigator?.currentLocator?.collect { onLocator(it) }
+        navigator?.currentLocator?.collect {
+            currentLocator = it
+            onLocator(it)
+        }
+    }
+
+    // Whether the current reading position is already bookmarked (our own bookmarks only —
+    // foreign ones from a web reader don't carry a precise enough position to toggle).
+    val currentBookmark = remember(bookmarks, currentLocator) {
+        val here = currentLocator?.locations?.totalProgression ?: return@remember null
+        bookmarks.filter { !it.isForeign }
+            .minByOrNull { kotlin.math.abs(it.progression - here) }
+            ?.takeIf { kotlin.math.abs(it.progression - here) < 0.001 }
+    }
+
+    fun goToBookmark(b: net.dexxicon.reader.core.model.Bookmark) {
+        val nav = navigator ?: return
+        if (b.isForeign) {
+            // Chapter-level jump: match the label to a table-of-contents entry.
+            flatten(state.publication.tableOfContents)
+                .firstOrNull { (_, link) -> link.title?.equals(b.title, ignoreCase = true) == true }
+                ?.let { (_, link) -> nav.go(link, true) }
+        } else {
+            runCatching { Locator.fromJSON(org.json.JSONObject(b.locatorJson)) }
+                .getOrNull()?.let { nav.go(it, true) }
+        }
     }
 
     // Render highlight decorations and react to taps on them.
@@ -250,6 +285,19 @@ private fun ReaderContent(
                         }
                     },
                     actions = {
+                        val locatorNow = currentLocator
+                        IconButton(
+                            enabled = locatorNow != null,
+                            onClick = {
+                                currentBookmark?.let { onDeleteBookmark(it.id) }
+                                    ?: locatorNow?.let(onAddBookmark)
+                            },
+                        ) {
+                            Icon(
+                                if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                                contentDescription = if (currentBookmark != null) "Remove bookmark" else "Add bookmark",
+                            )
+                        }
                         IconButton(onClick = { showHighlights = true }) {
                             Icon(
                                 androidx.compose.material.icons.Icons.Filled.Bookmarks,
@@ -323,13 +371,73 @@ private fun ReaderContent(
 
     if (showToc) {
         ModalBottomSheet(onDismissRequest = { showToc = false }) {
-            TableOfContents(
-                links = flatten(state.publication.tableOfContents),
-                onSelect = { link ->
-                    navigator?.go(link, true)
-                    showToc = false
-                },
-            )
+            LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
+                if (bookmarks.isNotEmpty()) {
+                    item {
+                        Text(
+                            "Bookmarks",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
+                        )
+                    }
+                    items(bookmarks, key = { it.id }) { b ->
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                Icons.Filled.Bookmark,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp),
+                            )
+                            Text(
+                                b.title,
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(start = 12.dp)
+                                    .clickableText { goToBookmark(b); showToc = false },
+                            )
+                            IconButton(onClick = { onDeleteBookmark(b.id) }) {
+                                Icon(Icons.Filled.Close, contentDescription = "Remove bookmark")
+                            }
+                        }
+                    }
+                    item {
+                        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                        Text(
+                            "Contents",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
+                        )
+                    }
+                }
+                val tocLinks = flatten(state.publication.tableOfContents)
+                if (tocLinks.isEmpty() && bookmarks.isEmpty()) {
+                    item {
+                        Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
+                            Text("No table of contents")
+                        }
+                    }
+                }
+                items(tocLinks) { (depth, link) ->
+                    TextButton(
+                        onClick = { navigator?.go(link, true); showToc = false },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            link.title ?: link.href.toString(),
+                            modifier = Modifier.fillMaxWidth().padding(start = (depth * 16).dp),
+                            textAlign = TextAlign.Start,
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -495,25 +603,6 @@ private fun HighlightEditor(
 private fun Modifier.androidx_navBars(): Modifier = this.navigationBarsPadding()
 
 private fun Modifier.clickableText(onClick: () -> Unit): Modifier = this.clickable(onClick = onClick)
-
-@Composable
-private fun TableOfContents(links: List<Pair<Int, Link>>, onSelect: (Link) -> Unit) {
-    if (links.isEmpty()) {
-        Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) { Text("No table of contents") }
-        return
-    }
-    LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-        items(links) { (depth, link) ->
-            TextButton(onClick = { onSelect(link) }, modifier = Modifier.fillMaxWidth()) {
-                Text(
-                    link.title ?: link.href.toString(),
-                    modifier = Modifier.fillMaxWidth().padding(start = (depth * 16).dp),
-                    textAlign = TextAlign.Start,
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun DisplaySettings(

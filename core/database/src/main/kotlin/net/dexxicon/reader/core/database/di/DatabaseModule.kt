@@ -10,6 +10,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import net.dexxicon.reader.core.database.DexxiconDatabase
+import net.dexxicon.reader.core.database.dao.BookmarkDao
 import net.dexxicon.reader.core.database.dao.DownloadDao
 import net.dexxicon.reader.core.database.dao.HighlightDao
 import net.dexxicon.reader.core.database.dao.ReadingProgressDao
@@ -128,13 +129,39 @@ object DatabaseModule {
         }
     }
 
+    private val MIGRATION_8_9 = object : Migration(8, 9) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            // Brand-new table — never carries data across an upgrade, so recreate cleanly.
+            db.execSQL("DROP TABLE IF EXISTS `bookmarks`")
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `bookmarks` (
+                    `id` TEXT NOT NULL,
+                    `serverId` TEXT NOT NULL,
+                    `bookId` TEXT NOT NULL,
+                    `locatorJson` TEXT NOT NULL,
+                    `progression` REAL NOT NULL,
+                    `title` TEXT NOT NULL,
+                    `foreignCfi` TEXT,
+                    `createdAt` INTEGER NOT NULL,
+                    `remoteId` TEXT,
+                    `dirty` INTEGER NOT NULL,
+                    `deleted` INTEGER NOT NULL DEFAULT 0,
+                    PRIMARY KEY(`id`)
+                )
+                """.trimIndent(),
+            )
+            db.execSQL("CREATE INDEX IF NOT EXISTS `index_bookmarks_serverId_bookId` ON `bookmarks` (`serverId`, `bookId`)")
+        }
+    }
+
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): DexxiconDatabase =
         Room.databaseBuilder(context, DexxiconDatabase::class.java, DexxiconDatabase.NAME)
             .addMigrations(
                 MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
-                MIGRATION_6_7, MIGRATION_7_8,
+                MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
             )
             .build()
 
@@ -150,4 +177,7 @@ object DatabaseModule {
 
     @Provides
     fun provideHighlightDao(database: DexxiconDatabase): HighlightDao = database.highlightDao()
+
+    @Provides
+    fun provideBookmarkDao(database: DexxiconDatabase): BookmarkDao = database.bookmarkDao()
 }
