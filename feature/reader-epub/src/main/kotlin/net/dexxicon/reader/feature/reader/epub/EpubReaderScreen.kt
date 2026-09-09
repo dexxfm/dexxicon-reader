@@ -374,34 +374,8 @@ private fun ReaderContent(
     if (showToc) {
         ModalBottomSheet(onDismissRequest = { showToc = false }) {
             LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                if (bookmarks.isNotEmpty()) {
-                    item {
-                        Text(
-                            "Bookmarks",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 16.dp, top = 8.dp, bottom = 4.dp),
-                        )
-                    }
-                    items(bookmarks, key = { it.id }) { b ->
-                        BookmarkRow(
-                            bookmark = b,
-                            onOpen = { goToBookmark(b); showToc = false },
-                            onDelete = { onDeleteBookmark(b.id) },
-                        )
-                    }
-                    item {
-                        androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                        Text(
-                            "Contents",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(start = 16.dp, bottom = 4.dp),
-                        )
-                    }
-                }
                 val tocLinks = flatten(state.publication.tableOfContents)
-                if (tocLinks.isEmpty() && bookmarks.isEmpty()) {
+                if (tocLinks.isEmpty()) {
                     item {
                         Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
                             Text("No table of contents")
