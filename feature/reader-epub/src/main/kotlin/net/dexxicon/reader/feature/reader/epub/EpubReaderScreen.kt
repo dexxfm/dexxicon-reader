@@ -16,6 +16,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
@@ -74,6 +76,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.reader.EdgeTapNavigator
 import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
+import net.dexxicon.reader.core.reader.ReaderFitMode
+import net.dexxicon.reader.core.reader.ReaderPageLayout
+import net.dexxicon.reader.core.reader.ReaderScrollMode
 import net.dexxicon.reader.core.reader.ReaderTheme
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
@@ -640,12 +645,19 @@ private fun Modifier.androidx_navBars(): Modifier = this.navigationBarsPadding()
 
 private fun Modifier.clickableText(onClick: () -> Unit): Modifier = this.clickable(onClick = onClick)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DisplaySettings(
     preferences: ReaderDisplayPreferences,
     onChange: ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().padding(24.dp)) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .verticalScroll(androidx.compose.foundation.rememberScrollState())
+            .padding(24.dp)
+            .navigationBarsPadding(),
+    ) {
         Text("Text size", style = MaterialTheme.typography.titleSmall)
         Slider(
             value = preferences.fontScale.toFloat(),
@@ -658,31 +670,42 @@ private fun DisplaySettings(
             },
         )
 
-        Text("Theme", style = MaterialTheme.typography.titleSmall)
-        Row {
-            ReaderTheme.entries.forEach { theme ->
-                FilterChip(
-                    selected = preferences.theme == theme,
-                    onClick = { onChange { it.copy(theme = theme) } },
-                    label = { Text(theme.name.lowercase().replaceFirstChar { c -> c.uppercase() }) },
-                    modifier = Modifier.padding(end = 8.dp),
-                )
-            }
-        }
+        SettingChips(
+            title = "Background",
+            entries = ReaderTheme.entries,
+            selected = preferences.theme,
+            label = ::readerThemeLabel,
+            onSelect = { theme -> onChange { it.copy(theme = theme) } },
+        )
 
-        Row(Modifier.padding(top = 12.dp)) {
-            FilterChip(
-                selected = !preferences.scroll,
-                onClick = { onChange { it.copy(scroll = false) } },
-                label = { Text("Paged") },
-                modifier = Modifier.padding(end = 8.dp),
-            )
-            FilterChip(
-                selected = preferences.scroll,
-                onClick = { onChange { it.copy(scroll = true) } },
-                label = { Text("Scroll") },
-            )
-        }
+        SettingChips(
+            title = "Page fit",
+            entries = ReaderFitMode.entries,
+            selected = preferences.fitMode,
+            label = ::readerFitLabel,
+            onSelect = { fit -> onChange { it.copy(fitMode = fit) } },
+        )
+
+        SettingChips(
+            title = "Page layout",
+            entries = ReaderPageLayout.entries,
+            selected = preferences.pageLayout,
+            label = ::readerPageLayoutLabel,
+            onSelect = { layout -> onChange { it.copy(pageLayout = layout) } },
+        )
+
+        SettingChips(
+            title = "Reading mode",
+            // CONTINUOUS is scaffolding — kept out of the picker until a navigator honours it.
+            entries = listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
+            selected = if (preferences.scrollMode == ReaderScrollMode.PAGED) {
+                ReaderScrollMode.PAGED
+            } else {
+                ReaderScrollMode.SCROLL
+            },
+            label = ::readerScrollModeLabel,
+            onSelect = { mode -> onChange { it.copy(scrollMode = mode) } },
+        )
 
         Row(
             Modifier.fillMaxWidth().padding(top = 16.dp),
@@ -695,6 +718,57 @@ private fun DisplaySettings(
             )
         }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun <T> SettingChips(
+    title: String,
+    entries: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
+    FlowRow(
+        Modifier.fillMaxWidth().padding(top = 4.dp),
+        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
+    ) {
+        entries.forEach { entry ->
+            FilterChip(
+                selected = selected == entry,
+                onClick = { onSelect(entry) },
+                label = { Text(label(entry)) },
+            )
+        }
+    }
+}
+
+private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
+    ReaderTheme.SYSTEM -> "System"
+    ReaderTheme.LIGHT -> "White"
+    ReaderTheme.SEPIA -> "Sepia"
+    ReaderTheme.GREY -> "Grey"
+    ReaderTheme.DARK -> "Black"
+}
+
+private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {
+    ReaderFitMode.PAGE_FIT -> "Fit"
+    ReaderFitMode.PAGE_WIDTH -> "Width"
+    ReaderFitMode.PAGE_HEIGHT -> "Height"
+    ReaderFitMode.ACTUAL_SIZE -> "Actual size"
+}
+
+private fun readerPageLayoutLabel(layout: ReaderPageLayout): String = when (layout) {
+    ReaderPageLayout.AUTO -> "Auto"
+    ReaderPageLayout.SINGLE -> "Single"
+    ReaderPageLayout.DOUBLE -> "Two-page"
+}
+
+private fun readerScrollModeLabel(mode: ReaderScrollMode): String = when (mode) {
+    ReaderScrollMode.PAGED -> "Paged"
+    ReaderScrollMode.SCROLL -> "Scroll"
+    ReaderScrollMode.CONTINUOUS -> "Continuous"
 }
 
 @Composable

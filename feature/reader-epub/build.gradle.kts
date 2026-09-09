@@ -11,6 +11,7 @@ apply(from = "$rootDir/gradle/android-common.gradle")
 android {
     namespace = "net.dexxicon.reader.feature.reader.epub"
     buildFeatures { compose = true }
+    testOptions.unitTests.isIncludeAndroidResources = true
 }
 
 dependencies {
@@ -50,4 +51,5 @@ dependencies {
     testImplementation(libs.truth)
     testImplementation(libs.turbine)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
 }
