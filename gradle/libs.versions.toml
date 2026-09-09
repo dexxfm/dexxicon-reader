@@ -44,6 +44,11 @@ turbine = "1.2.1"
 mockwebserver = "5.5.0"
 robolectric = "4.16"
 truth = "1.4.5"
+benchmark = "1.5.0-rc02"
+baselineprofile = "1.5.0-rc02"
+profileinstaller = "1.4.1"
+uiautomator = "2.3.0"
+androidxTestRunner = "1.7.0"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
@@ -120,6 +125,10 @@ espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref =
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 truth = { module = "com.google.truth:truth", version.ref = "truth" }
+androidx-benchmark-macro-junit4 = { module = "androidx.benchmark:benchmark-macro-junit4", version.ref = "benchmark" }
+androidx-profileinstaller = { module = "androidx.profileinstaller:profileinstaller", version.ref = "profileinstaller" }
+androidx-test-uiautomator = { module = "androidx.test.uiautomator:uiautomator", version.ref = "uiautomator" }
+androidx-test-runner = { module = "androidx.test:runner", version.ref = "androidxTestRunner" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
@@ -129,3 +138,6 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "compose-compiler" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+# No version: AGP is already on the shared plugin classpath via com.android.application.
+android-test = { id = "com.android.test" }
+baselineprofile = { id = "androidx.baselineprofile", version.ref = "baselineprofile" }

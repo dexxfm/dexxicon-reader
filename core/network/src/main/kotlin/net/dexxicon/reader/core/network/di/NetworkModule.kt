@@ -5,6 +5,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import net.dexxicon.reader.core.network.AuthInterceptor
+import net.dexxicon.reader.core.network.BuildConfig
 import net.dexxicon.reader.core.network.PersistentCookieJar
 import net.dexxicon.reader.core.network.ReadiumHttpClient
 import okhttp3.OkHttpClient
@@ -26,7 +27,15 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideLoggingInterceptor(): HttpLoggingInterceptor =
-        HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
+        HttpLoggingInterceptor().apply {
+            // One line per request/response in debug; silent (and no per-call string work
+            // or URL leakage to logcat) in release.
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BASIC
+            } else {
+                HttpLoggingInterceptor.Level.NONE
+            }
+        }
 
     @Provides
     @Singleton

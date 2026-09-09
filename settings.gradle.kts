@@ -20,6 +20,7 @@ dependencyResolutionManagement {
 rootProject.name = "DexxiconReader"
 
 include(":app")
+include(":baselineprofile")
 include(":core:model")
 include(":core:common")
 include(":core:designsystem")
