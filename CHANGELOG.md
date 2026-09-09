@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.11.2 — 2026-09-09
+
+Casting, clearer reader tools, and new page layouts.
+
+- **Google Cast for audiobooks.** A Cast button on the now-playing screen opens the system
+  device picker; picking a Chromecast hands playback to it at the current position and the
+  controller dialog (volume, stop casting) works. Stopping brings playback back to the phone
+  where it left off. Streams that need a login are cast with a scoped token; local-only
+  downloads can't be cast.
+- **Three separate audio buttons on the player.** Cast, audio output, and audio options are
+  now distinct — audio options no longer carries the output list. Tapping a device in the
+  output sheet switches immediately, with no Done button or extra sliders. Bluetooth media
+  now routes to the A2DP device (not the call-audio path that dropped it to mono), and the
+  player follows the newest Bluetooth or Android Auto connection automatically.
+- **Reader tools that don't look alike.** Highlights now use a marker/underline icon instead
+  of one nearly identical to bookmarks, and bookmarks have their own dedicated list button in
+  the top bar. Bookmarks are gone from the Contents sheet (the list button replaces them).
+  Each bookmark row shows how far through the chapter you were, plus the page number when the
+  book has one — e.g. "43% – Page 87".
+- **EPUB page layout options.** New in the display-settings sheet: reading background
+  (System / White / Sepia / Grey / Black), page fit (Fit / Width / Height / Actual size),
+  page layout (Auto / Single / Two-page — two columns on tablets and unfolded foldables), and
+  Paged / Scroll as a proper setting. EPUB only for now.
+
 ## 0.11.0 — 2026-09-08
 
 Bookmarks, a faster start, and crash reports you control.
