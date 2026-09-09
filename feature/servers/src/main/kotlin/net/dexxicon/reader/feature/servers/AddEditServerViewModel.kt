@@ -43,8 +43,14 @@ data class AddEditServerUiState(
     val canTest: Boolean
         get() = baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
 
+    /**
+     * Adding a server requires a successful connection test first. Editing one does not —
+     * the user may just be renaming it or touching KOReader sync, and shouldn't have to
+     * re-enter the password and re-test to change an unrelated field.
+     */
     val canSave: Boolean
-        get() = displayName.isNotBlank() && testState is TestState.Success
+        get() = displayName.isNotBlank() && baseUrl.isNotBlank() &&
+            (editingId != null || testState is TestState.Success)
 }
 
 sealed interface TestState {
@@ -239,7 +245,9 @@ class AddEditServerViewModel @Inject constructor(
                     displayName = state.displayName.trim(),
                     baseUrl = normalizeUrl(state.baseUrl),
                     type = state.savedType,
-                    authMode = AuthMode.NATIVE,
+                    // Keep an existing server's auth mode — editing a field shouldn't
+                    // silently downgrade an SSO server to password auth.
+                    authMode = loadedServer?.authMode ?: AuthMode.NATIVE,
                     username = state.username.trim(),
                     koSyncUrl = state.koSyncUrl.trim().trimEnd('/').takeIf { it.isNotBlank() },
                     koSyncUsername = state.koSyncUsername.trim().takeIf { it.isNotBlank() },

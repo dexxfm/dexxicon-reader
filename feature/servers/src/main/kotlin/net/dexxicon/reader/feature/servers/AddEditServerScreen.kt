@@ -2,13 +2,14 @@ package net.dexxicon.reader.feature.servers
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -16,9 +17,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -28,11 +31,13 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -47,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -64,6 +70,7 @@ fun AddEditServerScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var passwordVisible by remember { mutableStateOf(false) }
+    var showKoReader by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
     val authFlow = remember { OidcAuthFlow(context) }
@@ -115,6 +122,16 @@ fun AddEditServerScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
             OutlinedTextField(
+                value = state.displayName,
+                onValueChange = viewModel::onDisplayNameChange,
+                label = { Text("Server name") },
+                placeholder = { Text("My library") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(
                 value = state.baseUrl,
                 onValueChange = viewModel::onBaseUrlChange,
                 label = { Text("Server URL") },
@@ -124,30 +141,7 @@ fun AddEditServerScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            Spacer(Modifier.height(16.dp))
-            SsoBlock(
-                state = state.sso,
-                onDiscover = viewModel::discoverSso,
-                onSignIn = {
-                    viewModel.onContinueSso()?.let { handshake ->
-                        authLauncher.launch(authFlow.authorizationIntent(handshake))
-                    }
-                },
-                onCancel = viewModel::onAuthorizeCancelled,
-            )
-
-            Spacer(Modifier.height(16.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                HorizontalDivider(modifier = Modifier.weight(1f))
-                Text(
-                    "  or use a password  ",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                HorizontalDivider(modifier = Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(16.dp))
-
+            Spacer(Modifier.height(12.dp))
             OutlinedTextField(
                 value = state.username,
                 onValueChange = viewModel::onUsernameChange,
@@ -186,53 +180,34 @@ fun AddEditServerScreen(
             )
 
             Spacer(Modifier.height(20.dp))
-            OutlinedTextField(
-                value = state.displayName,
-                onValueChange = viewModel::onDisplayNameChange,
-                label = { Text("Display name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+            KoReaderRow(
+                summary = koReaderSummary(state),
+                onClick = { showKoReader = true },
             )
 
-            Spacer(Modifier.height(24.dp))
-            Text(
-                "KOReader sync (optional)",
-                style = androidx.compose.material3.MaterialTheme.typography.titleSmall,
-            )
-            Text(
-                "Share reading progress with the KOReader app and other devices. Needs a " +
-                    "dedicated sync account on the server.",
-                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-                color = androidx.compose.material3.MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp, bottom = 8.dp),
-            )
-            OutlinedTextField(
-                value = state.koSyncUrl,
-                onValueChange = viewModel::onKoSyncUrlChange,
-                label = { Text("Sync server URL") },
-                placeholder = { Text("https://host/koreader") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Spacer(Modifier.height(20.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HorizontalDivider(modifier = Modifier.weight(1f))
+                Text(
+                    "  or  ",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HorizontalDivider(modifier = Modifier.weight(1f))
+            }
             Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = state.koSyncUsername,
-                onValueChange = viewModel::onKoSyncUsernameChange,
-                label = { Text("Sync username") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
-                value = state.koSyncPassword,
-                onValueChange = viewModel::onKoSyncPasswordChange,
-                label = { Text("Sync password") },
-                visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
+            SsoBlock(
+                state = state.sso,
+                onDiscover = viewModel::discoverSso,
+                onSignIn = {
+                    viewModel.onContinueSso()?.let { handshake ->
+                        authLauncher.launch(authFlow.authorizationIntent(handshake))
+                    }
+                },
+                onCancel = viewModel::onAuthorizeCancelled,
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(20.dp))
             Button(
                 onClick = { viewModel.save(onDone) },
                 enabled = state.canSave && !state.saving,
@@ -247,6 +222,114 @@ fun AddEditServerScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+    }
+
+    if (showKoReader) {
+        ModalBottomSheet(
+            onDismissRequest = { showKoReader = false },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        ) {
+            KoReaderSheet(
+                url = state.koSyncUrl,
+                username = state.koSyncUsername,
+                password = state.koSyncPassword,
+                onUrlChange = viewModel::onKoSyncUrlChange,
+                onUsernameChange = viewModel::onKoSyncUsernameChange,
+                onPasswordChange = viewModel::onKoSyncPasswordChange,
+                onDone = { showKoReader = false },
+            )
+        }
+    }
+}
+
+private fun koReaderSummary(state: AddEditServerUiState): String {
+    val host = state.koSyncUrl.substringAfter("://").substringBefore('/').trim()
+    return when {
+        host.isNotBlank() && state.koSyncUsername.isNotBlank() -> "${state.koSyncUsername} · $host"
+        host.isNotBlank() -> host
+        state.koSyncUsername.isNotBlank() -> state.koSyncUsername
+        else -> "Not set up"
+    }
+}
+
+@Composable
+private fun KoReaderRow(summary: String, onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Filled.Sync, contentDescription = null)
+        Spacer(Modifier.size(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("KOReader sync (optional)", style = MaterialTheme.typography.bodyLarge)
+            Text(
+                summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null)
+    }
+}
+
+@Composable
+private fun KoReaderSheet(
+    url: String,
+    username: String,
+    password: String,
+    onUrlChange: (String) -> Unit,
+    onUsernameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onDone: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 12.dp)
+            .imePadding()
+            .navigationBarsPadding(),
+    ) {
+        Text("KOReader (optional)", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Share reading progress with the KOReader app and other devices. Needs a " +
+                "dedicated sync account on the server.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
+        )
+        OutlinedTextField(
+            value = url,
+            onValueChange = onUrlChange,
+            label = { Text("Sync server URL") },
+            placeholder = { Text("https://host/koreader") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = username,
+            onValueChange = onUsernameChange,
+            label = { Text("Sync username") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = onPasswordChange,
+            label = { Text("Sync password") },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(20.dp))
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
+            Text("Done")
+        }
+        Spacer(Modifier.height(8.dp))
     }
 }
 
