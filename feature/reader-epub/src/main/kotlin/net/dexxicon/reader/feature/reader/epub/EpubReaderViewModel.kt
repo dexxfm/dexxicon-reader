@@ -15,11 +15,13 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.data.BookmarkRepository
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.HighlightRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.DigestSource
+import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
@@ -58,6 +60,7 @@ class EpubReaderViewModel @Inject constructor(
     private val streamer: PublicationStreamer,
     private val progressRepository: ReadingProgressRepository,
     private val highlightRepository: HighlightRepository,
+    private val bookmarkRepository: BookmarkRepository,
     preferencesStore: ReaderPreferencesStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -67,6 +70,10 @@ class EpubReaderViewModel @Inject constructor(
 
     val highlights: StateFlow<List<Highlight>> =
         highlightRepository.observe(route.serverId, route.bookId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val bookmarks: StateFlow<List<Bookmark>> =
+        bookmarkRepository.observe(route.serverId, route.bookId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val _state = MutableStateFlow<EpubReaderState>(EpubReaderState.Loading)
@@ -85,6 +92,9 @@ class EpubReaderViewModel @Inject constructor(
         viewModelScope.launch { load() }
         viewModelScope.launch {
             runCatching { highlightRepository.syncFromServer(route.serverId, route.bookId) }
+        }
+        viewModelScope.launch {
+            runCatching { bookmarkRepository.syncFromServer(route.serverId, route.bookId) }
         }
         viewModelScope.launch {
             // locatorStore.save persists the position and pushes it to KOReader sync.
@@ -193,6 +203,22 @@ class EpubReaderViewModel @Inject constructor(
 
     fun deleteHighlight(id: String) {
         viewModelScope.launch { highlightRepository.delete(id) }
+    }
+
+    fun addBookmark(locator: Locator) {
+        viewModelScope.launch {
+            bookmarkRepository.add(
+                serverId = route.serverId,
+                bookId = route.bookId,
+                locatorJson = locator.toJSON().toString(),
+                progression = locator.locations.totalProgression ?: 0.0,
+                title = locator.title.orEmpty(),
+            )
+        }
+    }
+
+    fun deleteBookmark(id: String) {
+        viewModelScope.launch { bookmarkRepository.delete(id) }
     }
 
     override fun onCleared() {

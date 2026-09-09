@@ -81,6 +81,11 @@ object ServerApiModule {
 
     @Provides
     @Singleton
+    fun provideBookmarkApi(retrofit: Retrofit): net.dexxicon.reader.core.serverapi.bookmark.BookmarkApi =
+        retrofit.create(net.dexxicon.reader.core.serverapi.bookmark.BookmarkApi::class.java)
+
+    @Provides
+    @Singleton
     fun provideNativeProgressApi(retrofit: Retrofit): NativeProgressApi =
         retrofit.create(NativeProgressApi::class.java)
 
