@@ -31,8 +31,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Bluetooth
-import androidx.compose.material.icons.filled.Cast
-import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Forward30
 import androidx.compose.material.icons.filled.Headphones
@@ -79,6 +77,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
@@ -454,140 +453,35 @@ private fun AudioOutputList(
 
 // ---- Google Cast ----
 
-private data class CastRoute(val id: String, val name: String, val selected: Boolean)
-
 /**
- * Cast button + its own picker sheet. A custom Compose sheet rather than the framework's
- * `MediaRouteChooserDialog`, which needs an AppCompat-themed host activity (this app is
- * Compose-only). Selecting a route via [MediaRouter] while an active scan is running starts
- * a Cast session, which the service's `CastPlayer` then takes over.
+ * The Cast button — the framework's own [MediaRouteButton], which auto-hides when there
+ * are no Cast devices and opens the standard chooser / controller dialog. Selecting a
+ * route here starts a `CastSession`; the playback service's `CastPlayer` then takes over.
+ * Needs the host activity on an AppCompat theme (see `Theme.Dexxicon`).
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CastButton() {
     val context = LocalContext.current
-    val castContext = remember {
+    val castOk = remember {
         runCatching {
             com.google.android.gms.cast.framework.CastContext.getSharedInstance(
                 context.applicationContext,
                 java.util.concurrent.Executor { it.run() },
             )
-        }.getOrNull()
-    } ?: return
-
-    val router = remember { androidx.mediarouter.media.MediaRouter.getInstance(context.applicationContext) }
-    val selector = remember {
-        androidx.mediarouter.media.MediaRouteSelector.Builder()
-            .addControlCategory(
-                com.google.android.gms.cast.CastMediaControlIntent.categoryForCast(
-                    net.dexxicon.reader.core.media.CAST_RECEIVER_APP_ID,
-                ),
-            )
-            .build()
+        }.isSuccess
     }
-    var open by remember { mutableStateOf(false) }
-    var routes by remember { mutableStateOf(emptyList<CastRoute>()) }
-
-    fun snapshot() = router.routes
-        .filter { it.matchesSelector(selector) && !it.isDefaultOrBluetooth() }
-        .map { CastRoute(it.id, it.name, it.isSelected) }
-
-    // Passive callback: keeps the button's connected state fresh.
-    DisposableEffect(router) {
-        val cb = object : androidx.mediarouter.media.MediaRouter.Callback() {
-            override fun onRouteAdded(r: androidx.mediarouter.media.MediaRouter, route: androidx.mediarouter.media.MediaRouter.RouteInfo) { routes = snapshot() }
-            override fun onRouteRemoved(r: androidx.mediarouter.media.MediaRouter, route: androidx.mediarouter.media.MediaRouter.RouteInfo) { routes = snapshot() }
-            override fun onRouteChanged(r: androidx.mediarouter.media.MediaRouter, route: androidx.mediarouter.media.MediaRouter.RouteInfo) { routes = snapshot() }
-            override fun onRouteSelected(r: androidx.mediarouter.media.MediaRouter, route: androidx.mediarouter.media.MediaRouter.RouteInfo, reason: Int) { routes = snapshot() }
-            override fun onRouteUnselected(r: androidx.mediarouter.media.MediaRouter, route: androidx.mediarouter.media.MediaRouter.RouteInfo, reason: Int) { routes = snapshot() }
-        }
-        router.addCallback(selector, cb, androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_REQUEST_DISCOVERY)
-        routes = snapshot()
-        onDispose { router.removeCallback(cb) }
-    }
-
-    // Active scan only while the sheet is open — that's what lets a route selection connect.
-    if (open) {
-        DisposableEffect(Unit) {
-            val cb = object : androidx.mediarouter.media.MediaRouter.Callback() {}
-            router.addCallback(
-                selector, cb,
-                androidx.mediarouter.media.MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN,
-            )
-            routes = snapshot()
-            onDispose { router.removeCallback(cb) }
-        }
-    }
-
-    val connected = routes.any { it.selected }
-    IconButton(onClick = { open = true }) {
-        Icon(
-            if (connected) Icons.Filled.CastConnected else Icons.Filled.Cast,
-            contentDescription = "Cast",
-        )
-    }
-
-    if (open) {
-        ModalBottomSheet(onDismissRequest = { open = false }) {
-            Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                Text(
-                    "Cast to",
-                    Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp),
-                    style = MaterialTheme.typography.titleMedium,
-                )
-                if (routes.isEmpty()) {
-                    Text(
-                        "Looking for Cast devices…",
-                        Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                routes.forEach { route ->
-                    val tint = if (route.selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                router.routes.firstOrNull { it.id == route.id }?.let(router::selectRoute)
-                                open = false
-                            }
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            if (route.selected) Icons.Filled.CastConnected else Icons.Filled.Cast,
-                            contentDescription = null,
-                            tint = tint,
-                        )
-                        Text(route.name, Modifier.weight(1f).padding(start = 16.dp), color = tint)
-                        if (route.selected) {
-                            Icon(Icons.Filled.Check, contentDescription = "Connected", tint = MaterialTheme.colorScheme.primary)
-                        }
-                    }
-                }
-                if (connected) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                router.unselect(androidx.mediarouter.media.MediaRouter.UNSELECT_REASON_STOPPED)
-                                open = false
-                            }
-                            .padding(horizontal = 20.dp, vertical = 14.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(Icons.Filled.Speaker, contentDescription = null)
-                        Text("Stop casting", Modifier.weight(1f).padding(start = 16.dp))
-                    }
-                }
+    if (!castOk) return
+    AndroidView(
+        factory = { ctx ->
+            androidx.mediarouter.app.MediaRouteButton(ctx).apply {
+                com.google.android.gms.cast.framework.CastButtonFactory
+                    .setUpMediaRouteButton(ctx.applicationContext, this)
             }
-        }
-    }
+        },
+        modifier = Modifier.size(48.dp).padding(12.dp),
+    )
 }
 
-private fun androidx.mediarouter.media.MediaRouter.RouteInfo.isDefaultOrBluetooth(): Boolean =
-    isDefault || isBluetooth
 
 
 @Composable

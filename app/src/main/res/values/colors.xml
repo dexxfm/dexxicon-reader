@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Cold-start window background + theme attrs. Matches the app's dark navy palette;
+         the Compose UI takes over immediately after. -->
+    <color name="dexxicon_window_bg">#0F1B31</color>
+    <color name="dexxicon_primary">#6E8DC0</color>
+</resources>
