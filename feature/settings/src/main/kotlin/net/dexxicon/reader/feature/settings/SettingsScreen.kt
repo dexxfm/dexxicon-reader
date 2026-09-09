@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.hilt.navigation.compose.hiltViewModel
+import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.component.FormatLegend
@@ -260,18 +261,23 @@ fun SettingsScreen(
             Spacer()
             SectionTitle("Feedback")
             val context = androidx.compose.ui.platform.LocalContext.current
+            val scope = androidx.compose.runtime.rememberCoroutineScope()
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable { sendProblemReport(context, versionName) }
+                    .clickable {
+                        scope.launch {
+                            sendProblemReport(context, versionName, viewModel.buildLogArchive())
+                        }
+                    }
                     .padding(vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
                     Text("Report a problem", style = MaterialTheme.typography.bodyLarge)
                     Text(
-                        "Opens an email with your device and app details filled in. Nothing " +
-                            "is sent until you send it.",
+                        "Opens an email with your device details and a zip of the app's logs " +
+                            "attached. Nothing is sent until you send it.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -290,25 +296,49 @@ fun SettingsScreen(
     }
 }
 
-/** Opens the user's email app with device/app context prefilled — no crash required. */
-private fun sendProblemReport(context: android.content.Context, versionName: String) {
+/**
+ * Opens the user's email app with device/app context prefilled and a zip of the app's logs
+ * attached — no crash required. Nothing is sent until the user sends it. [logsZip] is null
+ * when the archive couldn't be built; the email still opens, without the attachment.
+ */
+private fun sendProblemReport(
+    context: android.content.Context,
+    versionName: String,
+    logsZip: java.io.File?,
+) {
     val body = buildString {
         appendLine("Describe the problem here:")
         appendLine()
         appendLine()
         appendLine("---")
+        appendLine("A zip of the app's logs is attached.")
         appendLine(net.dexxicon.reader.core.common.crash.CrashReporter.deviceBlock(context))
     }
-    val intent = android.content.Intent(android.content.Intent.ACTION_SENDTO).apply {
-        data = android.net.Uri.parse("mailto:")
+    val attachment = logsZip?.let {
+        runCatching {
+            androidx.core.content.FileProvider.getUriForFile(
+                context, "${context.packageName}.fileprovider", it,
+            )
+        }.getOrNull()
+    }
+    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+        type = "message/rfc822"
         putExtra(
             android.content.Intent.EXTRA_EMAIL,
             arrayOf(net.dexxicon.reader.core.common.crash.CrashReporter.CONTACT_EMAIL),
         )
         putExtra(android.content.Intent.EXTRA_SUBJECT, "Dexxicon Reader $versionName — problem report")
         putExtra(android.content.Intent.EXTRA_TEXT, body)
+        if (attachment != null) {
+            putExtra(android.content.Intent.EXTRA_STREAM, attachment)
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
     }
-    runCatching { context.startActivity(intent) }
+    runCatching {
+        context.startActivity(
+            android.content.Intent.createChooser(intent, "Report a problem"),
+        )
+    }
 }
 
 @Composable

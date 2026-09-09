@@ -29,6 +29,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -69,13 +71,17 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
 
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     pendingCrash?.let { report ->
         CrashReportSheet(
             report = report,
             onSend = { note ->
-                shareCrashReport(context, report, note)
-                shellViewModel.dismissCrash(delete = true)
+                scope.launch {
+                    val logsZip = shellViewModel.buildLogArchive()
+                    shareCrashReport(context, report, note, logsZip)
+                    shellViewModel.dismissCrash(delete = true)
+                }
             },
             onKeep = { shellViewModel.dismissCrash(delete = false) },
             onDiscard = { shellViewModel.dismissCrash(delete = true) },

@@ -2,4 +2,6 @@
 <paths>
     <!-- Crash reports the user chooses to send. -->
     <cache-path name="crash-reports" path="crash-reports/" />
+    <!-- The log archive attached to a crash report / problem report. -->
+    <cache-path name="diagnostics" path="diagnostics/" />
 </paths>
