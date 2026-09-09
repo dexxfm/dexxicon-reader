@@ -59,6 +59,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+            // Fall back to the debug key only for throw-away local `assembleRelease`
+            // smoke builds. A *published* APK signed with a different key than the last
+            // one forces users to uninstall (wiping all settings) to update — see the
+            // taskGraph guard below, which fails any real release packaging without the
+            // real keystore unless -PallowUnsignedRelease is passed.
             signingConfig = signingConfigs.findByName("release")
                 ?: signingConfigs.getByName("debug")
 
@@ -76,6 +81,28 @@ android {
             "/META-INF/{AL2.0,LGPL2.1}",
             "META-INF/DEPENDENCIES",
             "META-INF/LICENSE*",
+        )
+    }
+}
+
+// Guard against shipping a release APK/AAB signed with the debug key. Every published
+// build must carry the same signature or an in-place update is impossible and users have
+// to uninstall — losing every setting. Fires only when a release packaging/signing task
+// is actually scheduled; pass -PallowUnsignedRelease for a local build you won't distribute.
+gradle.taskGraph.whenReady {
+    val packagingRelease = allTasks.any { t ->
+        val n = t.name
+        (n.startsWith("package") || n.startsWith("sign")) && n.contains("Release")
+    }
+    if (packagingRelease &&
+        keystoreProps.getProperty("storeFile") == null &&
+        !project.hasProperty("allowUnsignedRelease")
+    ) {
+        throw GradleException(
+            "Release packaging needs keystore.properties + the release keystore so every " +
+                "published build shares one signature. Without it the APK is debug-signed and " +
+                "updating over a real release forces an uninstall, wiping user settings. " +
+                "Add the keystore, or pass -PallowUnsignedRelease for a throw-away local build.",
         )
     }
 }
