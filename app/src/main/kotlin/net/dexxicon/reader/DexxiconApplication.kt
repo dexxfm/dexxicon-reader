@@ -10,6 +10,7 @@ import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import coil3.request.crossfade
 import dagger.Lazy
 import dagger.hilt.android.HiltAndroidApp
+import net.dexxicon.reader.core.common.crash.CrashReporter
 import net.dexxicon.reader.core.data.auth.SessionRefreshWorker
 import net.dexxicon.reader.core.data.auth.SignInNotifier
 import net.dexxicon.reader.core.network.di.DexxiconHttpClient
@@ -33,8 +34,12 @@ class DexxiconApplication :
     @Inject
     lateinit var signInNotifier: SignInNotifier
 
+    @Inject
+    lateinit var crashReporter: CrashReporter
+
     override fun onCreate() {
         super.onCreate()
+        crashReporter.install()
         SessionRefreshWorker.schedule(this)
     }
 

@@ -31,10 +31,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.dexxicon.reader.crash.CrashReportSheet
+import net.dexxicon.reader.crash.shareCrashReport
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -62,8 +65,22 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
     val currentDestination: NavDestination? = backStackEntry?.destination
     val playback by shellViewModel.playback.collectAsStateWithLifecycle()
     val signInPrompts by shellViewModel.signInPrompts.collectAsStateWithLifecycle()
+    val pendingCrash by shellViewModel.pendingCrash.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+
+    pendingCrash?.let { report ->
+        CrashReportSheet(
+            report = report,
+            onSend = { note ->
+                shareCrashReport(context, report, note)
+                shellViewModel.dismissCrash(delete = true)
+            },
+            onKeep = { shellViewModel.dismissCrash(delete = false) },
+            onDiscard = { shellViewModel.dismissCrash(delete = true) },
+        )
+    }
 
     LaunchedEffect(Unit) {
         shellViewModel.reauthRequests.collect { serverId ->
