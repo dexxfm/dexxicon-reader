@@ -13,6 +13,7 @@ import net.dexxicon.reader.core.model.AggregatedBookPage
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
+import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.CatalogShelf
 import net.dexxicon.reader.core.model.Server
@@ -121,6 +122,23 @@ class CatalogRepository @Inject constructor(
         Outcome.Success(
             if (formats == null) merged
             else merged.copy(books = merged.books.filter { it.format in formats }),
+        )
+    }
+
+    /**
+     * The "On Deck" shelf: every configured server's "want to read" books, fetched
+     * concurrently and de-duplicated by (title, author) so a book on two servers shows once.
+     * Servers that fail (or don't support a reading status) just contribute nothing.
+     */
+    suspend fun onDeck(): Outcome<List<BookSummary>> = withContext(io) {
+        val servers = serverRepository.servers.first()
+        if (servers.isEmpty()) return@withContext Outcome.Success(emptyList())
+        val results = coroutineScope {
+            servers.map { server -> async { sourceFor(server).wantToRead(server) } }.awaitAll()
+        }
+        val books = results.mapNotNull { (it as? Outcome.Success)?.value }.flatten()
+        Outcome.Success(
+            books.distinctBy { "${it.title.lowercase()}|${it.authorLine.lowercase()}" },
         )
     }
 

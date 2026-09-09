@@ -76,6 +76,15 @@ fun LibraryScreen(
         onDownloadOrRemove = { viewModel.downloadOrRemove(entry.serverId, entry.bookId, null) },
     )
 
+    fun onDeckActions(entry: OnDeckItem) = LibraryItemActions(
+        downloadStatus = null,
+        onMarkRead = { viewModel.markRead(entry.serverId, entry.bookId) },
+        onMarkUnread = { viewModel.markUnread(entry.serverId, entry.bookId) },
+        onSetStatus = { viewModel.setReadingStatus(entry.serverId, entry.bookId, it) },
+        onDetails = { onOpenBook(entry.serverId, entry.bookId) },
+        onDownloadOrRemove = { viewModel.downloadOrRemove(entry.serverId, entry.bookId, null) },
+    )
+
     fun downloadActions(download: Download): LibraryItemActions {
         val status = download.status
         return LibraryItemActions(
@@ -90,10 +99,11 @@ fun LibraryScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(title = { Text("Library") })
+            TopAppBar(title = { Text("Home") })
         },
     ) { padding ->
         val empty = state.downloads.isEmpty() &&
+            state.onDeck.isEmpty() &&
             state.continueReading.isEmpty() &&
             state.continueListening.isEmpty()
         PullToRefreshBox(
@@ -125,6 +135,7 @@ fun LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
+                    onDeckShelf(state.onDeck, onOpenBook, ::onDeckActions)
                     continueShelf("Continue reading", state.continueReading, onContinue, ::continueActions)
                     continueShelf("Continue listening", state.continueListening, onContinue, ::continueActions)
 
@@ -148,6 +159,26 @@ fun LibraryScreen(
 private fun androidx.compose.foundation.lazy.grid.LazyGridScope.fullWidthItem(
     content: @Composable () -> Unit,
 ) = item(span = { GridItemSpan(maxLineSpan) }) { content() }
+
+private fun androidx.compose.foundation.lazy.grid.LazyGridScope.onDeckShelf(
+    items: List<OnDeckItem>,
+    onOpenBook: (String, String) -> Unit,
+    actionsFor: (OnDeckItem) -> LibraryItemActions,
+) {
+    if (items.isEmpty()) return
+    fullWidthItem { SectionHeader("On Deck") }
+    fullWidthItem {
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            items(items, key = { "${it.serverId}:${it.bookId}" }) { entry ->
+                OnDeckCard(
+                    entry = entry,
+                    onClick = { onOpenBook(entry.serverId, entry.bookId) },
+                    actions = actionsFor(entry),
+                )
+            }
+        }
+    }
+}
 
 private fun androidx.compose.foundation.lazy.grid.LazyGridScope.continueShelf(
     title: String,
@@ -173,6 +204,48 @@ private fun androidx.compose.foundation.lazy.grid.LazyGridScope.continueShelf(
 @Composable
 private fun SectionHeader(text: String) {
     Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp))
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun OnDeckCard(entry: OnDeckItem, onClick: () -> Unit, actions: LibraryItemActions) {
+    var menuOpen by remember { mutableStateOf(false) }
+    Box(Modifier.width(112.dp)) {
+        Column(
+            Modifier
+                .combinedClickable(onClick = onClick, onLongClick = { menuOpen = true })
+                .semantics(mergeDescendants = true) {
+                    contentDescription = buildString {
+                        append(entry.title)
+                        entry.author?.let { append(", ").append(it) }
+                        append(", want to read")
+                    }
+                },
+        ) {
+            CoverImage(
+                coverUrl = entry.coverUrl,
+                contentDescription = null,
+                format = entry.format,
+            )
+            Text(
+                entry.title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+            entry.author?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        LibraryMenu(menuOpen, { menuOpen = false }, actions)
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

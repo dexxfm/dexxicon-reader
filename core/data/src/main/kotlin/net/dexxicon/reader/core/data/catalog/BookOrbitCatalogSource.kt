@@ -65,6 +65,12 @@ class BookOrbitCatalogSource @Inject constructor(
         )
     }
 
+    override suspend fun wantToRead(server: Server): Outcome<List<BookSummary>> = call {
+        api.dashboardScroller(
+            server.resolve("/api/v1/dashboard/scrollers/want-to-read?limit=50"),
+        ).map { it.toSummary(server) }
+    }
+
     override suspend fun detail(server: Server, bookId: String): Outcome<BookDetail> = call {
         val book = api.book(server.resolve("/api/v1/books/$bookId"))
         val summary = book.toSummary(server)

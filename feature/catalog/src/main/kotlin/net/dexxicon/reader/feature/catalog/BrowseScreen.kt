@@ -117,7 +117,7 @@ fun BrowseScreen(
         )
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Browse") }) }) { padding ->
+    Scaffold(topBar = { TopAppBar(title = { Text("Library") }) }) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             TextField(
                 value = state.query,
