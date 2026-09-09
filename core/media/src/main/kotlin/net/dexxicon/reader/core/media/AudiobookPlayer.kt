@@ -88,7 +88,6 @@ class AudiobookPlayer @Inject constructor(
 
     private fun AudioDeviceInfo.isFollowable(): Boolean = type in setOf(
         AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-        AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
         AudioDeviceInfo.TYPE_BLE_HEADSET,
         AudioDeviceInfo.TYPE_BLE_SPEAKER,
         AudioDeviceInfo.TYPE_BUS, // Android Automotive / car head unit
