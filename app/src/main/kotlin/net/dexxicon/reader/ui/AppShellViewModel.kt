@@ -8,9 +8,12 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.common.crash.CrashReporter
+import net.dexxicon.reader.core.common.crash.DiagnosticsArchive
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.data.download.DownloadRepository
@@ -26,6 +29,7 @@ data class SignInPrompt(val serverId: String, val displayName: String)
 class AppShellViewModel @Inject constructor(
     private val player: AudiobookPlayer,
     private val crashReporter: CrashReporter,
+    private val diagnosticsArchive: DiagnosticsArchive,
     tokenManager: TokenManager,
     serverRepository: ServerRepository,
     reauthCoordinator: ReauthCoordinator,
@@ -42,6 +46,9 @@ class AppShellViewModel @Inject constructor(
         if (delete) _pendingCrash.value?.let(crashReporter::discard)
         _pendingCrash.value = null
     }
+
+    /** Builds the zip of all app logs to attach to a crash email. Null if it can't be built. */
+    suspend fun buildLogArchive(): File? = withContext(Dispatchers.IO) { diagnosticsArchive.build() }
 
     /** One-off notices (e.g. a download blocked by the storage limit) to show as a snackbar. */
     val messages: SharedFlow<String> = downloadRepository.messages
