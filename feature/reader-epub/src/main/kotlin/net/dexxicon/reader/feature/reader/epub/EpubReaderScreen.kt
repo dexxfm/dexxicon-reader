@@ -498,23 +498,19 @@ private fun BookmarkRow(
 }
 
 /**
- * A "where in the book" hint for a bookmark row: Readium's page number when the publication
- * has a position list, otherwise how far through the chapter. Null for bookmarks made in a
- * server's web reader (they carry no precise position).
+ * A "where in the book" hint for a bookmark row: how far through the chapter, then Readium's
+ * page number when the publication has a position list — e.g. "43% – Page 87". Null for
+ * bookmarks made in a server's web reader (they carry no precise position).
  */
 private fun bookmarkLocationLabel(bookmark: net.dexxicon.reader.core.model.Bookmark): String? {
     if (bookmark.isForeign) return null
     return runCatching {
         val locations = org.json.JSONObject(bookmark.locatorJson).optJSONObject("locations")
-            ?: return null
-        val page = locations.optInt("position", -1)
-        val chapterProgression = locations.optDouble("progression", Double.NaN)
-        when {
-            page > 0 -> "Page $page"
-            !chapterProgression.isNaN() ->
-                "${(chapterProgression * 100).toInt()}% through the chapter"
-            else -> null
-        }
+        val chapterProgression = locations?.optDouble("progression", Double.NaN)
+            ?.takeUnless { it.isNaN() }
+        val percent = ((chapterProgression ?: bookmark.progression) * 100).toInt()
+        val page = locations?.optInt("position", -1) ?: -1
+        if (page > 0) "$percent% – Page $page" else "$percent%"
     }.getOrNull()
 }
 
