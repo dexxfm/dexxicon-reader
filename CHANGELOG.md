@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.11.4 — 2026-09-09
+
+PDF reader settings and a fuller diagnostics report.
+
+- **PDF display settings and bookmarks.** The PDF reader gained a settings sheet
+  (background colour for the margins, page fit — fit vs. width, and paged vs. continuous
+  scroll) and page bookmarks — a top-bar toggle plus a list, synced with the server like
+  EPUB bookmarks. A Contents sheet shows when the PDF has an embedded outline. (Text search
+  and highlights need a different PDF engine and aren't included.)
+- **Report a problem now attaches a log zip.** Both the crash prompt and Settings › Report
+  a problem bundle the app's logcat, any saved crash reports, and a device summary into a
+  zip attached to the email. Nothing is collected or sent until you send it.
+
 ## 0.11.3 — 2026-09-09
 
 Settings that survive updates, a tidier server form, and clearer book details.

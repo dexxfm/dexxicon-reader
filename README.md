@@ -87,7 +87,7 @@ MOBI / AZW3 / FB2 are recognised but not yet openable (converters are a work in 
 
 ## Status
 
-Usable daily‑driver for BookOrbit and Grimmory. Current version **0.11.3** — see
+Usable daily‑driver for BookOrbit and Grimmory. Current version **0.11.4** — see
 [Releases](https://github.com/dexxfm/dexxicon-reader/releases) for APKs and Play‑ready
 App Bundles, and [CHANGELOG.md](CHANGELOG.md) for what each one brought.
 

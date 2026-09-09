@@ -22,8 +22,8 @@ android {
 
     defaultConfig {
         applicationId = "com.dexxfm.dexxicon_reader"
-        versionCode = 19
-        versionName = "0.11.3"
+        versionCode = 20
+        versionName = "0.11.4"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Custom-scheme OIDC redirect for Grimmory/BookLore: grimmory://oauth2-callback
