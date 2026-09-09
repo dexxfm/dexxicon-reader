@@ -10,15 +10,21 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.data.BookmarkRepository
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.reader.PublicationStreamer
+import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
+import net.dexxicon.reader.core.reader.ReaderPreferencesStore
 import net.dexxicon.reader.feature.reader.pdf.navigation.PdfReaderRoute
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
@@ -44,6 +50,8 @@ class PdfReaderViewModel @Inject constructor(
     private val downloadRepository: DownloadRepository,
     private val streamer: PublicationStreamer,
     private val progressRepository: ReadingProgressRepository,
+    private val bookmarkRepository: BookmarkRepository,
+    preferencesStore: ReaderPreferencesStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -51,6 +59,16 @@ class PdfReaderViewModel @Inject constructor(
 
     private val _state = MutableStateFlow<PdfReaderState>(PdfReaderState.Loading)
     val state: StateFlow<PdfReaderState> = _state.asStateFlow()
+
+    val preferences: StateFlow<ReaderDisplayPreferences> = preferencesStore.preferences
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ReaderDisplayPreferences())
+
+    val updatePreferences: (suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit) =
+        preferencesStore::update
+
+    val bookmarks: StateFlow<List<Bookmark>> =
+        bookmarkRepository.observe(route.serverId, route.bookId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     private val locatorUpdates = MutableSharedFlow<Locator>(extraBufferCapacity = 1)
     private var publication: Publication? = null
@@ -62,6 +80,27 @@ class PdfReaderViewModel @Inject constructor(
                 locatorStore.save(route.serverId, route.bookId, it)
             }
         }
+        viewModelScope.launch {
+            runCatching { bookmarkRepository.syncFromServer(route.serverId, route.bookId) }
+        }
+    }
+
+    fun addBookmark(locator: Locator) {
+        val page = locator.locations.position
+        viewModelScope.launch {
+            bookmarkRepository.add(
+                serverId = route.serverId,
+                bookId = route.bookId,
+                locatorJson = locator.toJSON().toString(),
+                progression = locator.locations.totalProgression
+                    ?: locator.locations.progression ?: 0.0,
+                title = page?.let { "Page $it" } ?: "Bookmark",
+            )
+        }
+    }
+
+    fun deleteBookmark(id: String) {
+        viewModelScope.launch { bookmarkRepository.delete(id) }
     }
 
     private suspend fun load() {
