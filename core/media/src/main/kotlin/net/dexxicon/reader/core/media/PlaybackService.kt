@@ -1,5 +1,7 @@
 package net.dexxicon.reader.core.media
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.AudioAttributes
@@ -33,8 +35,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.network.di.DexxiconHttpClient
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.Executors
 import javax.inject.Inject
 
@@ -134,6 +139,7 @@ class PlaybackService : MediaLibraryService() {
                 serviceScope,
                 openAppIntent,
                 browseArtworkUri = { src -> ArtworkProvider.uriFor(this, src) },
+                loadArtwork = ::fetchArtworkBytes,
             ),
         )
             .setBitmapLoader(bitmapLoader)
@@ -146,6 +152,44 @@ class PlaybackService : MediaLibraryService() {
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession? =
         mediaSession
+
+    /**
+     * Cover art for the now-playing item, downloaded through the authed client and embedded
+     * as bytes in the [MediaMetadata]. The full-screen now-playing template loads
+     * `artworkUri` itself via the session's BitmapLoader, but the collapsed side/rail
+     * mini-player on a head unit doesn't — so without embedded bytes it shows a placeholder.
+     * Downscaled to keep the parcel well under the Binder transaction limit. Never throws.
+     */
+    private suspend fun fetchArtworkBytes(url: String): ByteArray? = withContext(Dispatchers.IO) {
+        runCatching {
+            okHttpClient.newCall(Request.Builder().url(url).build()).execute().use { resp ->
+                if (!resp.isSuccessful) return@use null
+                downscaleToJpeg(resp.body.bytes())
+            }
+        }.getOrNull()
+    }
+
+    private fun downscaleToJpeg(raw: ByteArray): ByteArray {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(raw, 0, raw.size, bounds)
+        val longest = maxOf(bounds.outWidth, bounds.outHeight)
+        val opts = BitmapFactory.Options().apply {
+            inSampleSize = if (longest > ARTWORK_MAX_PX) {
+                Integer.highestOneBit(longest / ARTWORK_MAX_PX).coerceAtLeast(1)
+            } else {
+                1
+            }
+        }
+        val bitmap = BitmapFactory.decodeByteArray(raw, 0, raw.size, opts) ?: return raw
+        return try {
+            ByteArrayOutputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+                out.toByteArray()
+            }
+        } finally {
+            bitmap.recycle()
+        }
+    }
 
     override fun onTaskRemoved(rootIntent: android.content.Intent?) {
         val player = mediaSession?.player ?: return
@@ -166,6 +210,11 @@ class PlaybackService : MediaLibraryService() {
         exoPlayer = null
         super.onDestroy()
     }
+
+    private companion object {
+        /** Longest edge of the embedded now-playing cover, in px. */
+        const val ARTWORK_MAX_PX = 1024
+    }
 }
 
 /**
@@ -180,12 +229,16 @@ private class AutoLibraryCallback(
     private val openAppIntent: android.app.PendingIntent?,
     /**
      * Wraps a remote cover URL as a `content://` URI the car can load without our auth
-     * headers — used only for **browse-grid** items, which the car fetches itself. The
-     * now-playing item's art is delivered as a bitmap by the session's BitmapLoader, so
-     * that keeps the plain URL.
+     * headers — used for browse-grid items (which the car fetches itself) and as the
+     * now-playing fallback.
      */
     private val browseArtworkUri: (String) -> Uri,
+    /** Fetches + downscales the now-playing cover to embed as [MediaMetadata] bytes. */
+    private val loadArtwork: suspend (String) -> ByteArray?,
 ) : MediaLibrarySession.Callback {
+
+    /** url -> embedded cover bytes (empty = fetch failed, don't retry this session). */
+    private val artworkBytes = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
 
     private val skipSilence = SessionCommand(PlaybackCommands.SET_SKIP_SILENCE, Bundle.EMPTY)
 
@@ -406,7 +459,7 @@ private class AutoLibraryCallback(
     ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> = future {
         val resolved = mediaItems.map { content.resolve(it.mediaId) }
         val items = resolved.mapIndexedNotNull { i, p ->
-            p?.let(::playableItem) ?: mediaItems.getOrNull(i)?.takeIf { it.localConfiguration != null }
+            p?.let { playableItem(it) } ?: mediaItems.getOrNull(i)?.takeIf { it.localConfiguration != null }
         }
         val start = resolved.firstOrNull { it != null }?.startPositionMs ?: startPositionMs
         MediaSession.MediaItemsWithStartPosition(
@@ -417,7 +470,7 @@ private class AutoLibraryCallback(
     }
 
     private suspend fun resolveOrPassThrough(item: MediaItem): MediaItem? =
-        content.resolve(item.mediaId)?.let(::playableItem)
+        content.resolve(item.mediaId)?.let { playableItem(it) }
             ?: item.takeIf { it.localConfiguration != null }
 
     // ---- builders ----
@@ -449,19 +502,35 @@ private class AutoLibraryCallback(
         )
         .build()
 
-    private fun playableItem(p: PlayableAudiobook): MediaItem = MediaItem.Builder()
-        .setMediaId(p.mediaId)
-        .setUri(p.uri)
-        .setMediaMetadata(
-            MediaMetadata.Builder()
-                .setIsPlayable(true)
-                .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
-                .setTitle(p.title)
-                .setArtist(p.author)
-                .setArtworkUri(p.artworkUri?.let(Uri::parse))
-                .build(),
-        )
-        .build()
+    private suspend fun playableItem(p: PlayableAudiobook): MediaItem {
+        val art = p.artworkUri?.let { url -> artworkFor(url) }
+        return MediaItem.Builder()
+            .setMediaId(p.mediaId)
+            .setUri(p.uri)
+            .setMediaMetadata(
+                MediaMetadata.Builder()
+                    .setIsPlayable(true)
+                    .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
+                    .setTitle(p.title)
+                    .setArtist(p.author)
+                    .apply {
+                        if (art != null) setArtworkData(art, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                        // Fallback for any surface that fetches the URI itself.
+                        setArtworkUri(p.artworkUri?.let(browseArtworkUri))
+                    }
+                    .build(),
+            )
+            .build()
+    }
+
+    /** Cached, never-throwing cover-bytes lookup. */
+    private suspend fun artworkFor(url: String): ByteArray? {
+        artworkBytes[url]?.let { return it.takeIf(ByteArray::isNotEmpty) }
+        val bytes = runCatching { loadArtwork(url) }.getOrNull() ?: ByteArray(0)
+        artworkBytes[url] = bytes
+        android.util.Log.i(TAG, "now-playing cover: ${bytes.size} bytes embedded from $url")
+        return bytes.takeIf(ByteArray::isNotEmpty)
+    }
 
     /** `LibraryParams` that make the car show a "sign in" button wired to the app. */
     private fun errorParams(label: String): LibraryParams = LibraryParams.Builder()
@@ -499,6 +568,7 @@ private class AutoLibraryCallback(
     private fun LibraryNode.serverId(): String = id.removePrefix(LIB_PREFIX)
 
     private companion object {
+        const val TAG = "PlaybackService"
         const val ROOT_ID = "root"
         const val RECENT_ROOT_ID = "root_recent"
         const val CONTINUE_ID = "continue"
