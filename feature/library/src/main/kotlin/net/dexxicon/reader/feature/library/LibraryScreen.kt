@@ -135,9 +135,9 @@ fun LibraryScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    onDeckShelf(state.onDeck, onOpenBook, ::onDeckActions)
                     continueShelf("Continue reading", state.continueReading, onContinue, ::continueActions)
                     continueShelf("Continue listening", state.continueListening, onContinue, ::continueActions)
+                    onDeckShelf(state.onDeck, onOpenBook, ::onDeckActions)
 
                     if (state.downloads.isNotEmpty()) {
                         fullWidthItem { SectionHeader("Downloaded") }
