@@ -37,7 +37,7 @@ APIs — the same ones their web readers use — rather than generic OPDS.
 ### Readers
 | Format | Reader |
 |---|---|
-| **EPUB** | Readium — font size, light/sepia/dark themes, paged or scrolling, TOC, tap **and swipe** to turn pages, highlights & notes |
+| **EPUB** | Readium — font size, light/sepia/dark themes, paged or scrolling, TOC, tap **and swipe** to turn pages, highlights & notes, **bookmarks** |
 | **Comic** — CBZ **and CBR** | Readium image navigator + page slider + pinch zoom. `.cbr` (RAR) is unpacked with junrar and cached as CBZ on first open |
 | **PDF** | Readium + PDFium — page/scroll modes, outline, zoom |
 | **Audiobook** — M4B / MP3 / … | Media3 player — background playback, lock‑screen & notification controls, chapter list, scrubber |
@@ -63,6 +63,9 @@ MOBI / AZW3 / FB2 are recognised but not yet openable (converters are a work in 
     configured in Settings).
 - **Highlights & notes** sync to the server's annotation API (BookLore full CRUD, BookOrbit
   read‑only).
+- **EPUB bookmarks** sync both ways with the server's bookmark API (BookOrbit and Grimmory
+  both full CRUD). A bookmark you made in a server's web reader shows up in the app and
+  jumps to its chapter.
 - "Continue reading" and "Continue listening" shelves on the Library screen; `Settings →
   Reading sync` shows each server's channel and when it last synced.
 
@@ -84,18 +87,19 @@ MOBI / AZW3 / FB2 are recognised but not yet openable (converters are a work in 
 
 ## Status
 
-Usable daily‑driver for BookOrbit and Grimmory. Current version **0.10.1** — see
+Usable daily‑driver for BookOrbit and Grimmory. Current version **0.11.0** — see
 [Releases](https://github.com/dexxfm/dexxicon-reader/releases) for APKs and Play‑ready
 App Bundles, and [CHANGELOG.md](CHANGELOG.md) for what each one brought.
 
-Adaptive tablet/foldable layouts, Android Auto, and a Play Console upload are done.
+Adaptive tablet/foldable layouts, Android Auto, and a Play Console upload are done. A
+[baseline profile](PERF.md) ships with release builds.
 
 **Not done yet:** MOBI/AZW3/FB2 conversion, OPDS‑PSE comic page streaming. Kobo sync was cut.
 
 ## Tech
 
 Kotlin 2.4 (AGP 9.4's built‑in compiler) · Gradle 9.6 · KSP 2 · Jetpack Compose / Material 3
-· Hilt · Room (schema v8) · Media3 (incl. `MediaLibraryService` for Android Auto) · Readium
+· Hilt · Room (schema v9) · Media3 (incl. `MediaLibraryService` for Android Auto) · Readium
 Kotlin toolkit 3.3 (+ PDFium adapter) · Coil 3 · WorkManager · junrar · DataStore ·
 kotlinx‑serialization + Retrofit + OkHttp.
 

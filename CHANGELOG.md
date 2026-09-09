@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.11.0 — 2026-09-08
+
+Bookmarks, a faster start, and crash reports you control.
+
+- **EPUB bookmarks.** A bookmark toggle in the reader's top bar (filled when you're on a
+  bookmarked spot) and a Bookmarks section at the top of the Contents sheet — tap to jump,
+  X to delete. Bookmarks sync both ways with the server (BookOrbit and Grimmory both have
+  full bookmark APIs); one you made in a server's web reader shows up here and jumps to its
+  chapter. EPUB only — comics, audiobooks and PDFs are unaffected.
+- **Performance pass.** A baseline profile ships with release builds (cold start measured
+  ~583 ms → ~538 ms on an emulator, worst-case frame 1185 ms → 747 ms), the image cache is
+  sized explicitly (25% RAM / 256 MB disk), verbose network logging is gone from release,
+  auth back-off only trips on a real 401 (not a flaky network), and WorkManager scheduling
+  is off the startup thread. Full method and numbers in [PERF.md](PERF.md).
+- **Opt-in crash reporter.** If the app crashes, the next launch offers to show you the
+  full report; you can copy it or send it by email. Nothing leaves the device unless you
+  choose to send it, and you see the exact contents first.
+- **Android Auto now-playing artwork.** The cover art is embedded as bytes in the media
+  session, so it shows on the car's now-playing screen (and the mini-view) even though the
+  app can't hand the car your login.
+- Settings chip rows (theme, book layout, storage limit) wrap to the next line instead of
+  running off the edge on narrower phones.
+
 ## 0.10.1 — 2026-09-08
 
 Settings you asked for, and a stop button that stops.
