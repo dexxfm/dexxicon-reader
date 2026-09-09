@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.3 — 2026-09-09
+
+Settings that survive updates, a tidier server form, and clearer book details.
+
+- **Your settings now survive an app update or a restore.** Backup rules were added so the
+  library database and every preference round-trips through a reinstall or a move to a new
+  phone (the encrypted credential store stays on-device — you re-enter server passwords).
+  A release build can no longer be published with the wrong signing key, which was the
+  other way an update could force an uninstall.
+- **Reworked Add/Edit server screen.** Server name is the first field; Save stays enabled
+  while editing so you can change any detail without re-running Test connection;
+  "Sign in with SSO" sits just above Save; and KOReader sync moved into its own
+  "KOReader (optional)" sheet instead of three inline fields.
+- **Book details show where the book lives.** Under the format and reading-status chips,
+  small chips name the server(s) the book is on, by their display name.
+
 ## 0.11.2 — 2026-09-09
 
 Casting, clearer reader tools, and new page layouts.
