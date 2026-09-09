@@ -461,6 +461,7 @@ private fun BookmarkRow(
     onOpen: () -> Unit,
     onDelete: () -> Unit,
 ) {
+    val subtitle = remember(bookmark.id) { bookmarkLocationLabel(bookmark) }
     Row(
         Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -471,17 +472,50 @@ private fun BookmarkRow(
             tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(18.dp),
         )
-        Text(
-            bookmark.title,
-            style = MaterialTheme.typography.bodyMedium,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f).padding(start = 12.dp).clickableText(onOpen),
-        )
+        Column(
+            Modifier.weight(1f).padding(start = 12.dp).clickableText(onOpen),
+        ) {
+            Text(
+                bookmark.title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
         IconButton(onClick = onDelete) {
             Icon(Icons.Filled.Close, contentDescription = "Remove bookmark")
         }
     }
+}
+
+/**
+ * A "where in the book" hint for a bookmark row: Readium's page number when the publication
+ * has a position list, otherwise how far through the chapter. Null for bookmarks made in a
+ * server's web reader (they carry no precise position).
+ */
+private fun bookmarkLocationLabel(bookmark: net.dexxicon.reader.core.model.Bookmark): String? {
+    if (bookmark.isForeign) return null
+    return runCatching {
+        val locations = org.json.JSONObject(bookmark.locatorJson).optJSONObject("locations")
+            ?: return null
+        val page = locations.optInt("position", -1)
+        val chapterProgression = locations.optDouble("progression", Double.NaN)
+        when {
+            page > 0 -> "Page $page"
+            !chapterProgression.isNaN() ->
+                "${(chapterProgression * 100).toInt()}% through the chapter"
+            else -> null
+        }
+    }.getOrNull()
 }
 
 @Composable
