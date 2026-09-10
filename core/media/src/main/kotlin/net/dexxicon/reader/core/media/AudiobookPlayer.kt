@@ -140,6 +140,12 @@ class AudiobookPlayer @Inject constructor(
             durationMs = audiobook.durationMs,
             positionMs = startPositionMs,
             preferredAudioDeviceId = preferredDeviceId,
+            // Rebuilding the whole state here used to default `options` back to
+            // PlayerPreferences() — the audio options sheet (skip silence, skip
+            // intervals…) would flash back to its defaults on every open/re-open even
+            // though the persisted preference (and what actually got applied to the
+            // player below) hadn't changed. Carry the last-collected preferences over.
+            options = options,
         )
         withController { c ->
             val item = MediaItem.Builder()
@@ -155,6 +161,10 @@ class AudiobookPlayer @Inject constructor(
                 )
                 .build()
             c.setMediaItem(item, startPositionMs)
+            // ExoPlayer's playback speed is a player-level setting, not per media item —
+            // left alone it carries over from whatever book played before this one, so a
+            // book opened after a sped-up one would start fast with no obvious reason.
+            c.setPlaybackSpeed(1f)
             c.prepare()
             c.play()
             applySkipSilence(options.skipSilence)
