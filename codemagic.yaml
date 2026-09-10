@@ -192,7 +192,7 @@ workflows:
           else
             echo "No iOS test tasks yet (tests still JVM-only) — skipping."
           fi
-      - name: Build the iOS app (only once shared/ + iosApp/ exist)
+      - name: Build the iOS app and render it on a phone + a tablet
         script: |
           set -eo pipefail
           if [ ! -d iosApp ]; then
@@ -201,29 +201,31 @@ workflows:
           fi
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           (cd iosApp && xcodegen generate)
-          # One generic-simulator build; it runs on any simulator we screenshot below.
+
+          xcrun simctl list devices available
+          # Resolve by name substring so the chip/size suffix doesn't matter.
+          resolve() { xcrun simctl list devices available | grep -m1 "$1" | grep -oE "[0-9A-F]{8}-[0-9A-F-]{27}"; }
+          PHONE=$(resolve "iPhone 17"); PHONE=${PHONE:-$(resolve "iPhone")}
+          TABLET=$(resolve "iPad Air 11-inch"); TABLET=${TABLET:-$(resolve "iPad")}
+          echo "phone=$PHONE tablet=$TABLET"
+
+          # Build against a concrete simulator so embedAndSignAppleFrameworkForXcode
+          # gets a single arch (arm64) it can map to :shared's iosSimulatorArm64 —
+          # a `generic` destination hands it arm64+x86_64 and it can't pick one.
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
+            -destination "id=$PHONE" \
             -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO \
             clean build | xcbeautify
-      - name: Render the shared UI on a phone and a tablet
-        script: |
-          set -eo pipefail
-          if [ ! -d iosApp ]; then exit 0; fi
+
           APP=$(find build/ios/Build/Products -name "iosApp.app" -type d | head -1)
           mkdir -p build/screenshots
-          xcrun simctl list devices available
-          # Resolve by name substring so the exact chip/size suffix doesn't matter.
-          resolve() { xcrun simctl list devices available | grep -m1 "$1" | grep -oE "[0-9A-F]{8}-[0-9A-F-]{27}"; }
-          for spec in "iPhone 17:phone" "iPad Air 11-inch:tablet"; do
-            name="${spec%%:*}"; slug="${spec##*:}"
-            udid=$(resolve "$name")
-            if [ -z "$udid" ]; then echo "No available simulator matching '$name' — skipping."; continue; fi
-            echo "== $name ($udid) =="
+          for entry in "$PHONE:phone" "$TABLET:tablet"; do
+            udid="${entry%%:*}"; slug="${entry##*:}"
+            [ -z "$udid" ] && { echo "no $slug simulator — skipping"; continue; }
             xcrun simctl bootstatus "$udid" -b
             xcrun simctl install "$udid" "$APP"
             xcrun simctl launch "$udid" net.dexxicon.reader
