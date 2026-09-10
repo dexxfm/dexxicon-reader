@@ -64,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.component.FormatLegend
 import net.dexxicon.reader.core.model.BookViewMode
+import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
 import net.dexxicon.reader.core.model.Server
 import kotlin.math.roundToInt
 
@@ -186,6 +187,28 @@ fun SettingsScreen(
                         selected = prefs.bookViewDefault == mode,
                         onClick = { viewModel.setBookViewDefault(mode) },
                         label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                    )
+                }
+            }
+
+            Spacer()
+            SectionTitle("Reading")
+            val swipeSensitivity by viewModel.swipeSensitivity.collectAsStateWithLifecycle()
+            Text("Page-turn swipe", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "How far you drag before the PDF and comic readers turn the page. Higher is a " +
+                    "lighter flick; lower needs a deliberate swipe. Each reader also has this in " +
+                    "its own settings.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ReaderSwipeSensitivity.entries.forEach { s ->
+                    FilterChip(
+                        selected = swipeSensitivity == s,
+                        onClick = { viewModel.setSwipeSensitivity(s) },
+                        label = { Text(s.label) },
                     )
                 }
             }

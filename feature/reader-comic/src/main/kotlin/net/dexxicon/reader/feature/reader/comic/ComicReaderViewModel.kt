@@ -24,6 +24,7 @@ import net.dexxicon.reader.core.reader.ComicArchiveNormalizer
 import net.dexxicon.reader.core.reader.PublicationStreamer
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
 import net.dexxicon.reader.core.reader.ReaderPreferencesStore
+import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
 import net.dexxicon.reader.feature.reader.comic.navigation.ComicReaderRoute
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
@@ -63,8 +64,16 @@ class ComicReaderViewModel @Inject constructor(
         .map { it.tapNavigation }
         .stateIn(viewModelScope, SharingStarted.Eagerly, true)
 
+    val swipeSensitivity: StateFlow<ReaderSwipeSensitivity> = preferencesStore.preferences
+        .map { it.swipeSensitivity }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ReaderSwipeSensitivity.MEDIUM)
+
     fun setTapNavigation(enabled: Boolean) {
         viewModelScope.launch { preferencesStore.update { it.copy(tapNavigation = enabled) } }
+    }
+
+    fun setSwipeSensitivity(sensitivity: ReaderSwipeSensitivity) {
+        viewModelScope.launch { preferencesStore.update { it.copy(swipeSensitivity = sensitivity) } }
     }
 
     private val locatorUpdates = MutableSharedFlow<Locator>(extraBufferCapacity = 1)

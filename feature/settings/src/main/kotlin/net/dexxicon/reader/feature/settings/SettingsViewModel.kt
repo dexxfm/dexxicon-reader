@@ -15,12 +15,16 @@ import net.dexxicon.reader.core.datastore.AppPreferences
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.model.BookViewMode
+import net.dexxicon.reader.core.reader.ReaderPreferencesStore
+import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
+import kotlinx.coroutines.flow.map
 import java.io.File
 import javax.inject.Inject
 
 @HiltViewModel
 class SettingsViewModel @Inject constructor(
     private val store: AppPreferencesStore,
+    private val readerStore: ReaderPreferencesStore,
     private val diagnosticsArchive: DiagnosticsArchive,
     downloadRepository: DownloadRepository,
 ) : ViewModel() {
@@ -30,6 +34,17 @@ class SettingsViewModel @Inject constructor(
 
     val preferences: StateFlow<AppPreferences> = store.preferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppPreferences())
+
+    /** The drag-to-turn sensitivity, shared with the PDF and comic readers. */
+    val swipeSensitivity: StateFlow<ReaderSwipeSensitivity> = readerStore.preferences
+        .map { it.swipeSensitivity }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderSwipeSensitivity.MEDIUM)
+
+    fun setSwipeSensitivity(sensitivity: ReaderSwipeSensitivity) {
+        viewModelScope.launch {
+            readerStore.update { it.copy(swipeSensitivity = sensitivity) }
+        }
+    }
 
     /** Bytes currently held by downloaded media. */
     val downloadUsedBytes: StateFlow<Long> = downloadRepository.usedBytes
