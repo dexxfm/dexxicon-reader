@@ -1,18 +1,35 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.hilt)
-    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
 }
 
-apply(from = "$rootDir/gradle/android-common.gradle")
+// KMP. commonMain holds the pure bits (Outcome/DexxiconError, htmlToPlainText,
+// DexxiconDispatcher). androidMain keeps the Android-only crash reporting + the
+// javax.inject qualifier annotations; the Hilt @Module that provides the dispatchers
+// moved to :app (Hilt modules compile only where the components are).
+kotlin {
+    androidLibrary {
+        namespace = "net.dexxicon.reader.core.common"
+        compileSdk = 37
+        minSdk = 29
+        // Match the rest of the project — the AGP KMP plugin otherwise targets the
+        // running JDK (25), which can't be inlined into the target-17 modules.
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+    }
+    jvm {
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+    }
+    iosArm64()
+    iosSimulatorArm64()
 
-android {
-    namespace = "net.dexxicon.reader.core.common"
-}
-
-dependencies {
-    api(project(":core:model"))
-    implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
+    sourceSets {
+        commonMain.dependencies {
+            api(project(":core:model"))
+        }
+        androidMain.dependencies {
+            implementation(libs.hilt.android)
+        }
+    }
 }
