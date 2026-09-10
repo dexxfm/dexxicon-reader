@@ -3,22 +3,30 @@ package net.dexxicon.reader.feature.reader.comic
 import android.view.View
 import android.widget.FrameLayout
 import androidx.activity.compose.LocalActivity
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -30,27 +38,25 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import kotlin.math.abs
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentContainerView
 import androidx.fragment.app.commit
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.dexxicon.reader.core.designsystem.component.pageTurnGesture
+import net.dexxicon.reader.core.designsystem.component.rememberPageTurnState
 import net.dexxicon.reader.core.reader.EdgeTapNavigator
+import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
 import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.shared.publication.Locator
 
@@ -64,6 +70,7 @@ fun ComicReaderScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val tapNavigation by viewModel.tapNavigation.collectAsStateWithLifecycle()
+    val swipeSensitivity by viewModel.swipeSensitivity.collectAsStateWithLifecycle()
 
     when (val s = state) {
         is ComicReaderState.Loading -> Center { CircularProgressIndicator() }
@@ -81,6 +88,8 @@ fun ComicReaderScreen(
             onLocator = viewModel::onLocatorChanged,
             tapNavigation = tapNavigation,
             onToggleTapNavigation = viewModel::setTapNavigation,
+            swipeSensitivity = swipeSensitivity,
+            onSwipeSensitivity = viewModel::setSwipeSensitivity,
         )
     }
 }
@@ -93,6 +102,8 @@ private fun ReaderContent(
     onLocator: (Locator) -> Unit,
     tapNavigation: Boolean,
     onToggleTapNavigation: (Boolean) -> Unit,
+    swipeSensitivity: ReaderSwipeSensitivity,
+    onSwipeSensitivity: (ReaderSwipeSensitivity) -> Unit,
 ) {
     val activity = LocalActivity.current as? FragmentActivity
     if (activity == null) {
@@ -102,6 +113,7 @@ private fun ReaderContent(
     val fragmentManager = activity.supportFragmentManager
     var navigator by remember { mutableStateOf<ImageNavigatorFragment?>(null) }
     var chromeVisible by remember { mutableStateOf(true) }
+    var showSettings by remember { mutableStateOf(false) }
     var page by remember { mutableIntStateOf(1) }
     val tapNavEnabled by rememberUpdatedState(tapNavigation)
 
@@ -159,16 +171,8 @@ private fun ReaderContent(
                         }
                     },
                     actions = {
-                        IconButton(onClick = { onToggleTapNavigation(!tapNavigation) }) {
-                            Icon(
-                                Icons.Filled.TouchApp,
-                                contentDescription = "Toggle edge-tap page turns",
-                                tint = if (tapNavigation) {
-                                    MaterialTheme.colorScheme.primary
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
-                            )
+                        IconButton(onClick = { showSettings = true }) {
+                            Icon(Icons.Filled.Tune, contentDescription = "Reading settings")
                         }
                     },
                 )
@@ -202,38 +206,22 @@ private fun ReaderContent(
             }
         },
     ) { padding ->
+        val pageTurn = rememberPageTurnState()
         Box(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                // A quick horizontal flick turns the page. Readium's image pager doesn't do
-                // this itself when it's embedded in Compose, so we watch the gesture in the
-                // Final pass (never consuming, so taps / pinch-zoom / pan still reach it).
-                .pointerInput(navigator) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
-                        var dx = 0f
-                        var dy = 0f
-                        var pointers = 1
-                        var lastTime = down.uptimeMillis
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Final)
-                            pointers = maxOf(pointers, event.changes.size)
-                            val change = event.changes.firstOrNull { it.id == down.id }
-                            if (change == null || !change.pressed) break
-                            dx += change.positionChangeIgnoreConsumed().x
-                            dy += change.positionChangeIgnoreConsumed().y
-                            lastTime = change.uptimeMillis
-                        }
-                        val elapsed = lastTime - down.uptimeMillis
-                        val minX = size.width * SWIPE_MIN_FRACTION
-                        if (pointers == 1 && elapsed in 1..SWIPE_MAX_MS &&
-                            abs(dx) >= minX && abs(dx) > abs(dy) * 1.5f
-                        ) {
-                            if (dx < 0) navigator?.goForward(true) else navigator?.goBackward(true)
-                        }
-                    }
-                },
+                // Drag the page with your finger; release past the sensitivity threshold to
+                // turn it, a shorter drag slides back. Readium's image pager can't paginate
+                // itself embedded in Compose, so the gesture drives the navigator directly.
+                .pageTurnGesture(
+                    state = pageTurn,
+                    enabled = true,
+                    commitFraction = swipeSensitivity.commitFraction,
+                    onTurn = { forward ->
+                        if (forward) navigator?.goForward(false) else navigator?.goBackward(false)
+                    },
+                ),
         ) {
             AndroidView(
                 factory = { ctx ->
@@ -254,14 +242,54 @@ private fun ReaderContent(
                     }
                     container
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().graphicsLayer { translationX = pageTurn.offsetX },
+            )
+        }
+    }
+
+    if (showSettings) {
+        ModalBottomSheet(onDismissRequest = { showSettings = false }) {
+            ComicSettings(
+                tapNavigation = tapNavigation,
+                onToggleTapNavigation = onToggleTapNavigation,
+                swipeSensitivity = swipeSensitivity,
+                onSwipeSensitivity = onSwipeSensitivity,
             )
         }
     }
 }
 
-private const val SWIPE_MIN_FRACTION = 0.18f
-private const val SWIPE_MAX_MS = 600L
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ComicSettings(
+    tapNavigation: Boolean,
+    onToggleTapNavigation: (Boolean) -> Unit,
+    swipeSensitivity: ReaderSwipeSensitivity,
+    onSwipeSensitivity: (ReaderSwipeSensitivity) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(24.dp).navigationBarsPadding()) {
+        Text("Page-turn swipe", style = MaterialTheme.typography.titleSmall)
+        FlowRow(
+            Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ReaderSwipeSensitivity.entries.forEach { s ->
+                FilterChip(
+                    selected = swipeSensitivity == s,
+                    onClick = { onSwipeSensitivity(s) },
+                    label = { Text(s.label) },
+                )
+            }
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(top = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Tap edges to turn pages", Modifier.weight(1f))
+            Switch(checked = tapNavigation, onCheckedChange = onToggleTapNavigation)
+        }
+    }
+}
 
 @Composable
 private fun Center(content: @Composable () -> Unit) {

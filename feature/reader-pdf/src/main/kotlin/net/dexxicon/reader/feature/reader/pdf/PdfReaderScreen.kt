@@ -51,14 +51,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -74,10 +70,13 @@ import androidx.fragment.app.commit
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.designsystem.component.pageTurnGesture
+import net.dexxicon.reader.core.designsystem.component.rememberPageTurnState
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
 import net.dexxicon.reader.core.reader.ReaderFitMode
 import net.dexxicon.reader.core.reader.ReaderScrollMode
+import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
 import net.dexxicon.reader.core.reader.ReaderTheme
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
 import org.readium.adapter.pdfium.navigator.PdfiumPreferences
@@ -271,37 +270,22 @@ private fun ReaderContent(
             }
         },
     ) { padding ->
+        val pageTurn = rememberPageTurnState()
         Box(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                // A quick horizontal flick turns the page — the pdfium view's own swipe
-                // doesn't work embedded in Compose. Watched in the Final pass without
-                // consuming, so taps / pinch-zoom / scrolling still reach the page.
-                .pointerInput(navigator) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Final)
-                        var dx = 0f
-                        var dy = 0f
-                        var pointers = 1
-                        var lastTime = down.uptimeMillis
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Final)
-                            pointers = maxOf(pointers, event.changes.size)
-                            val change = event.changes.firstOrNull { it.id == down.id }
-                            if (change == null || !change.pressed) break
-                            dx += change.positionChangeIgnoreConsumed().x
-                            dy += change.positionChangeIgnoreConsumed().y
-                            lastTime = change.uptimeMillis
-                        }
-                        val elapsed = lastTime - down.uptimeMillis
-                        if (pointers == 1 && elapsed in 1..SWIPE_MAX_MS &&
-                            abs(dx) >= size.width * SWIPE_MIN_FRACTION && abs(dx) > abs(dy) * 1.5f
-                        ) {
-                            if (dx < 0) navigator?.goForward(true) else navigator?.goBackward(true)
-                        }
-                    }
-                },
+                // Drag the page with your finger; releasing past the sensitivity threshold
+                // turns it, a shorter drag slides back. The pdfium view can't paginate
+                // itself embedded in Compose, so the gesture drives the navigator directly.
+                .pageTurnGesture(
+                    state = pageTurn,
+                    enabled = !preferences.scroll,
+                    commitFraction = preferences.swipeSensitivity.commitFraction,
+                    onTurn = { forward ->
+                        if (forward) navigator?.goForward(false) else navigator?.goBackward(false)
+                    },
+                ),
         ) {
             AndroidView(
                 factory = { ctx ->
@@ -322,7 +306,7 @@ private fun ReaderContent(
                     }
                     container
                 },
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().graphicsLayer { translationX = pageTurn.offsetX },
             )
         }
     }
@@ -448,6 +432,15 @@ private fun PdfDisplaySettings(
             label = ::readerScrollModeLabel,
             onSelect = { mode -> onChange { it.copy(scrollMode = mode) } },
         )
+        if (preferences.scrollMode == ReaderScrollMode.PAGED) {
+            SettingChips(
+                title = "Page-turn swipe",
+                entries = ReaderSwipeSensitivity.entries,
+                selected = preferences.swipeSensitivity,
+                label = { it.label },
+                onSelect = { s -> onChange { it.copy(swipeSensitivity = s) } },
+            )
+        }
         Text(
             "The page colour applies to the margins and spacing — the PDF engine can't recolour " +
                 "the page content itself.",
@@ -508,9 +501,6 @@ private fun Bookmark.pageNumber(): Int? = runCatching {
     org.json.JSONObject(locatorJson).optJSONObject("locations")?.optInt("position", -1)
         ?.takeIf { it > 0 }
 }.getOrNull()
-
-private const val SWIPE_MIN_FRACTION = 0.18f
-private const val SWIPE_MAX_MS = 600L
 
 @Composable
 private fun Center(content: @Composable () -> Unit) {

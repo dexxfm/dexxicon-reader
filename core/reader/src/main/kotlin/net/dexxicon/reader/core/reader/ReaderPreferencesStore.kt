@@ -35,9 +35,22 @@ data class ReaderDisplayPreferences(
     val scrollMode: ReaderScrollMode = ReaderScrollMode.PAGED,
     /** Tap near a page edge to turn the page. */
     val tapNavigation: Boolean = true,
+    /** How far a drag has to travel before it commits to a page turn. */
+    val swipeSensitivity: ReaderSwipeSensitivity = ReaderSwipeSensitivity.MEDIUM,
 ) {
     /** Legacy shorthand: the EPUB/PDF navigators still take a plain scroll flag. */
     val scroll: Boolean get() = scrollMode.scrolling
+}
+
+/**
+ * How eager the drag-to-turn gesture is in the PDF and comic readers. [commitFraction] is
+ * the share of the page width a drag must cover (or a quick flick must exceed) to turn the
+ * page; below it, the page slides back. EPUB keeps Readium's own fixed drag behaviour.
+ */
+enum class ReaderSwipeSensitivity(val label: String, val commitFraction: Float) {
+    LOW("Low", 0.50f),
+    MEDIUM("Medium", 0.33f),
+    HIGH("High", 0.20f),
 }
 
 /** Reader page colours. Doubles as the EPUB reading theme. */
@@ -78,6 +91,7 @@ class ReaderPreferencesStore @Inject constructor(
         val SCROLL_MODE = stringPreferencesKey("scroll_mode")
         val SCROLL = booleanPreferencesKey("scroll")
         val TAP_NAV = booleanPreferencesKey("tap_navigation")
+        val SWIPE_SENSITIVITY = stringPreferencesKey("swipe_sensitivity")
     }
 
     val preferences: Flow<ReaderDisplayPreferences> =
@@ -93,6 +107,7 @@ class ReaderPreferencesStore @Inject constructor(
             prefs[Keys.SCROLL_MODE] = next.scrollMode.name
             prefs[Keys.SCROLL] = next.scroll
             prefs[Keys.TAP_NAV] = next.tapNavigation
+            prefs[Keys.SWIPE_SENSITIVITY] = next.swipeSensitivity.name
         }
     }
 
@@ -106,6 +121,8 @@ class ReaderPreferencesStore @Inject constructor(
             // Fall back to the pre-scroll-mode boolean so existing readers keep their choice.
             ?: (this[Keys.SCROLL] ?: false).let { if (it) ReaderScrollMode.SCROLL else ReaderScrollMode.PAGED },
         tapNavigation = this[Keys.TAP_NAV] ?: true,
+        swipeSensitivity = this[Keys.SWIPE_SENSITIVITY]?.let { enumOrNull<ReaderSwipeSensitivity>(it) }
+            ?: ReaderSwipeSensitivity.MEDIUM,
     )
 }
 
