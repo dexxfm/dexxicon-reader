@@ -2,11 +2,14 @@ package net.dexxicon.reader.feature.library
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,9 +24,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -37,10 +42,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.dexxicon.reader.core.data.sync.ServerSyncFailure
+import net.dexxicon.reader.core.data.sync.SyncFailureReason
 import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.model.ContentFormat
@@ -101,59 +109,155 @@ fun LibraryScreen(
         topBar = {
             TopAppBar(title = { Text("Home") })
         },
+        // The app shell already accounts for the bottom nav / system inset; without this
+        // the Scaffold reserves it again and leaves a dead strip under the status bar.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         val empty = state.downloads.isEmpty() &&
             state.onDeck.isEmpty() &&
             state.continueReading.isEmpty() &&
             state.continueListening.isEmpty()
-        PullToRefreshBox(
-            isRefreshing = state.refreshing,
-            onRefresh = viewModel::refresh,
-            modifier = Modifier.fillMaxSize().padding(padding),
-        ) {
-            when {
-                state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    CircularProgressIndicator()
-                }
-                empty -> Box(
-                    Modifier
-                        .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
-                        .padding(32.dp),
-                    Alignment.Center,
-                ) {
-                    Text(
-                        "Books you read or make available offline show up here.",
-                        textAlign = TextAlign.Center,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                else -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(112.dp),
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    continueShelf("Continue reading", state.continueReading, onContinue, ::continueActions)
-                    continueShelf("Continue listening", state.continueListening, onContinue, ::continueActions)
-                    onDeckShelf(state.onDeck, onOpenBook, ::onDeckActions)
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            PullToRefreshBox(
+                isRefreshing = state.refreshing,
+                onRefresh = { viewModel.refresh() },
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            ) {
+                when {
+                    state.loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                    empty -> Box(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .padding(32.dp),
+                        Alignment.Center,
+                    ) {
+                        Text(
+                            "Books you read or make available offline show up here.",
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    else -> LazyVerticalGrid(
+                        columns = GridCells.Adaptive(112.dp),
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        continueShelf("Continue reading", state.continueReading, onContinue, ::continueActions)
+                        continueShelf("Continue listening", state.continueListening, onContinue, ::continueActions)
+                        onDeckShelf(state.onDeck, onOpenBook, ::onDeckActions)
 
-                    if (state.downloads.isNotEmpty()) {
-                        fullWidthItem { SectionHeader("Downloaded") }
-                        items(state.downloads, key = { it.key }) { download ->
-                            DownloadCard(
-                                download = download,
-                                readingProgress = state.downloadProgress[download.key],
-                                onClick = { onOpenBook(download.serverId, download.bookId) },
-                                actions = downloadActions(download),
-                            )
+                        if (state.downloads.isNotEmpty()) {
+                            fullWidthItem { SectionHeader("Downloaded") }
+                            items(state.downloads, key = { it.key }) { download ->
+                                DownloadCard(
+                                    download = download,
+                                    readingProgress = state.downloadProgress[download.key],
+                                    onClick = { onOpenBook(download.serverId, download.bookId) },
+                                    actions = downloadActions(download),
+                                )
+                            }
                         }
                     }
                 }
             }
+            SyncStatusBar(
+                lastSyncedAt = state.lastSyncedAt,
+                failures = state.syncFailures,
+                refreshing = state.refreshing,
+                visible = !state.loading &&
+                    (state.refreshing || state.lastSyncedAt != null || state.syncFailures.isNotEmpty()),
+                onRetry = { viewModel.refresh() },
+            )
         }
     }
+}
+
+@Composable
+private fun SyncStatusBar(
+    lastSyncedAt: Long?,
+    failures: List<ServerSyncFailure>,
+    refreshing: Boolean,
+    visible: Boolean,
+    onRetry: () -> Unit,
+) {
+    if (!visible) return
+    val hasFailure = failures.isNotEmpty() && !refreshing
+    val container = if (hasFailure) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    val content = if (hasFailure) {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(color = container) {
+        Column {
+            HorizontalDivider()
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = when {
+                        refreshing -> "Updating…"
+                        hasFailure -> syncFailureText(failures)
+                        lastSyncedAt != null -> "Updated ${relativeTime(lastSyncedAt)}"
+                        else -> "Not synced yet"
+                    },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = content,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (hasFailure) {
+                    Text(
+                        "Retry",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = content,
+                        textDecoration = TextDecoration.Underline,
+                        modifier = Modifier
+                            .clickable(onClick = onRetry)
+                            .padding(start = 12.dp, top = 2.dp, bottom = 2.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun syncFailureText(failures: List<ServerSyncFailure>): String {
+    if (failures.size == 1) {
+        val f = failures.first()
+        return when (f.reason) {
+            SyncFailureReason.OFFLINE -> "Couldn't reach ${f.serverName}"
+            SyncFailureReason.SIGN_IN_REQUIRED -> "${f.serverName} needs you to sign in again"
+            SyncFailureReason.SERVER_ERROR -> "${f.serverName} didn't respond properly"
+        }
+    }
+    val names = failures.map { it.serverName }
+    val joined = names.dropLast(1).joinToString(", ") + " and " + names.last()
+    return "Couldn't update $joined"
+}
+
+private fun relativeTime(atMillis: Long): String {
+    val now = System.currentTimeMillis()
+    if (atMillis <= 0L || now - atMillis < 60_000L) return "just now"
+    return android.text.format.DateUtils.getRelativeTimeSpanString(
+        atMillis,
+        now,
+        android.text.format.DateUtils.MINUTE_IN_MILLIS,
+        android.text.format.DateUtils.FORMAT_ABBREV_RELATIVE,
+    ).toString().replaceFirstChar { it.lowercase() }
 }
 
 private fun androidx.compose.foundation.lazy.grid.LazyGridScope.fullWidthItem(

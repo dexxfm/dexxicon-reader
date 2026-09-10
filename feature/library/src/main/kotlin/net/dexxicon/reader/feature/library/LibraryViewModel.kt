@@ -14,6 +14,8 @@ import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.data.sync.ServerSyncFailure
+import net.dexxicon.reader.core.data.sync.SyncReport
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
@@ -51,6 +53,10 @@ data class LibraryUiState(
     val downloadProgress: Map<String, Float> = emptyMap(),
     val loading: Boolean = true,
     val refreshing: Boolean = false,
+    /** When the last sync pass ran; null before the first one completes. */
+    val lastSyncedAt: Long? = null,
+    /** Servers that didn't reconcile on the last pass. Empty = everything's current. */
+    val syncFailures: List<ServerSyncFailure> = emptyList(),
 )
 
 @HiltViewModel
@@ -63,6 +69,7 @@ class LibraryViewModel @Inject constructor(
 
     private val refreshing = MutableStateFlow(false)
     private val onDeck = MutableStateFlow<List<OnDeckItem>>(emptyList())
+    private val lastReport = MutableStateFlow<SyncReport?>(null)
 
     val uiState: StateFlow<LibraryUiState> =
         combine(
@@ -70,7 +77,8 @@ class LibraryViewModel @Inject constructor(
             progressRepository.observeAll(),
             onDeck,
             refreshing,
-        ) { downloads, progressByKey, onDeckItems, isRefreshing ->
+            lastReport,
+        ) { downloads, progressByKey, onDeckItems, isRefreshing, report ->
             val inProgress = progressByKey.values
                 .filter { it.isInProgress }
                 .sortedByDescending { it.updatedAt }
@@ -87,6 +95,8 @@ class LibraryViewModel @Inject constructor(
                     .filterValues { it > 0f },
                 loading = false,
                 refreshing = isRefreshing,
+                lastSyncedAt = report?.at,
+                syncFailures = report?.failures.orEmpty(),
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
 
@@ -100,7 +110,7 @@ class LibraryViewModel @Inject constructor(
         if (refreshing.value) return
         viewModelScope.launch {
             refreshing.value = true
-            runCatching { progressRepository.syncProgress() }
+            runCatching { progressRepository.syncProgress() }.getOrNull()?.let { lastReport.value = it }
             refreshing.value = false
         }
     }

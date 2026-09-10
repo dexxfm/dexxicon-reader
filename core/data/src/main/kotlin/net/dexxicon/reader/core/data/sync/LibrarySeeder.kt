@@ -4,7 +4,9 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.common.DexxiconDispatcher
+import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Dispatcher
+import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.Server
@@ -12,6 +14,8 @@ import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryAppSummary
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
+import retrofit2.HttpException
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,15 +34,36 @@ class LibrarySeeder @Inject constructor(
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
 ) {
     /** Every in-progress book the server knows about, as progress rows ready to persist. */
-    suspend fun inProgress(server: Server): List<ReadingProgress> = withContext(io) {
-        runCatching {
-            when (server.type) {
-                ServerType.GRIMMORY -> grimmoryRows(server)
-                ServerType.BOOKORBIT -> bookOrbitRows(server)
-                else -> emptyList()
+    suspend fun inProgress(server: Server): List<ReadingProgress> =
+        when (val result = inProgressResult(server)) {
+            is Outcome.Success -> result.value
+            is Outcome.Failure -> {
+                Log.w(TAG, "seed ${server.type} ${server.displayName} failed: ${result.error.message}")
+                emptyList()
             }
-        }.onFailure { Log.w(TAG, "seed ${server.type} ${server.displayName} failed: ${it.message}") }
-            .getOrDefault(emptyList())
+        }
+
+    /** Like [inProgress] but reports *why* it failed instead of swallowing it. */
+    suspend fun inProgressResult(server: Server): Outcome<List<ReadingProgress>> = withContext(io) {
+        try {
+            Outcome.Success(
+                when (server.type) {
+                    ServerType.GRIMMORY -> grimmoryRows(server)
+                    ServerType.BOOKORBIT -> bookOrbitRows(server)
+                    else -> emptyList()
+                },
+            )
+        } catch (e: HttpException) {
+            if (e.code() == 401 || e.code() == 403) {
+                Outcome.Failure(DexxiconError.Unauthorized("HTTP ${e.code()}"))
+            } else {
+                Outcome.Failure(DexxiconError.Unknown("HTTP ${e.code()}", e))
+            }
+        } catch (e: IOException) {
+            Outcome.Failure(DexxiconError.Network(e.message ?: "Network error"))
+        } catch (e: Exception) {
+            Outcome.Failure(DexxiconError.Unknown(e.message, e))
+        }
     }
 
     private suspend fun grimmoryRows(server: Server): List<ReadingProgress> {
