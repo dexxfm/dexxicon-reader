@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.11.6 — 2026-09-10
+
+Page turns you can feel.
+
+- **Drag to turn the page.** In the PDF and comic readers the page now follows your finger
+  — release past a threshold and it turns, with the next page sliding the rest of the way
+  in; a shorter drag springs back and stays put. Replaces the old quick-flick, which was
+  easy to miss or trigger by accident. EPUB already worked this way.
+- **Page-turn swipe sensitivity.** A new Low / Medium / High setting for how far you have to
+  drag before the page turns — in each reader's settings and in a new **Reading** section on
+  the Settings screen.
+- Groundwork for an iOS build: the shared model layer moved to Kotlin Multiplatform and a
+  Compose Multiplatform module was added. No change to the Android app.
+
 ## 0.11.5 — 2026-09-09
 
 A reworked home screen and a sync status you can see.

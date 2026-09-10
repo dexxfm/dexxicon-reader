@@ -41,8 +41,8 @@ APIs — the same ones their web readers use — rather than generic OPDS.
 | Format | Reader |
 |---|---|
 | **EPUB** | Readium — font size, light/sepia/dark themes, paged or scrolling, TOC, tap **and swipe** to turn pages, highlights & notes, **bookmarks** |
-| **Comic** — CBZ **and CBR** | Readium image navigator + page slider + pinch zoom. `.cbr` (RAR) is unpacked with junrar and cached as CBZ on first open |
-| **PDF** | Readium + PDFium — page/scroll modes, outline, zoom |
+| **Comic** — CBZ **and CBR** | Readium image navigator + page slider + pinch zoom + drag‑to‑turn with adjustable sensitivity. `.cbr` (RAR) is unpacked with junrar and cached as CBZ on first open |
+| **PDF** | Readium + PDFium — page/scroll modes, outline, zoom, drag‑to‑turn with adjustable sensitivity, display settings, page bookmarks |
 | **Audiobook** — M4B / MP3 / … | Media3 player — background playback, lock‑screen & notification controls, chapter list, scrubber |
 
 Audiobook extras: playback speed, sleep timer (timed or **end of chapter**), **skip
@@ -91,7 +91,7 @@ MOBI / AZW3 / FB2 are recognised but not yet openable (converters are a work in 
 
 ## Status
 
-Usable daily‑driver for BookOrbit and Grimmory. Current version **0.11.5** — see
+Usable daily‑driver for BookOrbit and Grimmory. Current version **0.11.6** — see
 [Releases](https://github.com/dexxfm/dexxicon-reader/releases) for APKs and Play‑ready
 App Bundles, and [CHANGELOG.md](CHANGELOG.md) for what each one brought.
 
