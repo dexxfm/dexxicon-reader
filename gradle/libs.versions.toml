@@ -8,6 +8,9 @@ kotlin = "2.4.0"
 ksp = "2.3.11"
 compose-bom = "2026.08.00"
 compose-compiler = "2.4.0"
+# Compose Multiplatform — the org.jetbrains.compose plugin + its runtime libs, for :shared.
+# The Compose compiler still comes from Kotlin's own plugin (compose-compiler above).
+composeMultiplatform = "1.12.0"
 
 coreKtx = "1.19.0"
 activityCompose = "1.13.0"
@@ -76,6 +79,8 @@ androidx-compose-material3-adaptive-layout = { module = "androidx.compose.materi
 androidx-compose-material3-adaptive-navigation = { module = "androidx.compose.material3.adaptive:adaptive-navigation", version.ref = "material3Adaptive" }
 
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+# JetBrains' Kotlin Multiplatform fork of navigation-compose — same API, iOS-capable.
+navigation-compose-multiplatform = { module = "org.jetbrains.androidx.navigation:navigation-compose", version = "2.9.2" }
 
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
 hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
@@ -142,6 +147,9 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+android-kotlin-multiplatform-library = { id = "com.android.kotlin.multiplatform.library", version.ref = "agp" }
+compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "compose-compiler" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }

@@ -144,10 +144,10 @@ workflows:
       - app/build/outputs/**/mapping.txt
 
   # ───────────────────────────────────────────────────────────────────────────
-  # DORMANT — self-skips until Phase 0 creates `shared/` and `iosApp/`.
-  # When Phase 0 lands: remove the guard step, add the `triggering` block
-  # (scoped to shared/**, iosApp/**, gradle/**), and flip it to a required
-  # check once the UI runs on iOS (Phase 2 milestone).
+  # Validates the iOS side of the port as it lands: compiles every KMP module's
+  # iOS target, builds the iosApp, and screenshots the shared UI on a phone + a
+  # tablet. Runs on `main`, PRs into it, and `spike/*`. Informational for now;
+  # make it a required check at the Phase 2 milestone (UI running on iOS).
   ios-ci:
     name: iOS CI
     instance_type: mac_mini_m2
@@ -156,12 +156,16 @@ workflows:
       java: 17
       xcode: latest
       cocoapods: default
-    # triggering:
-    #   events: [push, pull_request]
-    #   branch_patterns:
-    #     - pattern: main
-    #       include: true
-    #   cancel_previous_builds: true
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: main
+          include: true
+        - pattern: "spike/*"
+          include: true
+      cancel_previous_builds: true
     cache:
       cache_paths:
         - $HOME/.gradle/caches
@@ -170,34 +174,67 @@ workflows:
         - $HOME/Library/Caches/CocoaPods
         - $HOME/Library/Developer/Xcode/DerivedData
     scripts:
-      - name: Skip until Phase 0 lands
+      - *prepare_gradle
+      - name: Detect how far the port has got
         script: |
-          if [ ! -d "shared" ] && [ ! -d "iosApp" ]; then
-            echo "No shared/ or iosApp/ module yet — Phase 0 not started. Nothing to build."
+          KMP_MODULES=$(find . -maxdepth 4 -path '*/src/commonMain' -type d | wc -l | tr -d ' ')
+          echo "KMP modules: $KMP_MODULES ; shared/=$( [ -d shared ] && echo yes || echo no ) ; iosApp/=$( [ -d iosApp ] && echo yes || echo no )"
+          if [ "$KMP_MODULES" = "0" ] && [ ! -d shared ]; then
+            echo "No commonMain source sets yet — nothing to build."
             exit 0
           fi
-      - *prepare_gradle
-      - name: Kotlin/Native + common tests
-        script: ./gradlew :shared:iosSimulatorArm64Test
-      - name: Regenerate the Xcode project
+      - name: Compile every KMP module for iOS (simulator, arm64)
+        script: ./gradlew compileKotlinIosSimulatorArm64 --continue
+      - name: Run iOS unit tests where they exist
+        script: |
+          if ./gradlew help --task iosSimulatorArm64Test > /dev/null 2>&1; then
+            ./gradlew iosSimulatorArm64Test --continue
+          else
+            echo "No iOS test tasks yet (tests still JVM-only) — skipping."
+          fi
+      - name: Build the iOS app and render it on a phone + a tablet
         script: |
           set -eo pipefail
-          # If using xcodegen (recommended — keeps the project text-editable):
-          #   brew install xcodegen && xcodegen generate --spec iosApp/project.yml
-          test -f iosApp/project.yml && (brew list xcodegen >/dev/null 2>&1 || brew install xcodegen) \
-            && cd iosApp && xcodegen generate && cd ..
-      - name: Build + test the iOS app (Simulator)
-        script: |
-          set -eo pipefail
+          if [ ! -d iosApp ]; then
+            echo "iosApp/ not present yet — skipping xcodebuild."
+            exit 0
+          fi
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          (cd iosApp && xcodegen generate)
+
+          xcrun simctl list devices available
+          # Resolve by name substring so the chip/size suffix doesn't matter.
+          resolve() { xcrun simctl list devices available | grep -m1 "$1" | grep -oE "[0-9A-F]{8}-[0-9A-F-]{27}"; }
+          PHONE=$(resolve "iPhone 17"); PHONE=${PHONE:-$(resolve "iPhone")}
+          TABLET=$(resolve "iPad Air 11-inch"); TABLET=${TABLET:-$(resolve "iPad")}
+          echo "phone=$PHONE tablet=$TABLET"
+
+          # Build against a concrete simulator so embedAndSignAppleFrameworkForXcode
+          # gets a single arch (arm64) it can map to :shared's iosSimulatorArm64 —
+          # a `generic` destination hands it arm64+x86_64 and it can't pick one.
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -configuration Debug \
+            -destination "id=$PHONE" \
             -derivedDataPath build/ios \
-            clean build test | xcbeautify
+            CODE_SIGNING_ALLOWED=NO \
+            clean build | xcbeautify
+
+          APP=$(find build/ios/Build/Products -name "iosApp.app" -type d | head -1)
+          mkdir -p build/screenshots
+          for entry in "$PHONE:phone" "$TABLET:tablet"; do
+            udid="${entry%%:*}"; slug="${entry##*:}"
+            [ -z "$udid" ] && { echo "no $slug simulator — skipping"; continue; }
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl install "$udid" "$APP"
+            xcrun simctl launch "$udid" net.dexxicon.reader
+            sleep 6
+            xcrun simctl io "$udid" screenshot "build/screenshots/shared-ios-$slug.png"
+          done
     artifacts:
+      - build/screenshots/*.png
       - "**/build/reports/tests/**"
-      - build/ios/Logs/Test/*.xcresult
 
   # ───────────────────────────────────────────────────────────────────────────
   # DORMANT — needs the App Store Connect integration + signing identity, and
