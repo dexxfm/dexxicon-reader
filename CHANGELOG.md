@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.8 — 2026-09-10
+
+- **Fixed: "Sort by series" broke the Library on BookOrbit.** Choosing the *series* sort
+  made every browse fail with an HTTP 400 until you switched it back — the app was asking
+  the server to sort by a field name it doesn't accept. It now sorts by series, then by the
+  book's number within the series.
+
 ## 0.11.7 — 2026-09-10
 
 A better page turn in the PDF and comic readers.
