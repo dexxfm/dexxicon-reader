@@ -27,6 +27,9 @@ import net.dexxicon.reader.feature.servers.navigation.navigateToAddServer
 import net.dexxicon.reader.feature.servers.navigation.navigateToEditServer
 import net.dexxicon.reader.feature.servers.navigation.serversSection
 import net.dexxicon.reader.feature.settings.SettingsScreen
+import net.dexxicon.reader.feature.settings.navigation.bookDefaultsSection
+import net.dexxicon.reader.feature.settings.navigation.navigateToAudiobookDefaults
+import net.dexxicon.reader.feature.settings.navigation.navigateToBookDefaults
 import net.dexxicon.reader.BuildConfig
 
 @Composable
@@ -85,10 +88,13 @@ fun DexxiconNavHost(
                 onAddServer = { navController.navigateToAddServer() },
                 onEditServer = { navController.navigateToEditServer(it) },
                 onOpenServerCatalog = { id, name -> navController.navigateToCatalog(id, name) },
+                onOpenAudiobookDefaults = { navController.navigateToAudiobookDefaults() },
+                onOpenBookDefaults = { navController.navigateToBookDefaults() },
             )
         }
 
         serversSection(navController = navController)
+        bookDefaultsSection(navController = navController)
 
         catalogSection(
             navController = navController,

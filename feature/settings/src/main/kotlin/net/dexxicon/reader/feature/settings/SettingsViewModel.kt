@@ -14,10 +14,11 @@ import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.datastore.AppPreferences
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.AppTheme
+import net.dexxicon.reader.core.datastore.PlayerPreferences
+import net.dexxicon.reader.core.datastore.PlayerPreferencesStore
 import net.dexxicon.reader.core.model.BookViewMode
+import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
 import net.dexxicon.reader.core.reader.ReaderPreferencesStore
-import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
-import kotlinx.coroutines.flow.map
 import java.io.File
 import javax.inject.Inject
 
@@ -25,6 +26,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val store: AppPreferencesStore,
     private val readerStore: ReaderPreferencesStore,
+    private val playerStore: PlayerPreferencesStore,
     private val diagnosticsArchive: DiagnosticsArchive,
     downloadRepository: DownloadRepository,
 ) : ViewModel() {
@@ -35,15 +37,40 @@ class SettingsViewModel @Inject constructor(
     val preferences: StateFlow<AppPreferences> = store.preferences
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), AppPreferences())
 
-    /** The drag-to-turn sensitivity, shared with the PDF and comic readers. */
-    val swipeSensitivity: StateFlow<ReaderSwipeSensitivity> = readerStore.preferences
-        .map { it.swipeSensitivity }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderSwipeSensitivity.MEDIUM)
+    /** Reader look & feel — shared by EPUB, PDF and comic, same store each reader's own
+     * settings sheet reads and writes. Book Defaults' Books/Comics/PDFs sub-screens each
+     * show the slice of this that reader actually uses. */
+    val readerPreferences: StateFlow<ReaderDisplayPreferences> = readerStore.preferences
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ReaderDisplayPreferences())
 
-    fun setSwipeSensitivity(sensitivity: ReaderSwipeSensitivity) {
-        viewModelScope.launch {
-            readerStore.update { it.copy(swipeSensitivity = sensitivity) }
-        }
+    fun updateReaderPreferences(transform: (ReaderDisplayPreferences) -> ReaderDisplayPreferences) {
+        viewModelScope.launch { readerStore.update(transform) }
+    }
+
+    /** Skip silence + default starting speed for the audiobook player. Same store the
+     * player's own Audio options sheet reads and writes — a change from either place
+     * shows up in both. */
+    val playerPreferences: StateFlow<PlayerPreferences> = playerStore.preferences
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerPreferences())
+
+    fun setSkipSilence(enabled: Boolean) {
+        viewModelScope.launch { playerStore.setSkipSilence(enabled) }
+    }
+
+    fun setDefaultSpeed(speed: Float) {
+        viewModelScope.launch { playerStore.setDefaultSpeed(speed) }
+    }
+
+    fun setSkipForwardSeconds(seconds: Int) {
+        viewModelScope.launch { playerStore.setSkipForwardSeconds(seconds) }
+    }
+
+    fun setSkipBackSeconds(seconds: Int) {
+        viewModelScope.launch { playerStore.setSkipBackSeconds(seconds) }
+    }
+
+    fun setSmartRewindSeconds(seconds: Int) {
+        viewModelScope.launch { playerStore.setSmartRewindSeconds(seconds) }
     }
 
     /** Bytes currently held by downloaded media. */

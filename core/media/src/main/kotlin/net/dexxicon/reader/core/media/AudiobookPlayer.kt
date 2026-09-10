@@ -140,6 +140,16 @@ class AudiobookPlayer @Inject constructor(
             durationMs = audiobook.durationMs,
             positionMs = startPositionMs,
             preferredAudioDeviceId = preferredDeviceId,
+            // Rebuilding the whole state here used to default `options` back to
+            // PlayerPreferences() — the audio options sheet (skip silence, skip
+            // intervals…) would flash back to its defaults on every open/re-open even
+            // though the persisted preference (and what actually got applied to the
+            // player below) hadn't changed. Carry the last-collected preferences over.
+            options = options,
+            // Shown immediately, before the player's own onEvents callback would confirm
+            // it — otherwise the label reads "1.0×" for a beat even though the book is
+            // about to start at the user's chosen default.
+            speed = options.defaultSpeed,
         )
         withController { c ->
             val item = MediaItem.Builder()
@@ -155,6 +165,11 @@ class AudiobookPlayer @Inject constructor(
                 )
                 .build()
             c.setMediaItem(item, startPositionMs)
+            // ExoPlayer's playback speed is a player-level setting, not per media item —
+            // left alone it carries over from whatever book played before this one. Start
+            // every book at the user's default speed instead (Settings › Audiobooks, or
+            // wherever they last set it — see setSpeed()).
+            c.setPlaybackSpeed(options.defaultSpeed)
             c.prepare()
             c.play()
             applySkipSilence(options.skipSilence)
@@ -224,7 +239,14 @@ class AudiobookPlayer @Inject constructor(
         seekToChapter(target.coerceAtLeast(0))
     }
 
-    fun setSpeed(speed: Float) = withController { it.setPlaybackSpeed(speed) }
+    /**
+     * Changes the current book's speed and — same knob as Settings › Audiobooks —
+     * remembers it as the starting speed for every book you open from here on.
+     */
+    fun setSpeed(speed: Float) {
+        withController { it.setPlaybackSpeed(speed) }
+        scope.launch { playerPreferences.setDefaultSpeed(speed) }
+    }
 
     fun setSleepTimer(durationMs: Long?) {
         sleepJob?.cancel()
