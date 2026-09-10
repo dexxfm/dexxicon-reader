@@ -180,10 +180,30 @@ fun BookDefaultsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltVi
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SectionTitle("Comics")
         Text(
-            "Nothing unique yet — comics use the page-turn swipe and tap-to-turn settings above.",
+            "Also uses the page-turn swipe and tap-to-turn settings above.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
         )
+        SettingRow(
+            title = "Smart zoom",
+            subtitle = "Step through each panel in order, like a guided view. Falls back " +
+                "to the full page when panels can't be confidently detected.",
+        ) {
+            Switch(
+                checked = prefs.comicSmartZoom,
+                onCheckedChange = { on -> update { it.copy(comicSmartZoom = on) } },
+            )
+        }
+        SettingRow(
+            title = "Right-to-left (manga)",
+            subtitle = "Panel order and page turns run right to left",
+        ) {
+            Switch(
+                checked = prefs.comicRightToLeft,
+                onCheckedChange = { on -> update { it.copy(comicRightToLeft = on) } },
+            )
+        }
 
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SectionTitle("PDF")

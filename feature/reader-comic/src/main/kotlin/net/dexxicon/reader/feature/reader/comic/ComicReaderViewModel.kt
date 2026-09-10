@@ -68,12 +68,28 @@ class ComicReaderViewModel @Inject constructor(
         .map { it.swipeSensitivity }
         .stateIn(viewModelScope, SharingStarted.Eagerly, ReaderSwipeSensitivity.MEDIUM)
 
+    val smartZoom: StateFlow<Boolean> = preferencesStore.preferences
+        .map { it.comicSmartZoom }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val rightToLeft: StateFlow<Boolean> = preferencesStore.preferences
+        .map { it.comicRightToLeft }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
     fun setTapNavigation(enabled: Boolean) {
         viewModelScope.launch { preferencesStore.update { it.copy(tapNavigation = enabled) } }
     }
 
     fun setSwipeSensitivity(sensitivity: ReaderSwipeSensitivity) {
         viewModelScope.launch { preferencesStore.update { it.copy(swipeSensitivity = sensitivity) } }
+    }
+
+    fun setSmartZoom(enabled: Boolean) {
+        viewModelScope.launch { preferencesStore.update { it.copy(comicSmartZoom = enabled) } }
+    }
+
+    fun setRightToLeft(enabled: Boolean) {
+        viewModelScope.launch { preferencesStore.update { it.copy(comicRightToLeft = enabled) } }
     }
 
     private val locatorUpdates = MutableSharedFlow<Locator>(extraBufferCapacity = 1)
