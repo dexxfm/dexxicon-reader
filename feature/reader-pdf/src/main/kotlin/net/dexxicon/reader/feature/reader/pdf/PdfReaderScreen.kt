@@ -285,7 +285,7 @@ private fun ReaderContent(
                     commitFraction = preferences.swipeSensitivity.commitFraction,
                     snapshot = { pageView?.pageSnapshot() },
                     onTurn = { forward ->
-                        if (forward) navigator?.goForward(false) else navigator?.goBackward(false)
+                        (if (forward) navigator?.goForward(false) else navigator?.goBackward(false)) == true
                     },
                 ),
         ) {

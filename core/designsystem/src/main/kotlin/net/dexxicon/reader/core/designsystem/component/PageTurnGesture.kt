@@ -39,6 +39,7 @@ import kotlin.math.abs
 class PageTurnState {
     internal val anim = Animatable(0f)
     internal var outgoing by mutableStateOf<ImageBitmap?>(null)
+    internal var generation = 0
 
     /** Horizontal travel of the page being turned away, in pixels. */
     val offsetX: Float get() = anim.value
@@ -66,25 +67,27 @@ fun View.pageSnapshot(): ImageBitmap? {
  *
  * It watches pointer events on the **Initial** pass and, the moment a drag reads as clearly
  * horizontal and single-finger, claims it — consuming the events so the embedded pdfium view
- * or image pager never sees them and can't fight the turn. It then grabs a still of the current
- * page via [snapshot] and paints that on top; once the drag crosses [commitFraction] of the
- * width (or a quick flick) it tells the navigator to move, so the page you're leaving lifts
- * away — with a soft shadow down its edge — and reveals the real next page already in place,
- * instead of the whole reader sliding off and baring blank space. A shorter drag springs back.
+ * or image pager never sees them and can't fight the turn. It grabs a still of the current
+ * page via [snapshot], paints that on top, and **immediately** moves the navigator, so the
+ * page revealed under the lifting still is the real next page from the very start of the drag
+ * — not a duplicate of the page you're on. Release past [commitFraction] of the width (or a
+ * quick flick) and the turn stands; a shorter drag springs the still back and the move is
+ * quietly undone.
  *
  * A second finger (pinch) or a mostly-vertical drag is never claimed, so zoom and scrolling
  * still work. If [snapshot] returns null the turn still happens, just without the lift.
  *
  * @param snapshot a still of the current page, sized to this layout, or null if unavailable.
- * @param onTurn called with `forward = true` for a left swipe. The caller moves the navigator
- *   **without its own animation** — this gesture owns the settle.
+ * @param onTurn called with `forward = true` for a left swipe; **returns whether the navigator
+ *   actually moved** (false at the first / last page). The caller moves the navigator with no
+ *   animation of its own — this gesture owns the settle.
  */
 fun Modifier.pageTurnGesture(
     state: PageTurnState,
     enabled: Boolean,
     commitFraction: Float,
     snapshot: () -> ImageBitmap?,
-    onTurn: (forward: Boolean) -> Unit,
+    onTurn: (forward: Boolean) -> Boolean,
 ): Modifier = composed {
     if (!enabled) return@composed this
     val scope = rememberCoroutineScope()
@@ -136,10 +139,10 @@ fun Modifier.pageTurnGesture(
                 var totalX = 0f
                 var totalY = 0f
                 var claimed = false
-                // Once the drag crosses the commit line we tell the navigator to move — the
-                // page then revealed under the lifting still is the real destination — and from
-                // there the turn always completes, so the navigator moves at most once.
+                // Direction the navigator was actually moved on claim (null at a book edge,
+                // where the turn was a no-op — then the still just springs back, nothing to undo).
                 var turnedForward: Boolean? = null
+                var gen = 0
                 var startMs = 0L
                 var lastX = down.position.x
 
@@ -158,8 +161,13 @@ fun Modifier.pageTurnGesture(
                             claimed = true
                             startMs = System.currentTimeMillis()
                             lastX = change.position.x
-                            scope.launch { state.anim.snapTo(0f) }
+                            gen = ++state.generation
+                            val forward = totalX < 0
                             state.outgoing = grab()
+                            scope.launch { state.anim.snapTo(0f) }
+                            // Move the navigator now, hidden under the still, so the drag
+                            // reveals the real next page instead of a copy of this one.
+                            if (turn(forward)) turnedForward = forward
                             change.consume()
                         } else if (abs(totalY) > slop) {
                             break // vertical — hand it to the page (scroll / vertical pan)
@@ -170,10 +178,6 @@ fun Modifier.pageTurnGesture(
                     change.consume()
                     val next = (state.anim.value + (change.position.x - lastX)).coerceIn(-width, width)
                     lastX = change.position.x
-                    if (turnedForward == null && abs(next) >= width * commit) {
-                        turnedForward = next < 0
-                        turn(next < 0)
-                    }
                     scope.launch { state.anim.snapTo(next) }
                 }
 
@@ -181,30 +185,43 @@ fun Modifier.pageTurnGesture(
                     val offset = state.anim.value
                     val elapsedMs = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
                     val velocity = abs(offset) / elapsedMs * 1000f
-                    if (turnedForward == null &&
-                        velocity >= flickVelocityPxPerSec && abs(offset) >= flickDistancePx
-                    ) {
-                        turnedForward = offset < 0
-                        turn(offset < 0)
+                    val flick = velocity >= flickVelocityPxPerSec && abs(offset) >= flickDistancePx
+                    val tf = turnedForward
+                    val stands = when (tf) {
+                        true -> offset <= -width * commit || (flick && offset < 0f)
+                        false -> offset >= width * commit || (flick && offset > 0f)
+                        null -> false
                     }
-                    val committed = turnedForward
-                    scope.launch { settle(state, committed, width) }
+                    scope.launch { settle(state, gen, tf, stands, width, turn) }
                 }
             }
         }
 }
 
-/** Finish the gesture: slide the still off if the turn committed, else spring it home. */
-private suspend fun settle(state: PageTurnState, turnedForward: Boolean?, width: Float) {
-    if (turnedForward != null) {
+/**
+ * Finish the gesture: if the turn stands, slide the still off to reveal the page already
+ * shown underneath; otherwise spring the still back over the screen and quietly undo the move.
+ */
+private suspend fun settle(
+    state: PageTurnState,
+    gen: Int,
+    turnedForward: Boolean?,
+    stands: Boolean,
+    width: Float,
+    turn: (Boolean) -> Boolean,
+) {
+    if (turnedForward != null && stands) {
         state.anim.animateTo(
             targetValue = if (turnedForward) -width else width,
             animationSpec = tween(durationMillis = 200),
         )
     } else {
+        // Cover the screen with the still, then undo the move behind it.
         state.anim.animateTo(0f)
+        if (turnedForward != null) turn(!turnedForward)
     }
-    // Drop the still first so a reset of the offset can't flash the old page for a frame.
-    state.outgoing = null
-    state.anim.snapTo(0f)
+    if (state.generation == gen) {
+        state.outgoing = null
+        state.anim.snapTo(0f)
+    }
 }

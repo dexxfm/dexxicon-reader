@@ -3,10 +3,11 @@
 ## Unreleased
 
 - **Page turns look like a page turn.** The PDF and comic drag now lifts the current page
-  away — with a soft shadow down its edge — to reveal the next page already in place
-  underneath, instead of sliding the whole reader sideways and baring blank space. The
-  embedded PDF and comic views no longer fight the gesture, so a drag that falls short
-  springs the page cleanly back where it was.
+  away — with a soft shadow down its edge — and the page revealed underneath is the real
+  next page from the moment you start dragging, not a copy of the one you're on. Release
+  past the threshold and the turn stands; a shorter drag springs the page cleanly back and
+  quietly undoes the move. The embedded PDF and comic views no longer fight the gesture.
+  (EPUB already turned pages this way through its own navigator.)
 
 ## 0.11.6 — 2026-09-10
 
