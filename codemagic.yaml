@@ -1,0 +1,224 @@
+# Codemagic CI for Dexxicon Reader.
+# https://docs.codemagic.io/yaml/yaml-getting-started/
+#
+# ── Live now ────────────────────────────────────────────────────────────────
+#   android-ci        The §09 invariant: :app assembles (debug + unsigned
+#                     release) and every module's unit tests pass. Runs on
+#                     every push to `main` and every pull request.
+#
+# ── Dormant until the iOS port starts (manual-trigger only) ─────────────────
+#   android-release   Signed APK + AAB on a v* tag. Needs the `android_signing`
+#                     env group. Until then keep cutting releases locally.
+#   ios-ci            Shared framework + iosSimulatorArm64 tests + xcodebuild.
+#                     Self-skips while `shared/` and `iosApp/` don't exist;
+#                     wire `triggering` once Phase 0 lands.
+#   ios-testflight    Archive + upload to TestFlight. Needs the App Store
+#                     Connect integration and an iOS signing identity.
+#
+# ── One-time Codemagic UI setup ────────────────────────────────────────────
+#   • Applications → Add application → connect this repo. Workflows below then
+#     appear automatically.
+#   • Notifications: set the recipient in Team settings, or add a
+#     `publishing: email:` block per workflow.
+#   • android-release: Environment variables → group `android_signing`:
+#       KEYSTORE_B64        = base64 of app/release.keystore  (base64 -w0)
+#       KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD
+#   • ios-*: add the App Store Connect API key integration (Teams → Integrations)
+#     and a code-signing identity; put its reference in group `appstore`.
+
+definitions:
+  jdk_fix: &jdk_fix
+    name: Point Gradle at the CI JDK
+    script: |
+      # gradle.properties pins a Windows JDK path for local dev; override it here.
+      mkdir -p "$HOME/.gradle"
+      echo "org.gradle.java.home=$JAVA_HOME" >> "$HOME/.gradle/gradle.properties"
+
+  android_sdk: &android_sdk
+    name: Install the SDK packages the build pins
+    script: |
+      yes | sdkmanager --licenses > /dev/null 2>&1 || true
+      sdkmanager "platforms;android-37" "build-tools;36.0.0"
+
+  gradle_cache: &gradle_cache
+    - $HOME/.gradle/caches
+    - $HOME/.gradle/wrapper
+    - $HOME/.konan          # Kotlin/Native toolchain — big; cache it for the iOS lane
+
+workflows:
+
+  # ───────────────────────────────────────────────────────────────────────────
+  android-ci:
+    name: Android CI
+    # Android builds fine on the macOS image (SDK preinstalled). Switch to
+    # `linux_x2` to save macOS minutes if your plan includes Linux instances.
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      java: 17
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: main
+          include: true
+      cancel_previous_builds: true
+    cache:
+      cache_paths: *gradle_cache
+    scripts:
+      - *jdk_fix
+      - *android_sdk
+      - name: Unit tests — all modules
+        script: ./gradlew testDebugUnitTest
+      - name: Assemble debug APK
+        script: ./gradlew :app:assembleDebug
+      - name: Assemble release — unsigned (proves R8 + resource shrinking)
+        script: ./gradlew :app:assembleRelease -PallowUnsignedRelease
+    artifacts:
+      - app/build/outputs/**/*.apk
+      - "**/build/reports/tests/**"
+      - "**/build/test-results/**/*.xml"
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # DORMANT — no `triggering` block, so it only runs when started by hand
+  # (Codemagic UI → Start new build → android-release) or via the API.
+  # Enable the tag trigger once the `android_signing` group is filled in.
+  android-release:
+    name: Android release (signed)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      java: 17
+      groups:
+        - android_signing
+    # triggering:
+    #   events: [tag]
+    #   tag_patterns:
+    #     - pattern: "v*"
+    #       include: true
+    cache:
+      cache_paths: *gradle_cache
+    scripts:
+      - *jdk_fix
+      - *android_sdk
+      - name: Restore the signing keystore
+        script: |
+          set -eo pipefail
+          echo "$KEYSTORE_B64" | base64 --decode > "$CM_BUILD_DIR/app/release.keystore"
+          cat > "$CM_BUILD_DIR/keystore.properties" <<EOF
+          storeFile=release.keystore
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+      - name: Build signed APK + AAB
+        script: ./gradlew :app:assembleRelease :app:bundleRelease
+      - name: Print signing certificate (sanity check)
+        script: |
+          set -eo pipefail
+          APK=$(find app/build/outputs/apk/release -name "*.apk" | head -1)
+          "$ANDROID_SDK_ROOT/build-tools/36.0.0/apksigner" verify --print-certs "$APK" | grep -i "SHA-256"
+    artifacts:
+      - app/build/outputs/**/*.apk
+      - app/build/outputs/**/*.aab
+      - app/build/outputs/**/mapping.txt
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # DORMANT — self-skips until Phase 0 creates `shared/` and `iosApp/`.
+  # When Phase 0 lands: remove the guard step, add the `triggering` block
+  # (scoped to shared/**, iosApp/**, gradle/**), and flip it to a required
+  # check once the UI runs on iOS (Phase 2 milestone).
+  ios-ci:
+    name: iOS CI
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    environment:
+      java: 17
+      xcode: latest
+      cocoapods: default
+    # triggering:
+    #   events: [push, pull_request]
+    #   branch_patterns:
+    #     - pattern: main
+    #       include: true
+    #   cancel_previous_builds: true
+    cache:
+      cache_paths:
+        - $HOME/.gradle/caches
+        - $HOME/.gradle/wrapper
+        - $HOME/.konan
+        - $HOME/Library/Caches/CocoaPods
+        - $HOME/Library/Developer/Xcode/DerivedData
+    scripts:
+      - name: Skip until Phase 0 lands
+        script: |
+          if [ ! -d "shared" ] && [ ! -d "iosApp" ]; then
+            echo "No shared/ or iosApp/ module yet — Phase 0 not started. Nothing to build."
+            exit 0
+          fi
+      - *jdk_fix
+      - name: Kotlin/Native + common tests
+        script: ./gradlew :shared:iosSimulatorArm64Test
+      - name: Regenerate the Xcode project
+        script: |
+          set -eo pipefail
+          # If using xcodegen (recommended — keeps the project text-editable):
+          #   brew install xcodegen && xcodegen generate --spec iosApp/project.yml
+          test -f iosApp/project.yml && (brew list xcodegen >/dev/null 2>&1 || brew install xcodegen) \
+            && cd iosApp && xcodegen generate && cd ..
+      - name: Build + test the iOS app (Simulator)
+        script: |
+          set -eo pipefail
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -derivedDataPath build/ios \
+            clean build test | xcbeautify
+    artifacts:
+      - "**/build/reports/tests/**"
+      - build/ios/Logs/Test/*.xcresult
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # DORMANT — needs the App Store Connect integration + signing identity, and
+  # a real bundle id / app id. Start by hand, or add a `v*` tag trigger later.
+  ios-testflight:
+    name: iOS to TestFlight
+    instance_type: mac_mini_m2
+    max_build_duration: 90
+    environment:
+      java: 17
+      xcode: latest
+      cocoapods: default
+      groups:
+        - appstore
+      vars:
+        BUNDLE_ID: "net.dexxicon.reader"   # confirm the real iOS bundle id
+    scripts:
+      - name: Guard
+        script: |
+          if [ ! -d "iosApp" ]; then echo "iosApp/ not present yet."; exit 0; fi
+      - *jdk_fix
+      - name: Fetch signing files
+        script: |
+          set -eo pipefail
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          keychain initialize
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Build the shared XCFramework
+        script: ./gradlew :shared:assembleXCFramework
+      - name: Build the .ipa
+        script: |
+          set -eo pipefail
+          test -f iosApp/project.yml && (brew list xcodegen >/dev/null 2>&1 || brew install xcodegen) \
+            && cd iosApp && xcodegen generate && cd ..
+          xcode-project build-ipa --project iosApp/iosApp.xcodeproj --scheme iosApp
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - "*.ipa"
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
