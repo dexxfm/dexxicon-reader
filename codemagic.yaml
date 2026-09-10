@@ -144,10 +144,12 @@ workflows:
       - app/build/outputs/**/mapping.txt
 
   # ───────────────────────────────────────────────────────────────────────────
-  # DORMANT — self-skips until Phase 0 creates `shared/` and `iosApp/`.
-  # When Phase 0 lands: remove the guard step, add the `triggering` block
-  # (scoped to shared/**, iosApp/**, gradle/**), and flip it to a required
-  # check once the UI runs on iOS (Phase 2 milestone).
+  # Phase 0 spike: validates the iOS side of each KMP module as it's converted.
+  # Adapts to how far the port has got:
+  #   • only KMP modules exist   → compile + test their iOS target
+  #   • `shared/` + `iosApp/`    → also build the iOS app via xcodebuild
+  # Runs on `spike/*` and on manual start. At the Phase 2 milestone: add `main`
+  # to branch_patterns and make it a required check.
   ios-ci:
     name: iOS CI
     instance_type: mac_mini_m2
@@ -156,12 +158,14 @@ workflows:
       java: 17
       xcode: latest
       cocoapods: default
-    # triggering:
-    #   events: [push, pull_request]
-    #   branch_patterns:
-    #     - pattern: main
-    #       include: true
-    #   cancel_previous_builds: true
+    triggering:
+      events:
+        - push
+        - pull_request
+      branch_patterns:
+        - pattern: "spike/*"
+          include: true
+      cancel_previous_builds: true
     cache:
       cache_paths:
         - $HOME/.gradle/caches
@@ -170,25 +174,33 @@ workflows:
         - $HOME/Library/Caches/CocoaPods
         - $HOME/Library/Developer/Xcode/DerivedData
     scripts:
-      - name: Skip until Phase 0 lands
+      - *prepare_gradle
+      - name: Detect how far the port has got
         script: |
-          if [ ! -d "shared" ] && [ ! -d "iosApp" ]; then
-            echo "No shared/ or iosApp/ module yet — Phase 0 not started. Nothing to build."
+          KMP_MODULES=$(find . -maxdepth 4 -path '*/src/commonMain' -type d | wc -l | tr -d ' ')
+          echo "KMP modules: $KMP_MODULES ; shared/=$( [ -d shared ] && echo yes || echo no ) ; iosApp/=$( [ -d iosApp ] && echo yes || echo no )"
+          if [ "$KMP_MODULES" = "0" ] && [ ! -d shared ]; then
+            echo "No commonMain source sets yet — nothing to build."
             exit 0
           fi
-      - *prepare_gradle
-      - name: Kotlin/Native + common tests
-        script: ./gradlew :shared:iosSimulatorArm64Test
-      - name: Regenerate the Xcode project
+      - name: Compile every KMP module for iOS (simulator, arm64)
+        script: ./gradlew compileKotlinIosSimulatorArm64 --continue
+      - name: Run iOS unit tests where they exist
+        script: |
+          if ./gradlew help --task iosSimulatorArm64Test > /dev/null 2>&1; then
+            ./gradlew iosSimulatorArm64Test --continue
+          else
+            echo "No iOS test tasks yet (tests still JVM-only) — skipping."
+          fi
+      - name: Build the iOS app (only once shared/ + iosApp/ exist)
         script: |
           set -eo pipefail
-          # If using xcodegen (recommended — keeps the project text-editable):
-          #   brew install xcodegen && xcodegen generate --spec iosApp/project.yml
+          if [ ! -d iosApp ]; then
+            echo "iosApp/ not present yet — skipping xcodebuild."
+            exit 0
+          fi
           test -f iosApp/project.yml && (brew list xcodegen >/dev/null 2>&1 || brew install xcodegen) \
-            && cd iosApp && xcodegen generate && cd ..
-      - name: Build + test the iOS app (Simulator)
-        script: |
-          set -eo pipefail
+            && (cd iosApp && xcodegen generate)
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
