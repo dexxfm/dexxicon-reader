@@ -27,9 +27,12 @@
 #     and a code-signing identity; put its reference in group `appstore`.
 
 definitions:
-  jdk_fix: &jdk_fix
-    name: Point Gradle at the CI JDK
+  prepare_gradle: &prepare_gradle
+    name: Prepare Gradle
     script: |
+      # The wrapper's git mode bit doesn't always survive a squash-merge; make it
+      # executable here so no workflow depends on it.
+      chmod +x ./gradlew
       # gradle.properties pins a Windows JDK path for local dev; override it here.
       mkdir -p "$HOME/.gradle"
       echo "org.gradle.java.home=$JAVA_HOME" >> "$HOME/.gradle/gradle.properties"
@@ -83,7 +86,7 @@ workflows:
     cache:
       cache_paths: *gradle_cache
     scripts:
-      - *jdk_fix
+      - *prepare_gradle
       - *android_sdk
       - name: Unit tests — all modules
         script: ./gradlew testDebugUnitTest
@@ -116,7 +119,7 @@ workflows:
     cache:
       cache_paths: *gradle_cache
     scripts:
-      - *jdk_fix
+      - *prepare_gradle
       - *android_sdk
       - name: Restore the signing keystore
         script: |
@@ -173,7 +176,7 @@ workflows:
             echo "No shared/ or iosApp/ module yet — Phase 0 not started. Nothing to build."
             exit 0
           fi
-      - *jdk_fix
+      - *prepare_gradle
       - name: Kotlin/Native + common tests
         script: ./gradlew :shared:iosSimulatorArm64Test
       - name: Regenerate the Xcode project
@@ -220,7 +223,7 @@ workflows:
       - name: Guard
         script: |
           if [ ! -d "iosApp" ]; then echo "iosApp/ not present yet."; exit 0; fi
-      - *jdk_fix
+      - *prepare_gradle
       - name: Fetch signing files
         script: |
           set -eo pipefail
