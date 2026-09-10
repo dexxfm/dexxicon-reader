@@ -125,6 +125,13 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            } else {
+                Text(
+                    "Tap a server to browse just its library.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                )
             }
             if (servers.size > 1) {
                 Text(
@@ -167,7 +174,7 @@ fun SettingsScreen(
             LayoutSpacer(Modifier.height(16.dp))
             Text("Book layout", style = MaterialTheme.typography.bodyMedium)
             Text(
-                "The default for Browse and a server's catalog. Each screen keeps its own " +
+                "The default for the Library and a server's catalog. Each screen keeps its own " +
                     "grid/list toggle; changing this here resets them all.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

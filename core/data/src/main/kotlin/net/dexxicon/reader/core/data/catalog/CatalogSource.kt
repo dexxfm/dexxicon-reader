@@ -4,6 +4,7 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
+import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.CatalogShelf
 import net.dexxicon.reader.core.model.Server
 
@@ -24,4 +25,11 @@ interface CatalogSource {
     ): Outcome<BookPage>
 
     suspend fun detail(server: Server, bookId: String): Outcome<BookDetail>
+
+    /**
+     * Books the user has flagged as wanting to read on the server ("On Deck").
+     * Returns an empty list for server families that don't track a reading status.
+     */
+    suspend fun wantToRead(server: Server): Outcome<List<BookSummary>> =
+        Outcome.Success(emptyList())
 }

@@ -82,6 +82,14 @@ class GrimmoryCatalogSource @Inject constructor(
         )
     }
 
+    override suspend fun wantToRead(server: Server): Outcome<List<BookSummary>> = call {
+        // Grimmory has no "want to read"; the app stores that as UNREAD (see NativeProgressSync),
+        // and books never touched carry no readStatus, so this facet is effectively the shelf.
+        val facet = java.net.URLEncoder.encode("read_status:UNREAD", "UTF-8")
+        api.booksPage(server.resolve("/api/v1/books/page?page=0&size=50&sort=-addedOn&facet=$facet"))
+            .content.map { it.toSummary(server) }
+    }
+
     override suspend fun detail(server: Server, bookId: String): Outcome<BookDetail> = call {
         // ?withDescription=true — BookLore omits the description from the default DTO.
         val book = api.book(server.resolve("/api/v1/books/$bookId?withDescription=true"))
