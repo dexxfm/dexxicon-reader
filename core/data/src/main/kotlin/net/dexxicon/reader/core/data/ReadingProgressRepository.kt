@@ -6,7 +6,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.DexxiconDispatcher
+import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Dispatcher
+import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.common.di.ApplicationScope
 import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.data.download.DownloadRepository
@@ -15,6 +17,9 @@ import net.dexxicon.reader.core.data.sync.KoSyncRepository
 import net.dexxicon.reader.core.data.sync.LibrarySeeder
 import net.dexxicon.reader.core.data.sync.NativeProgress
 import net.dexxicon.reader.core.data.sync.NativeProgressSync
+import net.dexxicon.reader.core.data.sync.ServerSyncFailure
+import net.dexxicon.reader.core.data.sync.SyncFailureReason
+import net.dexxicon.reader.core.data.sync.SyncReport
 import net.dexxicon.reader.core.database.dao.ReadingProgressDao
 import net.dexxicon.reader.core.database.entity.ReadingProgressEntity
 import net.dexxicon.reader.core.model.ContentFormat
@@ -124,8 +129,14 @@ class ReadingProgressRepository @Inject constructor(
 
     private suspend fun seedFromServer(server: Server) {
         if (!usesNative(server)) return
+        persistSeeded(librarySeeder.inProgress(server))
+    }
+
+    /** Persist newly-seen "continue" rows. A book already tracked here is left alone —
+     *  its local position may be newer than the server's list. */
+    private suspend fun persistSeeded(rows: List<ReadingProgress>) {
         val now = System.currentTimeMillis()
-        for (row in librarySeeder.inProgress(server)) {
+        for (row in rows) {
             if (row.percent == null) continue
             if (dao.find(row.key) != null) continue
             dao.upsert(ReadingProgressEntity.fromDomain(row.copy(updatedAt = now)))
@@ -212,10 +223,12 @@ class ReadingProgressRepository @Inject constructor(
     /**
      * Reconcile every in-progress book with its server **both ways** on that server's channel:
      * adopt the server's position when newer, push ours when newer or when the server has
-     * nothing yet.
+     * nothing yet. The returned [SyncReport] names any server that couldn't be reached.
      */
-    suspend fun syncProgress() = withContext(io) {
+    suspend fun syncProgress(): SyncReport = withContext(io) {
+        val at = System.currentTimeMillis()
         val allServers = serverRepository.servers.first()
+        val failures = mutableListOf<ServerSyncFailure>()
 
         // Renew any session that's close to expiring before it's needed below — cheap when
         // the token is still fresh, and it keeps idle OIDC refresh tokens alive.
@@ -228,10 +241,18 @@ class ReadingProgressRepository @Inject constructor(
             .forEach { server -> runCatching { koSync.verify(server) } }
 
         // Pull each native server's own "continue" lists so books in progress elsewhere show
-        // up on the Library shelves even if they were never opened in this app.
-        allServers
-            .filter { usesNative(it) }
-            .forEach { server -> runCatching { seedFromServer(server) } }
+        // up on the Library shelves even if they were never opened in this app. This is also
+        // the reachability probe for the pass — a failure here means we skip that server's
+        // rows below rather than hammering it, and report it.
+        allServers.filter { usesNative(it) }.forEach { server ->
+            when (val result = librarySeeder.inProgressResult(server)) {
+                is Outcome.Success -> persistSeeded(result.value)
+                is Outcome.Failure -> failures += ServerSyncFailure(
+                    server.id, server.displayName, result.error.toSyncReason(),
+                )
+            }
+        }
+        val failedIds = failures.mapTo(mutableSetOf()) { it.serverId }
 
         val rows = dao.all()
         val servers = rows.map { it.serverId }.distinct()
@@ -240,6 +261,7 @@ class ReadingProgressRepository @Inject constructor(
 
         for (row in rows) {
             val server = servers[row.serverId] ?: continue
+            if (server.id in failedIds) continue
             val localPercent = row.percent ?: continue
             val format = row.format?.let { runCatching { ContentFormat.valueOf(it) }.getOrNull() }
                 ?: ContentFormat.EPUB
@@ -284,10 +306,20 @@ class ReadingProgressRepository @Inject constructor(
                 }
             }
         }
+
+        SyncReport(at = at, failures = failures)
     }
 
     @Deprecated("Renamed", ReplaceWith("syncProgress()"))
-    suspend fun syncWithKoSync() = syncProgress()
+    suspend fun syncWithKoSync() {
+        syncProgress()
+    }
+
+    private fun DexxiconError.toSyncReason(): SyncFailureReason = when (this) {
+        is DexxiconError.Network -> SyncFailureReason.OFFLINE
+        is DexxiconError.Unauthorized -> SyncFailureReason.SIGN_IN_REQUIRED
+        else -> SyncFailureReason.SERVER_ERROR
+    }
 
     private fun shouldAdoptNative(native: NativeProgress, row: ReadingProgressEntity): Boolean {
         val local = row.percent ?: 0.0

@@ -128,13 +128,19 @@ class CatalogRepository @Inject constructor(
     /**
      * The "On Deck" shelf: every configured server's "want to read" books, fetched
      * concurrently and de-duplicated by (title, author) so a book on two servers shows once.
-     * Servers that fail (or don't support a reading status) just contribute nothing.
+     * A single server that fails (or doesn't track a reading status) just contributes nothing;
+     * only when *every* server failed is this a [Outcome.Failure] — so the caller can keep the
+     * last good list rather than blanking the shelf.
      */
     suspend fun onDeck(): Outcome<List<BookSummary>> = withContext(io) {
         val servers = serverRepository.servers.first()
         if (servers.isEmpty()) return@withContext Outcome.Success(emptyList())
         val results = coroutineScope {
             servers.map { server -> async { sourceFor(server).wantToRead(server) } }.awaitAll()
+        }
+        if (results.none { it is Outcome.Success }) {
+            return@withContext results.firstNotNullOfOrNull { it as? Outcome.Failure }
+                ?: Outcome.Failure(DexxiconError.Network("Couldn't reach any server"))
         }
         val books = results.mapNotNull { (it as? Outcome.Success)?.value }.flatten()
         Outcome.Success(
