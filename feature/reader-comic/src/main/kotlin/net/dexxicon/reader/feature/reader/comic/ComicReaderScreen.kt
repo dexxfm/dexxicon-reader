@@ -41,7 +41,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -53,6 +52,7 @@ import androidx.fragment.app.FragmentContainerView
 import androidx.fragment.app.commit
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.dexxicon.reader.core.designsystem.component.pageSnapshot
 import net.dexxicon.reader.core.designsystem.component.pageTurnGesture
 import net.dexxicon.reader.core.designsystem.component.rememberPageTurnState
 import net.dexxicon.reader.core.reader.EdgeTapNavigator
@@ -112,6 +112,7 @@ private fun ReaderContent(
     }
     val fragmentManager = activity.supportFragmentManager
     var navigator by remember { mutableStateOf<ImageNavigatorFragment?>(null) }
+    var pageView by remember { mutableStateOf<View?>(null) }
     var chromeVisible by remember { mutableStateOf(true) }
     var showSettings by remember { mutableStateOf(false) }
     var page by remember { mutableIntStateOf(1) }
@@ -218,8 +219,9 @@ private fun ReaderContent(
                     state = pageTurn,
                     enabled = true,
                     commitFraction = swipeSensitivity.commitFraction,
+                    snapshot = { pageView?.pageSnapshot() },
                     onTurn = { forward ->
-                        if (forward) navigator?.goForward(false) else navigator?.goBackward(false)
+                        (if (forward) navigator?.goForward(false) else navigator?.goBackward(false)) == true
                     },
                 ),
         ) {
@@ -240,9 +242,9 @@ private fun ReaderContent(
                             add(container.id, ImageNavigatorFragment::class.java, null, NAV_FRAGMENT_TAG)
                         }
                     }
-                    container
+                    container.also { pageView = it }
                 },
-                modifier = Modifier.fillMaxSize().graphicsLayer { translationX = pageTurn.offsetX },
+                modifier = Modifier.fillMaxSize(),
             )
         }
     }
