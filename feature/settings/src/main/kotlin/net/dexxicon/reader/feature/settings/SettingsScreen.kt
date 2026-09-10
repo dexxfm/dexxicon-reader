@@ -19,9 +19,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -64,7 +67,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.component.FormatLegend
 import net.dexxicon.reader.core.model.BookViewMode
-import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
 import net.dexxicon.reader.core.model.Server
 import kotlin.math.roundToInt
 
@@ -96,6 +98,8 @@ fun SettingsScreen(
     onAddServer: () -> Unit = {},
     onEditServer: (String) -> Unit = {},
     onOpenServerCatalog: (id: String, name: String) -> Unit = { _, _ -> },
+    onOpenAudiobookDefaults: () -> Unit = {},
+    onOpenBookDefaults: () -> Unit = {},
     viewModel: SettingsViewModel = hiltViewModel(),
     koSyncViewModel: KoSyncSettingsViewModel = hiltViewModel(),
     serverListViewModel: ServerListViewModel = hiltViewModel(),
@@ -192,54 +196,25 @@ fun SettingsScreen(
             }
 
             Spacer()
-            SectionTitle("Reading")
-            val swipeSensitivity by viewModel.swipeSensitivity.collectAsStateWithLifecycle()
-            Text("Page-turn swipe", style = MaterialTheme.typography.bodyMedium)
+            SectionTitle("Book Defaults")
             Text(
-                "How far you drag before the PDF and comic readers turn the page. Higher is a " +
-                    "lighter flick; lower needs a deliberate swipe. Each reader also has this in " +
-                    "its own settings.",
+                "The look, page-turn feel and playback options each format opens with.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
+                modifier = Modifier.padding(bottom = 4.dp),
             )
-            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ReaderSwipeSensitivity.entries.forEach { s ->
-                    FilterChip(
-                        selected = swipeSensitivity == s,
-                        onClick = { viewModel.setSwipeSensitivity(s) },
-                        label = { Text(s.label) },
-                    )
-                }
-            }
-
-            Spacer()
-            SectionTitle("Audiobooks")
-            val playerPrefs by viewModel.playerPreferences.collectAsStateWithLifecycle()
-            Text("Default speed", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "The speed every audiobook starts at. Changing it here or in the player's own " +
-                    "speed control sets the same default.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
+            NavigableSettingRow(
+                icon = Icons.Filled.Headphones,
+                title = "Audiobooks",
+                subtitle = "Default speed, skip silence",
+                onClick = onOpenAudiobookDefaults,
             )
-            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                net.dexxicon.reader.core.datastore.PLAYBACK_SPEEDS.forEach { speed ->
-                    FilterChip(
-                        selected = playerPrefs.defaultSpeed == speed,
-                        onClick = { viewModel.setDefaultSpeed(speed) },
-                        label = { Text("${speed}×") },
-                    )
-                }
-            }
-            LayoutSpacer(Modifier.height(16.dp))
-            SettingRow(
-                title = "Skip silence",
-                subtitle = "Shorten long pauses in narration, for every audiobook",
-            ) {
-                Switch(checked = playerPrefs.skipSilence, onCheckedChange = viewModel::setSkipSilence)
-            }
+            NavigableSettingRow(
+                icon = Icons.AutoMirrored.Filled.MenuBook,
+                title = "Books",
+                subtitle = "EPUB, comics and PDF — text size, background, page-turn swipe",
+                onClick = onOpenBookDefaults,
+            )
 
             Spacer()
             SectionTitle("Downloads")
@@ -672,7 +647,7 @@ private fun ServerRow(
 }
 
 @Composable
-private fun SectionTitle(text: String) {
+internal fun SectionTitle(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.titleSmall,
@@ -687,7 +662,7 @@ private fun Spacer() {
 }
 
 @Composable
-private fun SettingRow(
+internal fun SettingRow(
     title: String,
     subtitle: String?,
     trailing: @Composable () -> Unit,
@@ -708,4 +683,27 @@ private fun SettingRow(
         }
         trailing()
     }
+}
+
+/** A Settings row that opens a sub-screen — used by the Book Defaults entries. */
+@Composable
+private fun NavigableSettingRow(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+) {
+    ListItem(
+        headlineContent = { Text(title) },
+        supportingContent = { Text(subtitle, style = MaterialTheme.typography.bodySmall) },
+        leadingContent = { Icon(icon, contentDescription = null) },
+        trailingContent = {
+            Icon(
+                Icons.Filled.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        },
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+    )
 }
