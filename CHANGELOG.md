@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.11.5 — 2026-09-09
+
+A reworked home screen and a sync status you can see.
+
+- **The bottom tabs are now Home and Library.** The old "Library" tab (Continue reading /
+  listening, Downloaded) is **Home**; the old "Browse" tab (the merged catalogue across all
+  servers) is **Library**.
+- **On Deck shelf on Home.** Books you've marked *Want to read* on a server show up in a new
+  shelf, so your reading queue is one tap away. BookOrbit and Grimmory both feed it; a book
+  you've since started drops off.
+- **Home tells you when it last synced.** A slim line at the bottom of Home shows "Updated
+  just now", or a red bar naming the server(s) that didn't update with a Retry — no more
+  guessing whether a pull-to-refresh actually did anything. A transient outage keeps the
+  last good On Deck list instead of blanking the shelf.
+- Under the hood: the project now has CI (Codemagic) running the build and tests on every
+  push and pull request.
+
 ## 0.11.4 — 2026-09-09
 
 PDF reader settings and a fuller diagnostics report.

@@ -32,7 +32,10 @@ APIs — the same ones their web readers use — rather than generic OPDS.
   offline" is a per‑book opt‑in; the readers and player prefer a local copy when present.
 - Book detail shows description, metadata and the real file type (`epub`, `cbz`, `cbr`,
   `m4b`, `pdf`, …).
-- Pull‑to‑refresh on Library, Browse and Settings.
+- Two bottom tabs: **Home** (Continue reading / listening, On Deck, Downloaded) and
+  **Library** (every server's books merged into one searchable list).
+- Pull‑to‑refresh on Home, Library and Settings; Home shows when it last synced and which
+  server, if any, didn't.
 
 ### Readers
 | Format | Reader |
@@ -66,14 +69,15 @@ MOBI / AZW3 / FB2 are recognised but not yet openable (converters are a work in 
 - **EPUB bookmarks** sync both ways with the server's bookmark API (BookOrbit and Grimmory
   both full CRUD). A bookmark you made in a server's web reader shows up in the app and
   jumps to its chapter.
-- "Continue reading" and "Continue listening" shelves on the Library screen; `Settings →
+- "Continue reading", "Continue listening" and "On Deck" (your *Want to read* list) shelves
+  on the Home screen; `Settings →
   Reading sync` shows each server's channel and when it last synced.
 
 ### Settings
 - **Servers** — drag to set display priority (used for the server list, the sync list, and
   which library's books come first when browsing).
 - **Appearance** — theme (system / light / dark) and the default book layout (grid or
-  list) for Browse and server catalogues; each screen keeps its own toggle.
+  list) for the Library and server catalogues; each screen keeps its own toggle.
 - **Downloads** — Wi‑Fi‑only queueing and a total storage cap (default 10 GB); a download
   that would exceed the cap is skipped.
 - **Reading sync** — per‑server channel and last‑synced time; `kosync` account setup for
@@ -87,7 +91,7 @@ MOBI / AZW3 / FB2 are recognised but not yet openable (converters are a work in 
 
 ## Status
 
-Usable daily‑driver for BookOrbit and Grimmory. Current version **0.11.4** — see
+Usable daily‑driver for BookOrbit and Grimmory. Current version **0.11.5** — see
 [Releases](https://github.com/dexxfm/dexxicon-reader/releases) for APKs and Play‑ready
 App Bundles, and [CHANGELOG.md](CHANGELOG.md) for what each one brought.
 
