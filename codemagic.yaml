@@ -144,12 +144,10 @@ workflows:
       - app/build/outputs/**/mapping.txt
 
   # ───────────────────────────────────────────────────────────────────────────
-  # Phase 0 spike: validates the iOS side of each KMP module as it's converted.
-  # Adapts to how far the port has got:
-  #   • only KMP modules exist   → compile + test their iOS target
-  #   • `shared/` + `iosApp/`    → also build the iOS app via xcodebuild
-  # Runs on `spike/*` and on manual start. At the Phase 2 milestone: add `main`
-  # to branch_patterns and make it a required check.
+  # Validates the iOS side of the port as it lands: compiles every KMP module's
+  # iOS target, builds the iosApp, and screenshots the shared UI on a phone + a
+  # tablet. Runs on `main`, PRs into it, and `spike/*`. Informational for now;
+  # make it a required check at the Phase 2 milestone (UI running on iOS).
   ios-ci:
     name: iOS CI
     instance_type: mac_mini_m2
@@ -163,6 +161,8 @@ workflows:
         - push
         - pull_request
       branch_patterns:
+        - pattern: main
+          include: true
         - pattern: "spike/*"
           include: true
       cancel_previous_builds: true
