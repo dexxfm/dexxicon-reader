@@ -1,13 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.11.7 — 2026-09-10
 
-- **Page turns look like a page turn.** The PDF and comic drag now lifts the current page
-  away — with a soft shadow down its edge — and the page revealed underneath is the real
-  next page from the moment you start dragging, not a copy of the one you're on. Release
-  past the threshold and the turn stands; a shorter drag springs the page cleanly back and
-  quietly undoes the move. The embedded PDF and comic views no longer fight the gesture.
-  (EPUB already turned pages this way through its own navigator.)
+A better page turn in the PDF and comic readers.
+
+- **The turn looks like a page turn.** The drag lifts the current page away — with a soft
+  shadow down its edge — instead of sliding the whole reader sideways and baring blank
+  space.
+- **The peek is the real next page.** From the moment you start dragging, the page revealed
+  underneath is the actual next page, not a copy of the one you're on. Release past the
+  threshold and the turn stands; a shorter drag springs the page back and quietly undoes
+  the move — no stranded half-scrolled page.
+- The embedded PDF and comic views no longer fight the gesture, and pinch‑zoom and vertical
+  scrolling still pass through. (EPUB already turned pages this way through its own reader.)
 
 ## 0.11.6 — 2026-09-10
 
