@@ -83,7 +83,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import java.util.concurrent.TimeUnit
 
-private val SPEEDS = listOf(0.8f, 1.0f, 1.2f, 1.5f, 1.75f, 2.0f, 3.0f)
 private val SLEEP_OPTIONS = listOf(
     "Off" to null,
     "15 minutes" to 15L * 60_000,
@@ -185,7 +184,7 @@ fun PlayerScreen(
         ModalBottomSheet(onDismissRequest = { showSpeed = false }) {
             Column(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
                 Text("Playback speed", Modifier.padding(16.dp), style = MaterialTheme.typography.titleMedium)
-                SPEEDS.forEach { speed ->
+                net.dexxicon.reader.core.datastore.PLAYBACK_SPEEDS.forEach { speed ->
                     TextButton(
                         onClick = { viewModel.setSpeed(speed); showSpeed = false },
                         modifier = Modifier.fillMaxWidth(),

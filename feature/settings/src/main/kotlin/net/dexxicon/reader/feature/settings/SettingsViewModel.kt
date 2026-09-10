@@ -14,6 +14,8 @@ import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.datastore.AppPreferences
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.AppTheme
+import net.dexxicon.reader.core.datastore.PlayerPreferences
+import net.dexxicon.reader.core.datastore.PlayerPreferencesStore
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.reader.ReaderPreferencesStore
 import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
@@ -25,6 +27,7 @@ import javax.inject.Inject
 class SettingsViewModel @Inject constructor(
     private val store: AppPreferencesStore,
     private val readerStore: ReaderPreferencesStore,
+    private val playerStore: PlayerPreferencesStore,
     private val diagnosticsArchive: DiagnosticsArchive,
     downloadRepository: DownloadRepository,
 ) : ViewModel() {
@@ -44,6 +47,20 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch {
             readerStore.update { it.copy(swipeSensitivity = sensitivity) }
         }
+    }
+
+    /** Skip silence + default starting speed for the audiobook player. Same store the
+     * player's own Audio options sheet reads and writes — a change from either place
+     * shows up in both. */
+    val playerPreferences: StateFlow<PlayerPreferences> = playerStore.preferences
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), PlayerPreferences())
+
+    fun setSkipSilence(enabled: Boolean) {
+        viewModelScope.launch { playerStore.setSkipSilence(enabled) }
+    }
+
+    fun setDefaultSpeed(speed: Float) {
+        viewModelScope.launch { playerStore.setDefaultSpeed(speed) }
     }
 
     /** Bytes currently held by downloaded media. */

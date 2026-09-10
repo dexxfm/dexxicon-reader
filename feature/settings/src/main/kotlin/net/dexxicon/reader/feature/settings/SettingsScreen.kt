@@ -214,6 +214,34 @@ fun SettingsScreen(
             }
 
             Spacer()
+            SectionTitle("Audiobooks")
+            val playerPrefs by viewModel.playerPreferences.collectAsStateWithLifecycle()
+            Text("Default speed", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "The speed every audiobook starts at. Changing it here or in the player's own " +
+                    "speed control sets the same default.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                net.dexxicon.reader.core.datastore.PLAYBACK_SPEEDS.forEach { speed ->
+                    FilterChip(
+                        selected = playerPrefs.defaultSpeed == speed,
+                        onClick = { viewModel.setDefaultSpeed(speed) },
+                        label = { Text("${speed}×") },
+                    )
+                }
+            }
+            LayoutSpacer(Modifier.height(16.dp))
+            SettingRow(
+                title = "Skip silence",
+                subtitle = "Shorten long pauses in narration, for every audiobook",
+            ) {
+                Switch(checked = playerPrefs.skipSilence, onCheckedChange = viewModel::setSkipSilence)
+            }
+
+            Spacer()
             SectionTitle("Downloads")
             SettingRow(
                 title = "Download over Wi-Fi only",
