@@ -36,9 +36,25 @@ definitions:
 
   android_sdk: &android_sdk
     name: Install the SDK packages the build pins
+    # AGP auto-downloads the compile SDK + build-tools when they're missing and
+    # licences are accepted (they are, on Codemagic images). This step is a
+    # best-effort pre-fetch — it must never fail the build if sdkmanager isn't
+    # on PATH or a package is already present.
     script: |
-      yes | sdkmanager --licenses > /dev/null 2>&1 || true
-      sdkmanager "platforms;android-37" "build-tools;36.0.0"
+      SDKMANAGER=$(command -v sdkmanager || true)
+      if [ -z "$SDKMANAGER" ]; then
+        for d in "$ANDROID_SDK_ROOT" "$ANDROID_HOME"; do
+          for c in "$d"/cmdline-tools/*/bin/sdkmanager "$d"/tools/bin/sdkmanager; do
+            [ -x "$c" ] && SDKMANAGER="$c" && break 2
+          done
+        done
+      fi
+      if [ -n "$SDKMANAGER" ]; then
+        yes | "$SDKMANAGER" --licenses > /dev/null 2>&1 || true
+        "$SDKMANAGER" "platforms;android-37" "build-tools;36.0.0" || true
+      else
+        echo "sdkmanager not found — leaving SDK components to AGP's auto-download."
+      fi
 
   gradle_cache: &gradle_cache
     - $HOME/.gradle/caches
