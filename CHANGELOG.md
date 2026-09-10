@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- **Page turns look like a page turn.** The PDF and comic drag now lifts the current page
+  away — with a soft shadow down its edge — to reveal the next page already in place
+  underneath, instead of sliding the whole reader sideways and baring blank space. The
+  embedded PDF and comic views no longer fight the gesture, so a drag that falls short
+  springs the page cleanly back where it was.
+
 ## 0.11.6 — 2026-09-10
 
 Page turns you can feel.
