@@ -201,24 +201,35 @@ workflows:
           fi
           brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
           (cd iosApp && xcodegen generate)
+          # One generic-simulator build; it runs on any simulator we screenshot below.
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
             -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
+            -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath build/ios \
             CODE_SIGNING_ALLOWED=NO \
             clean build | xcbeautify
-      - name: Screenshot the shared UI in the Simulator
+      - name: Render the shared UI on a phone and a tablet
         script: |
           set -eo pipefail
-          xcrun simctl boot "iPhone 16" 2>/dev/null || true
+          if [ ! -d iosApp ]; then exit 0; fi
           APP=$(find build/ios/Build/Products -name "iosApp.app" -type d | head -1)
-          xcrun simctl install "iPhone 16" "$APP"
-          xcrun simctl launch "iPhone 16" net.dexxicon.reader
-          sleep 6
           mkdir -p build/screenshots
-          xcrun simctl io "iPhone 16" screenshot build/screenshots/shared-ios.png
+          xcrun simctl list devices available
+          # Resolve by name substring so the exact chip/size suffix doesn't matter.
+          resolve() { xcrun simctl list devices available | grep -m1 "$1" | grep -oE "[0-9A-F]{8}-[0-9A-F-]{27}"; }
+          for spec in "iPhone 17:phone" "iPad Air 11-inch:tablet"; do
+            name="${spec%%:*}"; slug="${spec##*:}"
+            udid=$(resolve "$name")
+            if [ -z "$udid" ]; then echo "No available simulator matching '$name' — skipping."; continue; fi
+            echo "== $name ($udid) =="
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl install "$udid" "$APP"
+            xcrun simctl launch "$udid" net.dexxicon.reader
+            sleep 6
+            xcrun simctl io "$udid" screenshot "build/screenshots/shared-ios-$slug.png"
+          done
     artifacts:
       - build/screenshots/*.png
       - "**/build/reports/tests/**"
