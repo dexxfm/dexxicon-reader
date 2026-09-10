@@ -67,13 +67,39 @@ fun AudiobookDefaultsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = h
                 )
             }
         }
-        HorizontalDivider(Modifier.padding(vertical = 20.dp))
+        LayoutSpacer(Modifier.height(12.dp))
         SettingRow(
             title = "Skip silence",
             subtitle = "Shorten long pauses in narration, for every audiobook",
         ) {
             Switch(checked = prefs.skipSilence, onCheckedChange = viewModel::setSkipSilence)
         }
+
+        HorizontalDivider(Modifier.padding(vertical = 20.dp))
+        DefaultsChips(
+            "Skip forward",
+            listOf(10, 15, 30, 45, 60),
+            prefs.skipForwardSeconds,
+            { "${it}s" },
+        ) { viewModel.setSkipForwardSeconds(it) }
+        DefaultsChips(
+            "Skip back",
+            listOf(5, 10, 15, 30, 45),
+            prefs.skipBackSeconds,
+            { "${it}s" },
+        ) { viewModel.setSkipBackSeconds(it) }
+        DefaultsChips(
+            "Rewind on resume",
+            listOf(0, 5, 10, 20, 30),
+            prefs.smartRewindSeconds,
+            { if (it == 0) "Off" else "${it}s" },
+        ) { viewModel.setSmartRewindSeconds(it) }
+        Text(
+            "How far to rewind when you come back to a paused book, to recover context.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp),
+        )
     }
 }
 
@@ -82,39 +108,42 @@ fun BookDefaultsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltVi
     val prefs by viewModel.readerPreferences.collectAsStateWithLifecycle()
     val update = viewModel::updateReaderPreferences
     DefaultsScaffold("Books", onBack) {
-        SectionTitle("EPUB")
-        Text("Text size", style = MaterialTheme.typography.bodyMedium)
-        Slider(
-            value = prefs.fontScale.toFloat(),
-            onValueChange = { v -> update { it.copy(fontScale = v.toDouble()) } },
-            valueRange = 0.6f..2.4f,
-            steps = 8,
+        // Every one of these is one value shared by two or more formats already — shown
+        // once, here, instead of repeated (and editable in two places) under each format.
+        SectionTitle("General")
+        Text(
+            "Used across every format that supports it.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 4.dp),
         )
         DefaultsChips("Background", ReaderTheme.entries, prefs.theme, ::readerThemeLabel) { theme ->
             update { it.copy(theme = theme) }
         }
+        Text(
+            "EPUB and PDF.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         DefaultsChips("Page fit", ReaderFitMode.entries, prefs.fitMode, ::readerFitLabel) { fit ->
             update { it.copy(fitMode = fit) }
         }
-        DefaultsChips("Page layout", ReaderPageLayout.entries, prefs.pageLayout, ::readerPageLayoutLabel) { layout ->
-            update { it.copy(pageLayout = layout) }
-        }
+        Text(
+            "EPUB honours all four; the PDF engine only distinguishes fit-page from fit-width.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         DefaultsChips(
             "Reading mode",
             listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
             if (prefs.scrollMode == ReaderScrollMode.PAGED) ReaderScrollMode.PAGED else ReaderScrollMode.SCROLL,
             ::readerScrollModeLabel,
         ) { mode -> update { it.copy(scrollMode = mode) } }
-        LayoutSpacer(Modifier.height(12.dp))
-        SettingRow(title = "Tap edges to turn pages", subtitle = "Also applies to comics") {
-            Switch(
-                checked = prefs.tapNavigation,
-                onCheckedChange = { on -> update { it.copy(tapNavigation = on) } },
-            )
-        }
-
-        HorizontalDivider(Modifier.padding(vertical = 20.dp))
-        SectionTitle("Comics")
+        Text(
+            "EPUB and PDF.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         DefaultsChips(
             "Page-turn swipe",
             ReaderSwipeSensitivity.entries,
@@ -123,45 +152,47 @@ fun BookDefaultsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltVi
         ) { s -> update { p -> p.copy(swipeSensitivity = s) } }
         Text(
             "How far you drag before the page turns. Higher is a lighter flick; lower needs a " +
-                "deliberate swipe — shared with PDFs below. Tap-to-turn is set with EPUB above.",
+                "deliberate swipe. Comics and PDF.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 4.dp),
+        )
+        LayoutSpacer(Modifier.height(12.dp))
+        SettingRow(title = "Tap edges to turn pages", subtitle = "EPUB and comics") {
+            Switch(
+                checked = prefs.tapNavigation,
+                onCheckedChange = { on -> update { it.copy(tapNavigation = on) } },
+            )
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 20.dp))
+        SectionTitle("EPUB")
+        Text("Text size", style = MaterialTheme.typography.bodyMedium)
+        Slider(
+            value = prefs.fontScale.toFloat(),
+            onValueChange = { v -> update { it.copy(fontScale = v.toDouble()) } },
+            valueRange = 0.6f..2.4f,
+            steps = 8,
+        )
+        DefaultsChips("Page layout", ReaderPageLayout.entries, prefs.pageLayout, ::readerPageLayoutLabel) { layout ->
+            update { it.copy(pageLayout = layout) }
+        }
+
+        HorizontalDivider(Modifier.padding(vertical = 20.dp))
+        SectionTitle("Comics")
+        Text(
+            "Nothing unique yet — comics use the page-turn swipe and tap-to-turn settings above.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SectionTitle("PDF")
-        DefaultsChips("Background", ReaderTheme.entries, prefs.theme, ::readerThemeLabel) { theme ->
-            update { it.copy(theme = theme) }
-        }
-        DefaultsChips(
-            "Page fit",
-            // The pdfium engine only distinguishes fit-page from fit-width.
-            listOf(ReaderFitMode.PAGE_FIT, ReaderFitMode.PAGE_WIDTH),
-            if (prefs.fitMode == ReaderFitMode.PAGE_WIDTH) ReaderFitMode.PAGE_WIDTH else ReaderFitMode.PAGE_FIT,
-            ::readerFitLabel,
-        ) { fit -> update { it.copy(fitMode = fit) } }
-        DefaultsChips(
-            "Reading mode",
-            listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
-            if (prefs.scrollMode == ReaderScrollMode.PAGED) ReaderScrollMode.PAGED else ReaderScrollMode.SCROLL,
-            ::readerScrollModeLabel,
-        ) { mode -> update { it.copy(scrollMode = mode) } }
-        if (prefs.scrollMode == ReaderScrollMode.PAGED) {
-            DefaultsChips(
-                "Page-turn swipe",
-                ReaderSwipeSensitivity.entries,
-                prefs.swipeSensitivity,
-                { it.label },
-            ) { s -> update { p -> p.copy(swipeSensitivity = s) } }
-        }
         Text(
-            "Background, page fit and reading mode are shared with EPUB above; page-turn " +
-                "swipe is shared with comics. The page colour applies to the margins and " +
-                "spacing — the PDF engine can't recolour the page content itself.",
+            "Background, page fit, reading mode and page-turn swipe are set above. The page " +
+                "colour applies to the margins and spacing — the PDF engine can't recolour the " +
+                "page content itself.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 12.dp),
         )
     }
 }

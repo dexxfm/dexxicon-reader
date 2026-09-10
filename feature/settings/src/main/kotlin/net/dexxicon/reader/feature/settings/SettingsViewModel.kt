@@ -61,6 +61,18 @@ class SettingsViewModel @Inject constructor(
         viewModelScope.launch { playerStore.setDefaultSpeed(speed) }
     }
 
+    fun setSkipForwardSeconds(seconds: Int) {
+        viewModelScope.launch { playerStore.setSkipForwardSeconds(seconds) }
+    }
+
+    fun setSkipBackSeconds(seconds: Int) {
+        viewModelScope.launch { playerStore.setSkipBackSeconds(seconds) }
+    }
+
+    fun setSmartRewindSeconds(seconds: Int) {
+        viewModelScope.launch { playerStore.setSmartRewindSeconds(seconds) }
+    }
+
     /** Bytes currently held by downloaded media. */
     val downloadUsedBytes: StateFlow<Long> = downloadRepository.usedBytes
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0L)
