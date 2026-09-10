@@ -191,10 +191,15 @@ workflows:
       java: 17
       xcode: latest
       cocoapods: default
-      groups:
-        - appstore
       vars:
         BUNDLE_ID: "net.dexxicon.reader"   # confirm the real iOS bundle id
+      # When the App Store Connect API key integration exists (Teams →
+      # Integrations → App Store Connect), reference it here — this is what the
+      # `publishing:` block below needs:
+      # integrations:
+      #   app_store_connect: <the name you gave the integration>
+      # groups:
+      #   - appstore
     scripts:
       - name: Guard
         script: |
@@ -218,7 +223,10 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - "*.ipa"
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
+    # Uncomment once `environment.integrations.app_store_connect` above is set —
+    # Codemagic rejects the whole file if `auth: integration` has no integration
+    # to point at. Until then the .ipa is just an artifact you can upload by hand.
+    # publishing:
+    #   app_store_connect:
+    #     auth: integration
+    #     submit_to_testflight: true
