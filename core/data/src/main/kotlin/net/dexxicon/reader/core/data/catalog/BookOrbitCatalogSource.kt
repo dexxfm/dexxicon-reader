@@ -123,10 +123,12 @@ class BookOrbitCatalogSource @Inject constructor(
         shelfId = libraryId?.toString(),
     )
 
+    // BookOrbit's sort fields (packages/types SortField): author, title, series, seriesIndex,
+    // addedAt, … — NOT `seriesName`, which the query pipe rejects with a 400.
     private fun sortModel(sort: BookSort): List<BookOrbitSort> = when (sort) {
         BookSort.RECENT -> listOf(BookOrbitSort("addedAt", "desc"))
         BookSort.TITLE -> listOf(BookOrbitSort("title", "asc"))
-        BookSort.SERIES -> listOf(BookOrbitSort("seriesName", "asc"))
+        BookSort.SERIES -> listOf(BookOrbitSort("series", "asc"), BookOrbitSort("seriesIndex", "asc"))
     }
 
     /** Best-effort file extension: the server's `format` field, else the filename's suffix. */

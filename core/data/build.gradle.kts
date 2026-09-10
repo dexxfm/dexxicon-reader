@@ -37,4 +37,6 @@ dependencies {
     testImplementation(libs.turbine)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.mockwebserver)
+    testImplementation(libs.retrofit)
+    testImplementation(libs.retrofit.kotlinx.serialization)
 }
