@@ -199,17 +199,29 @@ workflows:
             echo "iosApp/ not present yet — skipping xcodebuild."
             exit 0
           fi
-          test -f iosApp/project.yml && (brew list xcodegen >/dev/null 2>&1 || brew install xcodegen) \
-            && (cd iosApp && xcodegen generate)
+          brew list xcodegen >/dev/null 2>&1 || brew install xcodegen
+          (cd iosApp && xcodegen generate)
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
+            -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16,OS=latest' \
             -derivedDataPath build/ios \
-            clean build test | xcbeautify
+            CODE_SIGNING_ALLOWED=NO \
+            clean build | xcbeautify
+      - name: Screenshot the shared UI in the Simulator
+        script: |
+          set -eo pipefail
+          xcrun simctl boot "iPhone 16" 2>/dev/null || true
+          APP=$(find build/ios/Build/Products -name "iosApp.app" -type d | head -1)
+          xcrun simctl install "iPhone 16" "$APP"
+          xcrun simctl launch "iPhone 16" net.dexxicon.reader
+          sleep 6
+          mkdir -p build/screenshots
+          xcrun simctl io "iPhone 16" screenshot build/screenshots/shared-ios.png
     artifacts:
+      - build/screenshots/*.png
       - "**/build/reports/tests/**"
-      - build/ios/Logs/Test/*.xcresult
 
   # ───────────────────────────────────────────────────────────────────────────
   # DORMANT — needs the App Store Connect integration + signing identity, and

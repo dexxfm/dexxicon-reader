@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Phase 0 spike: shared Compose Multiplatform preview. Debug builds only. -->
+        <activity
+            android:name=".SharedPreviewActivity"
+            android:exported="true"
+            android:label="Shared UI (spike)" />
+    </application>
+</manifest>

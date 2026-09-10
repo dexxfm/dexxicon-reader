@@ -131,6 +131,10 @@ dependencies {
     implementation(project(":feature:annotations"))
     implementation(project(":feature:settings"))
 
+    // Phase 0 spike: the shared Compose Multiplatform module, exercised by
+    // SharedPreviewActivity (debug builds only).
+    implementation(project(":shared"))
+
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.runtime)
     implementation(libs.androidx.compose.foundation)
