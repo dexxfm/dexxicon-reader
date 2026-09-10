@@ -37,6 +37,14 @@ data class ReaderDisplayPreferences(
     val tapNavigation: Boolean = true,
     /** How far a drag has to travel before it commits to a page turn. */
     val swipeSensitivity: ReaderSwipeSensitivity = ReaderSwipeSensitivity.MEDIUM,
+    /**
+     * Comics only: auto-zoom into each detected panel in reading order before turning the
+     * page, like a "guided view". Falls back silently to the plain full page on any page
+     * where panels can't be confidently detected.
+     */
+    val comicSmartZoom: Boolean = false,
+    /** Comics only: manga-style right-to-left panel order and page turns. */
+    val comicRightToLeft: Boolean = false,
 ) {
     /** Legacy shorthand: the EPUB/PDF navigators still take a plain scroll flag. */
     val scroll: Boolean get() = scrollMode.scrolling
@@ -92,6 +100,8 @@ class ReaderPreferencesStore @Inject constructor(
         val SCROLL = booleanPreferencesKey("scroll")
         val TAP_NAV = booleanPreferencesKey("tap_navigation")
         val SWIPE_SENSITIVITY = stringPreferencesKey("swipe_sensitivity")
+        val COMIC_SMART_ZOOM = booleanPreferencesKey("comic_smart_zoom")
+        val COMIC_RIGHT_TO_LEFT = booleanPreferencesKey("comic_right_to_left")
     }
 
     val preferences: Flow<ReaderDisplayPreferences> =
@@ -108,6 +118,8 @@ class ReaderPreferencesStore @Inject constructor(
             prefs[Keys.SCROLL] = next.scroll
             prefs[Keys.TAP_NAV] = next.tapNavigation
             prefs[Keys.SWIPE_SENSITIVITY] = next.swipeSensitivity.name
+            prefs[Keys.COMIC_SMART_ZOOM] = next.comicSmartZoom
+            prefs[Keys.COMIC_RIGHT_TO_LEFT] = next.comicRightToLeft
         }
     }
 
@@ -123,6 +135,8 @@ class ReaderPreferencesStore @Inject constructor(
         tapNavigation = this[Keys.TAP_NAV] ?: true,
         swipeSensitivity = this[Keys.SWIPE_SENSITIVITY]?.let { enumOrNull<ReaderSwipeSensitivity>(it) }
             ?: ReaderSwipeSensitivity.MEDIUM,
+        comicSmartZoom = this[Keys.COMIC_SMART_ZOOM] ?: false,
+        comicRightToLeft = this[Keys.COMIC_RIGHT_TO_LEFT] ?: false,
     )
 }
 
