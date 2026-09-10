@@ -15,6 +15,7 @@ kotlin {
         namespace = "net.dexxicon.reader.shared"
         compileSdk = 37
         minSdk = 29
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
     }
 
     jvm {
