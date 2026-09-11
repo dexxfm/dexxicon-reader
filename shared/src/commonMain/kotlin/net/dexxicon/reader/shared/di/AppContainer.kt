@@ -3,8 +3,10 @@ package net.dexxicon.reader.shared.di
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CoroutineDispatcher
+import net.dexxicon.reader.core.data.ProgressSeeder
 import net.dexxicon.reader.core.data.ServerProber
 import net.dexxicon.reader.core.data.ServerRepository
+import net.dexxicon.reader.core.data.auth.OidcAuthenticator
 import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.database.DexxiconDatabase
 import net.dexxicon.reader.core.network.NoAuthHeaderProvider
@@ -12,6 +14,8 @@ import net.dexxicon.reader.core.network.createHttpClient
 import net.dexxicon.reader.core.security.CredentialStore
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthClient
+import net.dexxicon.reader.core.serverapi.oidc.OidcApi
+import net.dexxicon.reader.core.serverapi.oidc.OidcClient
 import net.dexxicon.reader.core.serverapi.user.NativeUserApi
 
 /**
@@ -38,6 +42,13 @@ import net.dexxicon.reader.core.serverapi.user.NativeUserApi
  * its own: `Dispatchers.IO` on Android, `Dispatchers.Default` on iOS (no Native equivalent
  * of the JVM's large-pool blocking-IO dispatcher; `Default`'s core-sized pool is the
  * standard KMP substitute here).
+ *
+ * [ProgressSeeder] gets a no-op stub here (Slice 2, issue #70) — its one real implementation,
+ * `ReadingProgressRepository`, stays androidMain-only (blocked by `KoSyncRepository`'s real
+ * Android dependencies, same as ever). `OidcAuthenticator` needs *some* `ProgressSeeder` to
+ * construct, and Slice 2 doesn't need the "seed continue-reading rows right after sign-in"
+ * behavior to work for SSO sign-in itself to work — just a real gap to close before shared UI
+ * needs actual continue-reading data.
  */
 class AppContainer(
     engine: HttpClientEngine,
@@ -50,6 +61,8 @@ class AppContainer(
     private val nativeAuthApi = NativeAuthApi(httpClient)
     private val nativeAuthClient = NativeAuthClient(nativeAuthApi)
     private val nativeUserApi = NativeUserApi(httpClient)
+    private val oidcApi = OidcApi(httpClient)
+    private val oidcClient = OidcClient(oidcApi)
 
     val tokenManager: TokenManager = TokenManager(nativeAuthClient, credentialStore)
     val serverProber: ServerProber = ServerProber(nativeAuthClient, io)
@@ -60,6 +73,17 @@ class AppContainer(
         nativeUserApi = nativeUserApi,
         io = io,
     )
+    val oidcAuthenticator: OidcAuthenticator = OidcAuthenticator(
+        oidcClient = oidcClient,
+        serverRepository = serverRepository,
+        progressSeeder = NoOpProgressSeeder,
+        tokenManager = tokenManager,
+        io = io,
+    )
+}
+
+private object NoOpProgressSeeder : ProgressSeeder {
+    override fun seedFromServerAsync(serverId: String) = Unit
 }
 
 /** Opaque per-platform handle [createAppContainer] needs — an `android.content.Context` on

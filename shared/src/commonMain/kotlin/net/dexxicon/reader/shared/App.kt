@@ -33,13 +33,14 @@ import androidx.navigation.compose.rememberNavController
 import kotlinx.serialization.Serializable
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.servers.AddServerState
+import net.dexxicon.reader.shared.servers.SsoState
 import net.dexxicon.reader.shared.servers.TestState
+import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 
-// Phase 2 Slice 1 (issue #62): the real app shell — a servers list (with a "no servers yet"
-// empty state) behind a NavHost, and a native-login add-server form wired to the Phase 1
-// data layer via [AppContainer]. Renders identically on Android ([SharedPreviewActivity],
-// debug-only) and iOS ([MainViewController]). Slice 2 (SSO/OIDC, needs WKWebView/UIKitView
-// interop) is deferred to a follow-up issue.
+// Phase 2: the real app shell — a servers list (with a "no servers yet" empty state) behind a
+// NavHost, and an add-server form (native login, Slice 1 issue #62; SSO WebView, Slice 2
+// issue #70) wired to the Phase 1 data layer via [AppContainer]. Renders identically on
+// Android ([SharedPreviewActivity], debug-only) and iOS ([MainViewController]).
 @Serializable private object ServersRoute
 @Serializable private object AddServerRoute
 
@@ -114,7 +115,25 @@ private fun EmptyServersState(modifier: Modifier, onAddServer: () -> Unit) {
 @Composable
 private fun AddServerScreen(container: AppContainer, onBack: () -> Unit, onSaved: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val state = remember { AddServerState(container.serverProber, container.serverRepository, scope) }
+    val state = remember {
+        AddServerState(container.serverProber, container.serverRepository, container.oidcAuthenticator, scope)
+    }
+
+    // While the browser step is in progress, the SSO WebView replaces the form entirely —
+    // once completeSso() moves ssoState past Ready (into Exchanging, on the way to Idle+saved
+    // or Error), this falls through to the form below, which is fine: the exchange itself
+    // needs no WebView, just a network round-trip.
+    val sso = state.ssoState
+    if (sso is SsoState.Ready) {
+        SsoWebViewScreen(
+            handshake = sso.handshake,
+            pkce = sso.pkce,
+            onCode = { code -> state.completeSso(sso.handshake, code, onSaved) },
+            onError = state::onSsoError,
+            onCancel = state::onSsoCancelled,
+        )
+        return
+    }
 
     Scaffold(
         topBar = {
@@ -136,6 +155,18 @@ private fun AddServerScreen(container: AppContainer, onBack: () -> Unit, onSaved
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
+
+            TextButton(onClick = state::discoverSso, enabled = state.baseUrl.isNotBlank()) {
+                Text("Sign in with SSO instead")
+            }
+            when (sso) {
+                SsoState.Discovering -> CircularProgressIndicator(Modifier.padding(8.dp))
+                is SsoState.Error -> Text(sso.message, color = MaterialTheme.colorScheme.error)
+                else -> Unit
+            }
+
+            HorizontalDivider()
+
             OutlinedTextField(
                 value = state.username,
                 onValueChange = state::onUsernameChange,
