@@ -2,15 +2,19 @@ package net.dexxicon.reader.shared.catalog
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -29,13 +33,14 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.di.AppContainer
 
 /**
- * Read-only book detail — title, authors, format, description. No download, no mark-read, no
- * reading-status change and no actual reading: `BookActions` and the reader modules
- * (Readium/PDFium/Media3) are both out of scope for issue #78, the former genuinely
- * Android-only today, the latter a separate, already-deferred decision.
+ * Read-only-ish book detail — title, authors, format, description, and (issue #84) a reading
+ * status the user can change. No download and no actual reading: `BookActions`'s
+ * download/remove and the reader modules (Readium/PDFium/Media3) are both out of scope, the
+ * former genuinely Android-only today, the latter a separate, already-deferred decision.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -107,6 +112,23 @@ fun BookDetailScreen(
                         )
                     }
                 }
+
+                LazyRow(
+                    contentPadding = PaddingValues(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(ReadingStatus.entries.toList()) { status ->
+                        FilterChip(
+                            selected = status == currentDetail.readingStatus,
+                            onClick = {
+                                container.readingStatusActions.setReadingStatus(serverId, bookId, status)
+                                detail = currentDetail.copy(readingStatus = status)
+                            },
+                            label = { Text(status.label) },
+                        )
+                    }
+                }
+
                 currentDetail.description?.let {
                     Text(it, style = MaterialTheme.typography.bodyMedium)
                 }

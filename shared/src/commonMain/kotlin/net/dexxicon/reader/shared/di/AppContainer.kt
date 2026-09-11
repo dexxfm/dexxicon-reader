@@ -30,7 +30,9 @@ import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcClient
+import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import net.dexxicon.reader.core.serverapi.user.NativeUserApi
+import net.dexxicon.reader.shared.catalog.ReadingStatusActions
 
 /**
  * Manual (non-Hilt) composition root for `:shared`'s commonMain UI. Every `:core:*` module
@@ -75,6 +77,11 @@ import net.dexxicon.reader.core.serverapi.user.NativeUserApi
  * to [CoilPlatformContext] on the import here to avoid colliding with this file's own
  * [PlatformContext]): Android's is `android.content.Context` itself (a typealias), iOS's is
  * `coil3.PlatformContext.INSTANCE`, a singleton with nothing to configure.
+ *
+ * [readingStatusActions] (issue #84) is deliberately narrower than the native app's
+ * `BookActions` — see [ReadingStatusActions]'s own doc comment for why. Built with [scope],
+ * not a screen's own `rememberCoroutineScope()`, so a status push outlives the screen that
+ * started it.
  */
 class AppContainer(
     engine: HttpClientEngine,
@@ -103,6 +110,7 @@ class AppContainer(
     private val oidcClient = OidcClient(oidcApi)
     private val bookOrbitBrowseApi = BookOrbitBrowseApi(httpClient)
     private val grimmoryBrowseApi = GrimmoryBrowseApi(httpClient)
+    private val nativeProgressApi = NativeProgressApi(httpClient)
 
     @OptIn(ExperimentalCoilApi::class)
     val imageLoader: ImageLoader = ImageLoader.Builder(coilPlatformContext)
@@ -131,6 +139,11 @@ class AppContainer(
         bookOrbitSource = BookOrbitCatalogSource(bookOrbitBrowseApi),
         opdsSource = OpdsCatalogSource(),
         io = io,
+    )
+    val readingStatusActions: ReadingStatusActions = ReadingStatusActions(
+        api = nativeProgressApi,
+        serverRepository = serverRepository,
+        scope = scope,
     )
 
     init {
