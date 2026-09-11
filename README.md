@@ -140,3 +140,10 @@ and credit the original project (`github.com/dexxfm/dexxicon-reader`).
 Bundled third‑party components keep their own licences: Readium toolkit — BSD‑3‑Clause;
 Media3 / AndroidX — Apache‑2.0; junrar — UnRar restriction + free for non‑extraction‑tool
 use.
+
+## Support
+
+If Dexxicon Reader is useful to you, consider buying me a coffee:
+[ko-fi.com/dexxfm](https://ko-fi.com/dexxfm)
+
+[<img alt="Support me on Ko-fi" src="https://storage.ko-fi.com/cdn/kofi3.png?v=3" height="36">](https://ko-fi.com/dexxfm)
