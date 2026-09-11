@@ -204,7 +204,8 @@ fun BookDefaultsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltVi
         }
         SettingRow(
             title = "Right-to-left (manga)",
-            subtitle = "Panel order and page turns run right to left",
+            subtitle = "Applied automatically to comics genre-tagged \"manga\" — this is the " +
+                "default for everything else",
         ) {
             Switch(
                 checked = prefs.comicRightToLeft,

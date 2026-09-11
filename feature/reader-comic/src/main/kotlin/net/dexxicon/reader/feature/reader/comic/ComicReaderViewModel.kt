@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
@@ -72,9 +73,27 @@ class ComicReaderViewModel @Inject constructor(
         .map { it.comicSmartZoom }
         .stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    val rightToLeft: StateFlow<Boolean> = preferencesStore.preferences
-        .map { it.comicRightToLeft }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+    /** Whether this book's genres/categories (from [load]'s server detail) mention "manga" —
+     *  false until detail arrives, and for a fully offline book with no server round-trip. */
+    private val mangaGenre = MutableStateFlow(false)
+
+    /** Flipped by [setRightToLeft] for *this* reading session only — takes priority over
+     *  genre detection (e.g. a mistagged book) without touching the shared default other
+     *  comics fall back on. Cleared on the next book (a new ViewModel), so it can't leak. */
+    private val sessionOverride = MutableStateFlow<Boolean?>(null)
+
+    /**
+     * Manga (by genre/category tag) reads right-to-left automatically; everything else
+     * follows the shared "Right-to-left" default from Settings — unless overridden for this
+     * session via [setRightToLeft].
+     */
+    val rightToLeft: StateFlow<Boolean> = combine(
+        preferencesStore.preferences.map { it.comicRightToLeft },
+        mangaGenre,
+        sessionOverride,
+    ) { globalDefault, isManga, override ->
+        override ?: (isManga || globalDefault)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     fun setTapNavigation(enabled: Boolean) {
         viewModelScope.launch { preferencesStore.update { it.copy(tapNavigation = enabled) } }
@@ -89,6 +108,9 @@ class ComicReaderViewModel @Inject constructor(
     }
 
     fun setRightToLeft(enabled: Boolean) {
+        sessionOverride.value = enabled
+        // Also persists as the shared default, same as before — the fallback other
+        // (non-manga-tagged) comics use when their own genres don't say either way.
         viewModelScope.launch { preferencesStore.update { it.copy(comicRightToLeft = enabled) } }
     }
 
@@ -108,6 +130,7 @@ class ComicReaderViewModel @Inject constructor(
         val localFile = downloadRepository.localFile(route.serverId, route.bookId)
         val downloadTitle = downloadRepository.get(route.serverId, route.bookId)?.title
         val detail = (catalogRepository.detail(route.serverId, route.bookId) as? Outcome.Success)?.value
+        mangaGenre.value = detail?.categories.orEmpty().any { it.contains("manga", ignoreCase = true) }
 
         if (localFile == null && detail == null) {
             _state.value = ComicReaderState.Error(
