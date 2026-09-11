@@ -13,34 +13,35 @@ import javax.inject.Singleton
 private val Context.credentialDataStore by preferencesDataStore(name = "dexxicon_credentials")
 
 /**
- * Per-server secret storage. Values are AES-GCM encrypted by [CryptoStore] before hitting
- * disk; the DataStore only ever holds ciphertext.
+ * Android [actual]: values are AES-GCM encrypted by [CryptoStore] before hitting disk; the
+ * DataStore only ever holds ciphertext (unlike the iOS actual, which needs no separate
+ * cipher — see the [expect] declaration).
  */
 @Singleton
-class CredentialStore @Inject constructor(
+actual class CredentialStore @Inject constructor(
     @ApplicationContext private val context: Context,
     private val cryptoStore: CryptoStore,
 ) {
 
-    suspend fun putPassword(serverId: String, password: String) =
+    actual suspend fun putPassword(serverId: String, password: String) =
         put(passwordKey(serverId), password)
 
-    suspend fun getPassword(serverId: String): String? =
+    actual suspend fun getPassword(serverId: String): String? =
         get(passwordKey(serverId))
 
-    suspend fun putRefreshToken(serverId: String, token: String) =
+    actual suspend fun putRefreshToken(serverId: String, token: String) =
         put(refreshKey(serverId), token)
 
-    suspend fun getRefreshToken(serverId: String): String? =
+    actual suspend fun getRefreshToken(serverId: String): String? =
         get(refreshKey(serverId))
 
-    suspend fun putSyncSecret(serverId: String, providerKey: String, secret: String) =
+    actual suspend fun putSyncSecret(serverId: String, providerKey: String, secret: String) =
         put(syncKey(serverId, providerKey), secret)
 
-    suspend fun getSyncSecret(serverId: String, providerKey: String): String? =
+    actual suspend fun getSyncSecret(serverId: String, providerKey: String): String? =
         get(syncKey(serverId, providerKey))
 
-    suspend fun clear(serverId: String) {
+    actual suspend fun clear(serverId: String) {
         context.credentialDataStore.edit { prefs ->
             prefs.asMap().keys
                 .filter { it.name.startsWith("$serverId$DELIMITER") }

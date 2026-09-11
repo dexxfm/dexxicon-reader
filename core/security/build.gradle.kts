@@ -1,23 +1,39 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
-    alias(libs.plugins.android.library)
-    alias(libs.plugins.hilt)
-    alias(libs.plugins.ksp)
+    alias(libs.plugins.kotlin.multiplatform)
+    alias(libs.plugins.android.kotlin.multiplatform.library)
 }
 
-apply(from = "$rootDir/gradle/android-common.gradle")
+// KMP. commonMain declares the CredentialStore contract; androidMain keeps today's
+// DataStore + CryptoStore (AES-GCM, AndroidKeyStore) implementation unchanged. iosMain
+// stores directly in the Keychain (already encrypted at rest by the OS, so no separate
+// cipher needed there) via `multiplatform-settings`'s KeychainSettings — CryptoStore itself
+// stays Android-only, since nothing on iOS calls it.
+kotlin {
+    androidLibrary {
+        namespace = "net.dexxicon.reader.core.security"
+        compileSdk = 37
+        minSdk = 29
+        compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+    }
+    // No jvm() target: CredentialStore is genuinely Android- or iOS-specific (DataStore vs
+    // Keychain) with no meaningful plain-JVM implementation, unlike :core:common/:core:model
+    // which are pure enough to serve one.
+    iosArm64()
+    iosSimulatorArm64()
 
-android {
-    namespace = "net.dexxicon.reader.core.security"
-}
-
-dependencies {
-    implementation(project(":core:common"))
-    implementation(libs.androidx.datastore.preferences)
-    implementation(libs.kotlinx.coroutines.android)
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
-
-    testImplementation(libs.junit)
-    testImplementation(libs.truth)
-    testImplementation(libs.kotlinx.coroutines.test)
+    sourceSets {
+        commonMain.dependencies {
+            implementation(project(":core:common"))
+        }
+        androidMain.dependencies {
+            implementation(libs.androidx.datastore.preferences)
+            implementation(libs.kotlinx.coroutines.android)
+            implementation(libs.hilt.android)
+        }
+        iosMain.dependencies {
+            implementation(libs.multiplatform.settings)
+        }
+    }
 }
