@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
@@ -81,6 +82,11 @@ fun View.pageSnapshot(): ImageBitmap? {
  * @param onTurn called with `forward = true` for a left swipe; **returns whether the navigator
  *   actually moved** (false at the first / last page). The caller moves the navigator with no
  *   animation of its own — this gesture owns the settle.
+ * @param canTurn checked once, right before a drag would otherwise be claimed, with the
+ *   direction and the point the gesture started at. Return false to leave every event for
+ *   this gesture unconsumed instead — e.g. a pinch-zoomed page that still has room to pan
+ *   further in that direction should keep panning, not turn. Defaults to always allowing
+ *   the turn (the behaviour before this parameter existed).
  */
 fun Modifier.pageTurnGesture(
     state: PageTurnState,
@@ -88,12 +94,14 @@ fun Modifier.pageTurnGesture(
     commitFraction: Float,
     snapshot: () -> ImageBitmap?,
     onTurn: (forward: Boolean) -> Boolean,
+    canTurn: (forward: Boolean, touchX: Float, touchY: Float) -> Boolean = { _, _, _ -> true },
 ): Modifier = composed {
     if (!enabled) return@composed this
     val scope = rememberCoroutineScope()
     val turn by rememberUpdatedState(onTurn)
     val grab by rememberUpdatedState(snapshot)
     val commit by rememberUpdatedState(commitFraction)
+    val allowTurn by rememberUpdatedState(canTurn)
     val density = LocalDensity.current
     val flickVelocityPxPerSec = with(density) { 450.dp.toPx() }
     val shadowPx = with(density) { 20.dp.toPx() }
@@ -143,8 +151,12 @@ fun Modifier.pageTurnGesture(
                 // where the turn was a no-op — then the still just springs back, nothing to undo).
                 var turnedForward: Boolean? = null
                 var gen = 0
-                var startMs = 0L
                 var lastX = down.position.x
+                // Recency-weighted, not a flat average over the whole drag — a real flick
+                // (drag a little, then whip the finger away) needs the *release* speed, and
+                // an average from claim to release dilutes that whip with the slower lead-in.
+                val velocityTracker = VelocityTracker()
+                velocityTracker.addPosition(down.uptimeMillis, down.position)
 
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -152,17 +164,20 @@ fun Modifier.pageTurnGesture(
                     if (change == null || !change.pressed) break
                     if (!claimed && event.changes.count { it.pressed } > 1) break // let pinch through
 
+                    velocityTracker.addPosition(change.uptimeMillis, change.position)
                     val d = change.positionChange()
                     totalX += d.x
                     totalY += d.y
 
                     if (!claimed) {
                         if (abs(totalX) > slop && abs(totalX) > abs(totalY) * 1.4f) {
+                            val forward = totalX < 0
+                            if (!allowTurn(forward, down.position.x, down.position.y)) {
+                                break // e.g. a zoomed page with room to pan this way — let it
+                            }
                             claimed = true
-                            startMs = System.currentTimeMillis()
                             lastX = change.position.x
                             gen = ++state.generation
-                            val forward = totalX < 0
                             state.outgoing = grab()
                             scope.launch { state.anim.snapTo(0f) }
                             // Move the navigator now, hidden under the still, so the drag
@@ -183,9 +198,8 @@ fun Modifier.pageTurnGesture(
 
                 if (claimed) {
                     val offset = state.anim.value
-                    val elapsedMs = (System.currentTimeMillis() - startMs).coerceAtLeast(1L)
-                    val velocity = abs(offset) / elapsedMs * 1000f
-                    val flick = velocity >= flickVelocityPxPerSec && abs(offset) >= flickDistancePx
+                    val velocityX = velocityTracker.calculateVelocity().x
+                    val flick = abs(velocityX) >= flickVelocityPxPerSec && abs(offset) >= flickDistancePx
                     val tf = turnedForward
                     val stands = when (tf) {
                         true -> offset <= -width * commit || (flick && offset < 0f)
