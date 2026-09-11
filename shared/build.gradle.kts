@@ -51,6 +51,10 @@ kotlin {
             // identically on Android and iOS. See the libs.versions.toml doc comment.
             implementation(libs.kotlincrypto.hash.sha2)
             implementation(libs.kotlincrypto.random)
+            // Cover images (issue #78) — the Ktor fetcher reuses AppContainer's own
+            // authenticated HttpClient rather than a second, unauthenticated one.
+            implementation(libs.coil.compose)
+            implementation(libs.coil.network.ktor3)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)

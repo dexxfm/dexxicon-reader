@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -33,9 +34,12 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.toRoute
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import net.dexxicon.reader.core.model.Server
+import net.dexxicon.reader.shared.catalog.BookDetailScreen
+import net.dexxicon.reader.shared.catalog.BooksScreen
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.servers.AddServerState
 import net.dexxicon.reader.shared.servers.SsoState
@@ -43,11 +47,14 @@ import net.dexxicon.reader.shared.servers.TestState
 import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 
 // Phase 2: the real app shell — a servers list (with a "no servers yet" empty state) behind a
-// NavHost, and an add-server form (native login, Slice 1 issue #62; SSO WebView, Slice 2
-// issue #70) wired to the Phase 1 data layer via [AppContainer]. Renders identically on
-// Android ([SharedPreviewActivity], debug-only) and iOS ([MainViewController]).
+// NavHost, an add-server form (native login, Slice 1 issue #62; SSO WebView, Slice 2 issue
+// #70), and read-only catalog browsing (issue #78) — wired to the Phase 1/2 data layer via
+// [AppContainer]. Renders identically on Android ([SharedPreviewActivity], debug-only) and
+// iOS ([MainViewController]).
 @Serializable private object ServersRoute
 @Serializable private object AddServerRoute
+@Serializable private data class BooksRoute(val serverId: String)
+@Serializable private data class BookDetailRoute(val serverId: String, val bookId: String)
 
 @Composable
 fun App(container: AppContainer) {
@@ -58,6 +65,7 @@ fun App(container: AppContainer) {
                 ServersScreen(
                     container = container,
                     onAddServer = { nav.navigate(AddServerRoute) },
+                    onOpenServer = { serverId -> nav.navigate(BooksRoute(serverId)) },
                 )
             }
             composable<AddServerRoute> {
@@ -67,13 +75,35 @@ fun App(container: AppContainer) {
                     onSaved = { nav.popBackStack() },
                 )
             }
+            composable<BooksRoute> { entry ->
+                val route = entry.toRoute<BooksRoute>()
+                BooksScreen(
+                    container = container,
+                    serverId = route.serverId,
+                    onBack = { nav.popBackStack() },
+                    onOpenBook = { bookId -> nav.navigate(BookDetailRoute(route.serverId, bookId)) },
+                )
+            }
+            composable<BookDetailRoute> { entry ->
+                val route = entry.toRoute<BookDetailRoute>()
+                BookDetailScreen(
+                    container = container,
+                    serverId = route.serverId,
+                    bookId = route.bookId,
+                    onBack = { nav.popBackStack() },
+                )
+            }
         }
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ServersScreen(container: AppContainer, onAddServer: () -> Unit) {
+private fun ServersScreen(
+    container: AppContainer,
+    onAddServer: () -> Unit,
+    onOpenServer: (serverId: String) -> Unit,
+) {
     val servers by container.serverRepository.servers.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
     var pendingDelete by remember { mutableStateOf<Server?>(null) }
@@ -91,6 +121,7 @@ private fun ServersScreen(container: AppContainer, onAddServer: () -> Unit) {
                         trailingContent = {
                             TextButton(onClick = { pendingDelete = server }) { Text("Remove") }
                         },
+                        modifier = Modifier.clickable { onOpenServer(server.id) },
                     )
                     HorizontalDivider()
                 }

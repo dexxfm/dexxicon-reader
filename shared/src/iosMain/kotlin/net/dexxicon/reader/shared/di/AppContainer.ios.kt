@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared.di
 
+import coil3.PlatformContext as CoilPlatformContext
 import io.ktor.client.engine.darwin.Darwin
 import kotlinx.coroutines.Dispatchers
 import net.dexxicon.reader.core.database.finish
@@ -25,5 +26,8 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
         credentialStore = credentialStore,
         database = database,
         io = Dispatchers.Default,
+        // Coil's non-Android PlatformContext is a plain singleton — nothing to configure,
+        // unlike Android's (which really is a Context).
+        coilPlatformContext = CoilPlatformContext.INSTANCE,
     )
 }
