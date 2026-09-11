@@ -14,15 +14,13 @@ import kotlinx.coroutines.flow.callbackFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-enum class NetworkStatus { AVAILABLE, UNMETERED, UNAVAILABLE }
-
 @Singleton
-class ConnectivityMonitor @Inject constructor(
+actual class ConnectivityMonitor @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     private val manager = context.getSystemService(ConnectivityManager::class.java)
 
-    val status: Flow<NetworkStatus> = callbackFlow {
+    actual val status: Flow<NetworkStatus> = callbackFlow {
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onCapabilitiesChanged(network: Network, caps: NetworkCapabilities) {
                 trySend(caps.toStatus())
@@ -43,7 +41,7 @@ class ConnectivityMonitor @Inject constructor(
         awaitClose { manager.unregisterNetworkCallback(callback) }
     }.conflate().distinctUntilChanged()
 
-    fun currentStatus(): NetworkStatus {
+    actual fun currentStatus(): NetworkStatus {
         val caps = manager.getNetworkCapabilities(manager.activeNetwork)
             ?: return NetworkStatus.UNAVAILABLE
         return caps.toStatus()

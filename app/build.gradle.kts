@@ -117,6 +117,9 @@ dependencies {
     implementation(project(":core:media"))
 
     implementation(libs.okhttp)
+    // NetworkModule (moved here from :core:network — Hilt can't apply to a KMP module)
+    // builds the HttpLoggingInterceptor directly, so it needs this on :app's own classpath.
+    implementation(libs.okhttp.logging)
     implementation(libs.coil.network.okhttp)
     // Supplies the AppCompat theme attrs the Cast MediaRouteButton dialogs need.
     implementation(libs.androidx.appcompat)

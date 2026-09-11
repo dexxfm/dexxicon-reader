@@ -1,6 +1,7 @@
 package net.dexxicon.reader.core.network
 
 import android.util.Log
+import io.ktor.http.Url
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.net.HttpURLConnection
@@ -25,7 +26,10 @@ class AuthInterceptor @Inject constructor(
         }
 
         val headerProvider = provider.get()
-        val header = headerProvider.authHeader(original.url)
+        // AuthHeaderProvider is now KMP (io.ktor.http.Url), so the OkHttp-typed request URL
+        // this interceptor operates on needs converting at this one boundary.
+        val ktorUrl = Url(original.url.toString())
+        val header = headerProvider.authHeader(ktorUrl)
             ?: return chain.proceed(original)
 
         val response = chain.proceed(original.newBuilder().header(HEADER, header).build())
@@ -34,7 +38,7 @@ class AuthInterceptor @Inject constructor(
             return response
         }
 
-        val refreshed = headerProvider.refreshAuthHeader(original.url)
+        val refreshed = headerProvider.refreshAuthHeader(ktorUrl)
         if (refreshed == null) {
             Log.i(TAG, "401 on ${original.url.encodedPath} and no refreshed token")
             return response
