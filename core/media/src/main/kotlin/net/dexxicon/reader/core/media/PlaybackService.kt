@@ -76,6 +76,7 @@ class PlaybackService : MediaLibraryService() {
     private var exoPlayer: ExoPlayer? = null
     private var castPlayer: CastPlayer? = null
     private var positionWriter: ServicePositionWriter? = null
+    private var chapterUpdater: ChapterMetadataUpdater? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     override fun onCreate() {
@@ -155,6 +156,7 @@ class PlaybackService : MediaLibraryService() {
             .build()
 
         positionWriter = ServicePositionWriter(player, progressSink, serviceScope).apply { attach() }
+        chapterUpdater = ChapterMetadataUpdater(player, serviceScope).apply { attach() }
 
         initCast()
     }
@@ -223,12 +225,15 @@ class PlaybackService : MediaLibraryService() {
         session.player = to
         positionWriter?.detach()
         positionWriter = ServicePositionWriter(to, progressSink, serviceScope).apply { attach() }
+        chapterUpdater?.detach()
+        chapterUpdater = ChapterMetadataUpdater(to, serviceScope).apply { attach() }
 
         if (mediaId == null) return
         serviceScope.launch {
             val playable = runCatching { contentSource.resolve(mediaId) }.getOrNull() ?: return@launch
             val uri = (if (toCast) playable.castUri else playable.uri) ?: playable.uri
             android.util.Log.i("PlaybackService", "swapPlayer -> uri=${uri.take(80)} mime=${playable.mimeType}")
+            val chapterIndex = playable.chapters.indexOfLast { it.startMs <= positionMs }.coerceAtLeast(0)
             val item = MediaItem.Builder()
                 .setUri(uri)
                 .setMediaId(mediaId)
@@ -236,9 +241,15 @@ class PlaybackService : MediaLibraryService() {
                 .setMediaMetadata(
                     MediaMetadata.Builder()
                         .setTitle(playable.title)
-                        .setArtist(playable.author)
+                        .setArtist(
+                            playable.chapters.getOrNull(chapterIndex)
+                                ?.let { chapterLabel(chapterIndex, it.title) }
+                                ?: playable.author,
+                        )
+                        .setSubtitle(playable.author)
                         .setArtworkUri(playable.artworkUri?.let(Uri::parse))
                         .setIsPlayable(true)
+                        .apply { setExtras(Bundle().putChapters(playable.chapters)) }
                         .build(),
                 )
                 .build()
@@ -299,6 +310,8 @@ class PlaybackService : MediaLibraryService() {
     override fun onDestroy() {
         positionWriter?.detach()
         positionWriter = null
+        chapterUpdater?.detach()
+        chapterUpdater = null
         serviceScope.cancel()
         castPlayer?.setSessionAvailabilityListener(null)
         mediaSession?.release()
@@ -625,6 +638,10 @@ private class AutoLibraryCallback(
 
     private suspend fun playableItem(p: PlayableAudiobook): MediaItem {
         val art = p.artworkUri?.let { url -> artworkFor(url) }
+        // Chapter matching the resume position, so the car shows the right chapter from the
+        // moment playback starts rather than waiting for the first position tick.
+        val chapterIndex = p.chapters.indexOfLast { it.startMs <= p.startPositionMs }.coerceAtLeast(0)
+        val chapterTitle = p.chapters.getOrNull(chapterIndex)
         return MediaItem.Builder()
             .setMediaId(p.mediaId)
             .setUri(p.uri)
@@ -633,11 +650,19 @@ private class AutoLibraryCallback(
                     .setIsPlayable(true)
                     .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
                     .setTitle(p.title)
-                    .setArtist(p.author)
+                    // Android Auto/Automotive's now-playing template renders the legacy
+                    // MediaDescription's subtitle from ARTIST, not from MediaMetadata's own
+                    // `subtitle` field — so the chapter (when there is one) has to go here to
+                    // actually show up in the car. The author moves to `subtitle` instead,
+                    // which non-legacy Media3 surfaces (and our own in-app player) can still
+                    // read directly.
+                    .setArtist(chapterTitle?.let { chapterLabel(chapterIndex, it.title) } ?: p.author)
+                    .setSubtitle(p.author)
                     .apply {
                         if (art != null) setArtworkData(art, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
                         // Fallback for any surface that fetches the URI itself.
                         setArtworkUri(p.artworkUri?.let(browseArtworkUri))
+                        setExtras(Bundle().putChapters(p.chapters))
                     }
                     .build(),
             )

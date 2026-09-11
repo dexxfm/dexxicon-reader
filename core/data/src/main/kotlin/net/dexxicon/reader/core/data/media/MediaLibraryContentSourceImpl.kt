@@ -218,6 +218,7 @@ class MediaLibraryContentSourceImpl @Inject constructor(
             // (the Cast receiver can't send our Authorization header).
             castUri = if (localFile == null) castUrlFor(serverId, acquisition.href) else null,
             mimeType = castMimeType(acquisition.mediaType),
+            chapters = detail.audio?.chapters ?: emptyList(),
         )
     }
 
