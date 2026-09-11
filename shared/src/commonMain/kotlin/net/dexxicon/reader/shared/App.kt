@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -37,6 +38,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.shared.catalog.BookDetailScreen
 import net.dexxicon.reader.shared.catalog.BooksScreen
@@ -54,6 +56,7 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 // iOS ([MainViewController]).
 @Serializable private object ServersRoute
 @Serializable private object AddServerRoute
+@Serializable private data class EditServerRoute(val serverId: String)
 @Serializable private object BrowseRoute
 @Serializable private data class BooksRoute(val serverId: String)
 @Serializable private data class BookDetailRoute(val serverId: String, val bookId: String)
@@ -67,6 +70,7 @@ fun App(container: AppContainer) {
                 ServersScreen(
                     container = container,
                     onAddServer = { nav.navigate(AddServerRoute) },
+                    onEditServer = { serverId -> nav.navigate(EditServerRoute(serverId)) },
                     onOpenServer = { serverId -> nav.navigate(BooksRoute(serverId)) },
                     onBrowseAll = { nav.navigate(BrowseRoute) },
                 )
@@ -74,6 +78,16 @@ fun App(container: AppContainer) {
             composable<AddServerRoute> {
                 AddServerScreen(
                     container = container,
+                    editingId = null,
+                    onBack = { nav.popBackStack() },
+                    onSaved = { nav.popBackStack() },
+                )
+            }
+            composable<EditServerRoute> { entry ->
+                val route = entry.toRoute<EditServerRoute>()
+                AddServerScreen(
+                    container = container,
+                    editingId = route.serverId,
                     onBack = { nav.popBackStack() },
                     onSaved = { nav.popBackStack() },
                 )
@@ -112,6 +126,7 @@ fun App(container: AppContainer) {
 private fun ServersScreen(
     container: AppContainer,
     onAddServer: () -> Unit,
+    onEditServer: (serverId: String) -> Unit,
     onOpenServer: (serverId: String) -> Unit,
     onBrowseAll: () -> Unit,
 ) {
@@ -137,7 +152,16 @@ private fun ServersScreen(
                         headlineContent = { Text(server.displayName) },
                         supportingContent = { Text(server.baseUrl) },
                         trailingContent = {
-                            TextButton(onClick = { pendingDelete = server }) { Text("Remove") }
+                            Row {
+                                // Editing an OIDC server needs the native form's `reauth`
+                                // flow (re-running SSO to refresh a token) — issue #90
+                                // deliberately doesn't cover that yet, so only a NATIVE-auth
+                                // server gets an Edit action here.
+                                if (server.authMode == AuthMode.NATIVE) {
+                                    TextButton(onClick = { onEditServer(server.id) }) { Text("Edit") }
+                                }
+                                TextButton(onClick = { pendingDelete = server }) { Text("Remove") }
+                            }
                         },
                         modifier = Modifier.clickable { onOpenServer(server.id) },
                     )
@@ -192,10 +216,21 @@ private fun EmptyServersState(modifier: Modifier, onAddServer: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddServerScreen(container: AppContainer, onBack: () -> Unit, onSaved: () -> Unit) {
+private fun AddServerScreen(
+    container: AppContainer,
+    editingId: String?,
+    onBack: () -> Unit,
+    onSaved: () -> Unit,
+) {
     val scope = rememberCoroutineScope()
-    val state = remember {
-        AddServerState(container.serverProber, container.serverRepository, container.oidcAuthenticator, scope)
+    val state = remember(editingId) {
+        AddServerState(
+            container.serverProber,
+            container.serverRepository,
+            container.oidcAuthenticator,
+            scope,
+            editingId = editingId,
+        )
     }
 
     // While the browser step is in progress, the SSO WebView replaces the form entirely —
@@ -217,7 +252,7 @@ private fun AddServerScreen(container: AppContainer, onBack: () -> Unit, onSaved
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Add server") },
+                title = { Text(if (state.isEditing) "Edit server" else "Add server") },
                 navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
             )
         },
@@ -235,13 +270,17 @@ private fun AddServerScreen(container: AppContainer, onBack: () -> Unit, onSaved
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            TextButton(onClick = state::discoverSso, enabled = state.baseUrl.isNotBlank()) {
-                Text("Sign in with SSO instead")
-            }
-            when (sso) {
-                SsoState.Discovering -> CircularProgressIndicator(Modifier.padding(8.dp))
-                is SsoState.Error -> Text(sso.message, color = MaterialTheme.colorScheme.error)
-                else -> Unit
+            // SSO sign-in only applies to adding a new server — editing one is scoped to
+            // NATIVE-auth servers only for now (issue #90), so there's no OIDC path to offer.
+            if (!state.isEditing) {
+                TextButton(onClick = state::discoverSso, enabled = state.baseUrl.isNotBlank()) {
+                    Text("Sign in with SSO instead")
+                }
+                when (sso) {
+                    SsoState.Discovering -> CircularProgressIndicator(Modifier.padding(8.dp))
+                    is SsoState.Error -> Text(sso.message, color = MaterialTheme.colorScheme.error)
+                    else -> Unit
+                }
             }
 
             HorizontalDivider()
@@ -256,7 +295,7 @@ private fun AddServerScreen(container: AppContainer, onBack: () -> Unit, onSaved
             OutlinedTextField(
                 value = state.password,
                 onValueChange = state::onPasswordChange,
-                label = { Text("Password") },
+                label = { Text(if (state.isEditing) "Password (leave blank to keep current)" else "Password") },
                 singleLine = true,
                 visualTransformation = PasswordVisualTransformation(),
                 modifier = Modifier.fillMaxWidth(),
