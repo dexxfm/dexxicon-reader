@@ -10,6 +10,16 @@ settings:
     SWIFT_VERSION: "5.0"
     ENABLE_USER_SCRIPT_SANDBOXING: NO
 
+# issue #101: Readium's Swift Toolkit (readium/swift-toolkit, BSD-3-Clause) — the iOS sibling
+# of the Readium Kotlin Toolkit :app already uses on Android. No KMP-shared reading engine
+# exists (Readium Kotlin has no iOS target at all — see the "iOS Reading Support" proposal),
+# so this is real, separate native Swift, pinned to the current stable release. Deployment
+# target above (iOS 16) already clears its minimum (iOS 15).
+packages:
+  ReadiumSwiftToolkit:
+    url: https://github.com/readium/swift-toolkit.git
+    exactVersion: 3.11.0
+
 targets:
   iosApp:
     type: application
@@ -28,6 +38,13 @@ targets:
           - $(inherited)
           - -framework
           - SharedKit
+    dependencies:
+      - package: ReadiumSwiftToolkit
+        product: ReadiumShared
+      - package: ReadiumSwiftToolkit
+        product: ReadiumStreamer
+      - package: ReadiumSwiftToolkit
+        product: ReadiumNavigator
     preBuildScripts:
       - name: Build the shared Kotlin framework
         basedOnDependencyAnalysis: false
