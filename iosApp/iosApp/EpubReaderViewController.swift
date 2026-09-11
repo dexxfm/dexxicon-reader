@@ -53,6 +53,16 @@ final class EpubReaderViewController: UIViewController {
 
     @MainActor
     private func openPublication() async {
+        // AssetRetriever.retrieve(url:) takes Readium's own AbsoluteURL protocol, not
+        // Foundation's URL — HTTPURL(string:) is Readium's real, documented constructor for
+        // a remote http(s) URL (confirmed against ios-ci's actual compiler error, not
+        // guessed a second time: `argument type 'URL' does not conform to expected type
+        // 'AbsoluteURL'`).
+        guard let httpURL = HTTPURL(string: url.absoluteString) else {
+            showError("Couldn't open this book.")
+            return
+        }
+
         // additionalHeaders applies to every request this client makes — the same one-time
         // attachment Android's authenticated OkHttp client does, just via Readium Swift's own
         // HTTP client instead of Ktor.
@@ -68,7 +78,7 @@ final class EpubReaderViewController: UIViewController {
             )
         )
 
-        guard case let .success(asset) = await assetRetriever.retrieve(url: url) else {
+        guard case let .success(asset) = await assetRetriever.retrieve(url: httpURL) else {
             showError("Couldn't open this book.")
             return
         }
