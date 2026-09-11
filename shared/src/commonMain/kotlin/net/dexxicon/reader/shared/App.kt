@@ -153,12 +153,13 @@ private fun ServersScreen(
                         supportingContent = { Text(server.baseUrl) },
                         trailingContent = {
                             Row {
-                                // Editing an OIDC server needs the native form's `reauth`
-                                // flow (re-running SSO to refresh a token) — issue #90
-                                // deliberately doesn't cover that yet, so only a NATIVE-auth
-                                // server gets an Edit action here.
-                                if (server.authMode == AuthMode.NATIVE) {
-                                    TextButton(onClick = { onEditServer(server.id) }) { Text("Edit") }
+                                // NATIVE opens the field-editing form (#90); OIDC opens the
+                                // reauth-only screen instead (#94) — a BASIC server (generic
+                                // OPDS) gets neither, :shared has no add-flow for those.
+                                when (server.authMode) {
+                                    AuthMode.NATIVE -> TextButton(onClick = { onEditServer(server.id) }) { Text("Edit") }
+                                    AuthMode.OIDC -> TextButton(onClick = { onEditServer(server.id) }) { Text("Sign in again") }
+                                    AuthMode.BASIC -> Unit
                                 }
                                 TextButton(onClick = { pendingDelete = server }) { Text("Remove") }
                             }
@@ -249,6 +250,58 @@ private fun AddServerScreen(
         return
     }
 
+    // While an OIDC edit target is loading, its auth mode isn't known yet — wait rather than
+    // flash the native/password form for what's about to turn out to be a reauth screen
+    // (issue #94).
+    if (state.isEditing && state.editingAuthMode == null) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Edit server") },
+                    navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
+                )
+            },
+        ) { padding ->
+            Column(Modifier.fillMaxSize().padding(padding), verticalArrangement = Arrangement.Center) {
+                CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+            }
+        }
+        return
+    }
+
+    // Reauth-only for an existing OIDC server (issue #94) — no native/password fields apply,
+    // just re-run the SSO handshake against the same server id. See AddServerState's doc
+    // comment for why this is manual-only, not the native app's auto-detected-expiry flow.
+    if (state.isEditing && state.editingAuthMode == AuthMode.OIDC) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text("Sign in again") },
+                    navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
+                )
+            },
+        ) { padding ->
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    "${state.displayName} uses single sign-on. Sign in again to refresh its session.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Button(onClick = state::discoverSso, enabled = state.baseUrl.isNotBlank()) {
+                    Text("Sign in with SSO")
+                }
+                when (sso) {
+                    SsoState.Discovering -> CircularProgressIndicator(Modifier.padding(8.dp))
+                    is SsoState.Error -> Text(sso.message, color = MaterialTheme.colorScheme.error)
+                    else -> Unit
+                }
+            }
+        }
+        return
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -270,8 +323,8 @@ private fun AddServerScreen(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            // SSO sign-in only applies to adding a new server — editing one is scoped to
-            // NATIVE-auth servers only for now (issue #90), so there's no OIDC path to offer.
+            // SSO sign-in only applies to adding a new server — an existing OIDC server uses
+            // the reauth-only branch above instead (issue #94).
             if (!state.isEditing) {
                 TextButton(onClick = state::discoverSso, enabled = state.baseUrl.isNotBlank()) {
                     Text("Sign in with SSO instead")
