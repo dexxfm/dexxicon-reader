@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.11.9 — 2026-09-10
+
+- **New: Smart zoom for comics.** An optional "guided view" that auto-zooms into each panel
+  in reading order, then steps to the next on a tap or swipe, before turning the page —
+  falls back to the plain full page whenever a page's panels can't be confidently detected.
+  Paired with a "Right-to-left (manga)" setting for panel order and page-turn direction.
+  Both live in **Settings → Book Defaults → Books → Comics**.
+- **New: Book Defaults settings.** A dedicated Settings section for the app-wide defaults
+  every book opens with — default audiobook speed and skip-silence under **Audiobooks**;
+  background, page fit, reading mode, page-turn swipe sensitivity and tap-to-turn under
+  **Books**, split further into EPUB/Comics/PDF specifics.
+- **Fixed: audiobook skip-silence and speed didn't reflect what was actually applied.**
+  Opening a new audiobook silently reset the displayed speed and skip-silence state to
+  defaults even though the real, saved preference was still in effect underneath — the UI
+  and the audio just disagreed. Playback speed also no longer leaks from one audiobook into
+  the next; changing it now sets the app-wide default, same as skip-silence already did.
+
 ## 0.11.8 — 2026-09-10
 
 - **Fixed: "Sort by series" broke the Library on BookOrbit.** Choosing the *series* sort
