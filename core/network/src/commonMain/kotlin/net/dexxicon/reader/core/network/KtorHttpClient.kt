@@ -1,7 +1,7 @@
 package net.dexxicon.reader.core.network
 
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.HttpClientEngineFactory
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.HttpSend
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.plugin
@@ -11,19 +11,26 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 
 /**
- * Not yet wired into any live traffic on either platform — `:core:serverapi` still talks
- * through Retrofit + OkHttp (Android's [AuthInterceptor]/[PersistentCookieJar] included), and
- * nothing on iOS calls this yet either. This exists so `:core:serverapi`'s future Ktor port
- * has a client + auth handling ready to build on, without carrying any regression risk to
- * `:app` today — nothing currently depends on it.
+ * Live for the sign-in path (`:core:serverapi`'s `NativeAuthApi`/`OidcApi`, issue #52) —
+ * everything else in `:core:serverapi` still talks through Retrofit + OkHttp for now.
+ *
+ * Takes an already-built [HttpClientEngine] (not a factory) rather than picking Android's
+ * OkHttp engine or iOS's Darwin engine itself, so the caller keeps full control over
+ * engine-specific config — on Android, `:app`'s Hilt module builds the OkHttp engine with
+ * `preconfigured` set to the same [okhttp3.OkHttpClient] Retrofit and Readium share, so this
+ * client's traffic gets the identical cookie jar (BookOrbit's HttpOnly refresh-token cookie
+ * depends on this) and logging, without wiring either up twice.
  */
 fun createHttpClient(
-    engine: HttpClientEngineFactory<*>,
+    engine: HttpClientEngine,
     authHeaderProvider: AuthHeaderProvider,
 ): HttpClient {
     val client = HttpClient(engine) {
+        // Throw ClientRequestException/ServerResponseException (both ResponseException) on
+        // any non-2xx, matching Retrofit's HttpException-on-error-status behaviour.
+        expectSuccess = true
         install(ContentNegotiation) {
-            json(Json { ignoreUnknownKeys = true })
+            json(Json { ignoreUnknownKeys = true; isLenient = true; explicitNulls = false })
         }
     }
     client.installAuthHeaderPlugin(authHeaderProvider)

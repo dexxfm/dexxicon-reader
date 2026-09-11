@@ -1,10 +1,14 @@
 package net.dexxicon.reader.core.serverapi.oidc
 
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.Url
+import net.dexxicon.reader.core.serverapi.auth.LoginResponse
 
 /**
  * OIDC endpoints for the two server families. Both use an https/http redirect to the
@@ -19,29 +23,24 @@ import retrofit2.http.Url
  *   GET  /api/v1/app-settings/oidc/providers/public  -> [ { slug, enabled, clientId, scopes } ]
  *   POST /api/v1/auth/oidc/{slug}/state              -> { state, authorizationEndpoint }
  */
-interface OidcApi {
+class OidcApi(private val client: HttpClient) {
 
-    @GET
-    suspend fun bookloreSettings(@Url url: String): BooklorePublicSettings
+    suspend fun bookloreSettings(url: String): BooklorePublicSettings = client.get(url).body()
 
-    @GET
-    suspend fun bookloreState(@Url url: String): OidcStateResponse
+    suspend fun bookloreState(url: String): OidcStateResponse = client.get(url).body()
 
-    @GET
-    suspend fun openIdConfiguration(@Url url: String): OpenIdConfiguration
+    suspend fun openIdConfiguration(url: String): OpenIdConfiguration = client.get(url).body()
 
-    @GET
-    suspend fun bookorbitProviders(@Url url: String): List<OidcProvider>
+    suspend fun bookorbitProviders(url: String): List<OidcProvider> = client.get(url).body()
 
-    @POST
-    suspend fun bookorbitState(@Url url: String): OidcStateResponse
+    suspend fun bookorbitState(url: String): OidcStateResponse = client.post(url).body()
 
     /** `POST /api/v1/auth/oidc/callback` — JSON body, returns access + refresh token. */
-    @POST
-    suspend fun exchangeJson(
-        @Url url: String,
-        @Body body: OidcExchangeRequest,
-    ): net.dexxicon.reader.core.serverapi.auth.LoginResponse
+    suspend fun exchangeJson(url: String, body: OidcExchangeRequest): LoginResponse =
+        client.post(url) {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
 }
 
 @Serializable

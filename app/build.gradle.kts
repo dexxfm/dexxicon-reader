@@ -115,11 +115,18 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:datastore"))
     implementation(project(":core:media"))
+    // ServerAuthModule builds NativeAuthApi/OidcApi directly (moved here from
+    // :core:serverapi — Hilt can't apply to a KMP module; see ServerAuthModule's doc comment).
+    implementation(project(":core:serverapi"))
 
     implementation(libs.okhttp)
     // NetworkModule (moved here from :core:network — Hilt can't apply to a KMP module)
     // builds the HttpLoggingInterceptor directly, so it needs this on :app's own classpath.
     implementation(libs.okhttp.logging)
+    // ServerAuthModule builds the sign-in path's Ktor client with the OkHttp engine.
+    implementation(libs.ktor.client.okhttp)
+    // ServerApiModule (moved here from :core:serverapi) builds the shared Retrofit instance.
+    implementation(libs.retrofit.kotlinx.serialization)
     implementation(libs.coil.network.okhttp)
     // Supplies the AppCompat theme attrs the Cast MediaRouteButton dialogs need.
     implementation(libs.androidx.appcompat)

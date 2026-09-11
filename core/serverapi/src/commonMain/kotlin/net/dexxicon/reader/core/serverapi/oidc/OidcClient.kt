@@ -1,13 +1,15 @@
 package net.dexxicon.reader.core.serverapi.oidc
 
+import io.ktor.client.plugins.ResponseException
+import io.ktor.client.statement.bodyAsText
+import kotlinx.io.IOException
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.serverapi.auth.NativeSession
-import retrofit2.HttpException
-import java.io.IOException
-import javax.inject.Inject
 
 /** How the browser step is run. */
 enum class OidcFlowKind {
@@ -32,7 +34,8 @@ data class OidcHandshake(
     val providerName: String?,
 )
 
-class OidcClient @Inject constructor(
+@OptIn(ExperimentalTime::class)
+class OidcClient(
     private val api: OidcApi,
 ) {
     /** Discovers OIDC config + a fresh `state` for [server]. */
@@ -66,7 +69,7 @@ class OidcClient @Inject constructor(
             NativeSession(
                 accessToken = token,
                 refreshToken = response.refreshToken,
-                expiresAtMillis = System.currentTimeMillis() +
+                expiresAtMillis = Clock.System.now().toEpochMilliseconds() +
                     ((response.expires ?: 840L) * 1000L) - 30_000L,
             ),
         )
@@ -104,7 +107,7 @@ class OidcClient @Inject constructor(
         val providers = api.bookorbitProviders(server.resolve(BOOKORBIT_PROVIDERS))
         val provider = providers.firstOrNull { it.enabled }
             ?: return Outcome.Failure(DexxiconError.Unsupported("No SSO provider is enabled"))
-        val stateResponse = api.bookorbitState(server.resolve(BOOKORBIT_STATE.format(provider.slug)))
+        val stateResponse = api.bookorbitState(server.resolve(bookorbitStatePath(provider.slug)))
         val authEndpoint = stateResponse.authorizationEndpoint
             ?: provider.authorizationEndpoint
             ?: return Outcome.Failure(DexxiconError.Parse("SSO provider is unreachable"))
@@ -139,14 +142,21 @@ class OidcClient @Inject constructor(
         }
     }
 
-    private fun Throwable.toFailure(): Outcome<Nothing> = when (this) {
-        is HttpException -> {
-            val detail = runCatching { response()?.errorBody()?.string() }.getOrNull()
-                ?.take(200)?.takeIf { it.isNotBlank() }
+    private suspend fun Throwable.toFailure(): Outcome<Nothing> = when (this) {
+        // expectSuccess = true (the shared Ktor client, :core:network's createHttpClient)
+        // throws this for any non-2xx — the Ktor equivalent of Retrofit's HttpException. The
+        // response body is still readable here; Ktor validates status before content
+        // negotiation consumes it.
+        is ResponseException -> {
+            val status = response.status.value
+            val detail = runCatching { response.bodyAsText().take(200) }.getOrNull()
+                ?.takeIf { it.isNotBlank() }
             Outcome.Failure(
-                DexxiconError.Network("SSO exchange failed (HTTP ${code()})${detail?.let { " — $it" } ?: ""}"),
+                DexxiconError.Network("SSO exchange failed (HTTP $status)${detail?.let { " — $it" } ?: ""}"),
             )
         }
+        // See NativeAuthClient's toError() for why kotlinx.io.IOException is the right
+        // multiplatform type here (it's java.io.IOException on the JVM/Android target).
         is IOException -> Outcome.Failure(DexxiconError.Network(message ?: "Network error"))
         else -> Outcome.Failure(DexxiconError.Unknown(message, this))
     }
@@ -156,10 +166,13 @@ class OidcClient @Inject constructor(
         const val BOOKLORE_STATE = "/api/v1/auth/oidc/state"
         const val BOOKLORE_WEB_CALLBACK = "/api/v1/auth/oidc/callback"
         const val BOOKORBIT_PROVIDERS = "/api/v1/app-settings/oidc/providers/public"
-        const val BOOKORBIT_STATE = "/api/v1/auth/oidc/%s/state"
         const val BOOKORBIT_CALLBACK = "/api/v1/auth/oidc/callback"
         const val OPENID_CONFIG = "/.well-known/openid-configuration"
         const val OAUTH2_CALLBACK_PATH = "/oauth2-callback"
         const val DEFAULT_SCOPES = "openid profile email"
+
+        // String.format/"%s" isn't available outside the JVM target, so this is a function
+        // rather than a format-string constant (kept as one on the Retrofit/androidMain era).
+        private fun bookorbitStatePath(slug: String) = "/api/v1/auth/oidc/$slug/state"
     }
 }

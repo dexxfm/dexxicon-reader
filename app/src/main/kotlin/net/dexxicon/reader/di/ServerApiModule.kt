@@ -1,4 +1,4 @@
-package net.dexxicon.reader.core.serverapi.di
+package net.dexxicon.reader.di
 
 import dagger.Module
 import dagger.Provides
@@ -6,12 +6,10 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
 import net.dexxicon.reader.core.network.DexxiconHttpClient
-import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
 import net.dexxicon.reader.core.serverapi.annotation.AnnotationApi
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
-import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import net.dexxicon.reader.core.serverapi.NullableBodyConverterFactory
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import net.dexxicon.reader.core.serverapi.user.NativeUserApi
@@ -21,6 +19,16 @@ import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
 import javax.inject.Singleton
 
+/**
+ * Lives in `:app` (rather than `:core:serverapi`) because Hilt modules are only compiled
+ * where the components are, and `:core:serverapi` is now a Kotlin Multiplatform module — see
+ * `NetworkModule`'s own doc comment for the full reasoning (same one applies here).
+ *
+ * Provides the Retrofit-based bindings for every API `:core:serverapi` hasn't ported to Ktor
+ * yet (issue #52) — browse/bookmark/kosync/annotation/progress/user. The sign-in path
+ * (`NativeAuthApi`/`OidcApi`, now Ktor + commonMain) is provided by [ServerAuthModule]
+ * instead.
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 object ServerApiModule {
@@ -48,16 +56,6 @@ object ServerApiModule {
             ),
         )
         .build()
-
-    @Provides
-    @Singleton
-    fun provideNativeAuthApi(retrofit: Retrofit): NativeAuthApi =
-        retrofit.create(NativeAuthApi::class.java)
-
-    @Provides
-    @Singleton
-    fun provideOidcApi(retrofit: Retrofit): OidcApi =
-        retrofit.create(OidcApi::class.java)
 
     @Provides
     @Singleton

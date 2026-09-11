@@ -1,33 +1,35 @@
 package net.dexxicon.reader.core.serverapi.auth
 
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import retrofit2.http.Body
-import retrofit2.http.POST
-import retrofit2.http.Url
 
 /**
  * Native login for both supported server families:
  *  - Grimmory / BookLore: `POST /api/v1/auth/login` -> access + refresh token, `expires` (s)
  *  - BookOrbit:            `POST /api/v1/auth/login` -> access token + `user`, no refresh
  */
-interface NativeAuthApi {
+class NativeAuthApi(private val client: HttpClient) {
 
-    @POST
-    suspend fun login(
-        @Url url: String,
-        @Body body: LoginRequest,
-    ): LoginResponse
+    suspend fun login(url: String, body: LoginRequest): LoginResponse =
+        client.post(url) {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
 
-    @POST
-    suspend fun refresh(
-        @Url url: String,
-        @Body body: RefreshRequest,
-    ): LoginResponse
+    suspend fun refresh(url: String, body: RefreshRequest): LoginResponse =
+        client.post(url) {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
 
     /** BookOrbit: refresh token travels as an HttpOnly cookie, so no request body. */
-    @POST
-    suspend fun refreshWithCookie(@Url url: String): LoginResponse
+    suspend fun refreshWithCookie(url: String): LoginResponse = client.post(url).body()
 }
 
 @Serializable
