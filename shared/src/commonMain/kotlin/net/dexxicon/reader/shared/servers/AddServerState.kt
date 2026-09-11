@@ -17,19 +17,30 @@ import net.dexxicon.reader.core.serverapi.oidc.OidcHandshake
 import net.dexxicon.reader.shared.sso.Pkce
 
 /**
- * The add-server form's state + behaviour — the shared-UI equivalent of the native
+ * The add/edit-server form's state + behaviour — the shared-UI equivalent of the native
  * `AddEditServerViewModel` (`feature/servers`), scoped down to what's actually needed here:
- * adding rather than editing, and (issue #70) only the `WEBVIEW` SSO flow — both server
- * families' handshakes always resolve to it, `CUSTOM_SCHEME`/AppAuth is never actually
- * produced (see [OidcAuthenticator]'s callers). There's no `ViewModel`/Hilt here (see
+ * (issue #70) only the `WEBVIEW` SSO flow — both server families' handshakes always resolve
+ * to it, `CUSTOM_SCHEME`/AppAuth is never actually produced (see [OidcAuthenticator]'s
+ * callers) — and (issue #90) editing only covers [AuthMode.NATIVE] servers. Editing an OIDC
+ * server would need the native form's `reauth` flow (re-running the SSO handshake to refresh
+ * an expired token) — a separate, more involved piece tied to server-side `offline_access`
+ * config, left for later. There's no `ViewModel`/Hilt here (see
  * [net.dexxicon.reader.shared.di.AppContainer]'s doc comment) — a plain class holding the
  * [scope] the caller got from `rememberCoroutineScope()` plays the same role.
+ *
+ * [editingId] (issue #90), when non-null, switches this from "add" to "edit": the constructor
+ * loads the existing [Server] from [serverRepository] and pre-fills the form, [canSave] no
+ * longer requires a fresh [test] pass first (the user may just be fixing a display name), and
+ * [save] keeps the server's existing id/type/auth-mode rather than minting a new one. A blank
+ * [password] on save means "keep the stored one" — [ServerRepository.save]'s `password` param
+ * is already nullable for exactly this.
  */
 class AddServerState(
     private val serverProber: ServerProber,
     private val serverRepository: ServerRepository,
     private val oidcAuthenticator: OidcAuthenticator,
     private val scope: CoroutineScope,
+    private val editingId: String? = null,
 ) {
     var displayName by mutableStateOf("")
         private set
@@ -48,14 +59,34 @@ class AddServerState(
 
     private var pendingPkce: Pkce? = null
 
+    /** Set once the edit target loads; null while loading and for a plain "add" form. */
+    private var loadedServer: Server? = null
+        private set
+
+    val isEditing: Boolean get() = editingId != null
+
+    init {
+        if (editingId != null) {
+            scope.launch {
+                serverRepository.get(editingId)?.let { server ->
+                    loadedServer = server
+                    displayName = server.displayName
+                    baseUrl = server.baseUrl
+                    username = server.username
+                }
+            }
+        }
+    }
+
     /** Adding a server requires a successful connection test first — same rule as the native
-     * form, so a server never gets saved with a type/auth-mode nobody actually verified. */
+     * form, so a server never gets saved with a type/auth-mode nobody actually verified.
+     * Editing doesn't — the user may not be touching the URL/credentials at all. */
     val canTest: Boolean
         get() = baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank() &&
             testState != TestState.Testing
     val canSave: Boolean
         get() = displayName.isNotBlank() && baseUrl.isNotBlank() &&
-            testState is TestState.Success && !saving
+            (isEditing || testState is TestState.Success) && !saving
 
     fun onDisplayNameChange(value: String) { displayName = value }
     fun onBaseUrlChange(value: String) {
@@ -83,20 +114,25 @@ class AddServerState(
     }
 
     fun save(onSaved: () -> Unit) {
-        val success = testState as? TestState.Success ?: return
         if (!canSave) return
+        val success = testState as? TestState.Success
         saving = true
         scope.launch {
             serverRepository.save(
                 server = Server(
-                    id = "",
+                    id = editingId ?: "",
                     displayName = displayName.trim(),
                     baseUrl = normalizeUrl(baseUrl),
-                    type = success.type,
-                    authMode = AuthMode.NATIVE,
+                    type = success?.type ?: loadedServer?.type ?: ServerType.GENERIC,
+                    // Keep an existing server's auth mode — editing a field shouldn't
+                    // silently downgrade an SSO server to password auth (moot for now since
+                    // OIDC servers aren't editable here yet, but matches the native form).
+                    authMode = loadedServer?.authMode ?: AuthMode.NATIVE,
                     username = username.trim(),
                 ),
-                password = password,
+                // Blank means "keep the stored password" when editing — never overwrite a
+                // real secret with an empty one just because the field was left untouched.
+                password = password.takeIf { it.isNotBlank() },
             )
             saving = false
             onSaved()
