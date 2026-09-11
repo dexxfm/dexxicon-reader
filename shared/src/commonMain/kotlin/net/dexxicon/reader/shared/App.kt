@@ -49,6 +49,7 @@ import net.dexxicon.reader.shared.servers.ServersState
 import net.dexxicon.reader.shared.servers.SsoState
 import net.dexxicon.reader.shared.servers.TestState
 import net.dexxicon.reader.shared.sso.SsoWebViewScreen
+import net.dexxicon.reader.shared.theme.DexxiconTheme
 
 // Phase 2: the real app shell — a servers list (with a "no servers yet" empty state) behind a
 // NavHost, an add-server form (native login, Slice 1 issue #62; SSO WebView, Slice 2 issue
@@ -64,7 +65,7 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 
 @Composable
 fun App(container: AppContainer) {
-    MaterialTheme {
+    DexxiconTheme {
         val nav = rememberNavController()
         NavHost(navController = nav, startDestination = ServersRoute) {
             composable<ServersRoute> {
