@@ -158,10 +158,24 @@ fun Modifier.pageTurnGesture(
                 val velocityTracker = VelocityTracker()
                 velocityTracker.addPosition(down.uptimeMillis, down.position)
 
+                // The still's travel, tracked synchronously — state.anim.value can't be read
+                // for this: snapTo() only takes effect once its launched coroutine actually
+                // runs, which (for an ordinary multi-event drag) happens naturally between
+                // iterations of this loop, at the next suspending await. A flick that claims
+                // and releases within a single event never reaches another suspension point
+                // before the block below reads it, so it would always see a stale 0 — this
+                // local mirror is what claim-seeding and the commit/flick check below use
+                // instead, kept exactly in step with every snapTo() call.
+                var offsetPx = 0f
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
-                    val change = event.changes.firstOrNull { it.id == down.id }
-                    if (change == null || !change.pressed) break
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    // A genuinely rapid flick can arrive as just down-then-up with barely any —
+                    // or zero — move events in between; most (or all) of the travel and speed
+                    // show up only in this final, "already released" sample. Read it before
+                    // checking `pressed`, or a real fast flick can silently fail to claim at all
+                    // (and even once it does claim, register with ~zero travel to show for it).
+                    val stillDown = change.pressed
                     if (!claimed && event.changes.count { it.pressed } > 1) break // let pinch through
 
                     velocityTracker.addPosition(change.uptimeMillis, change.position)
@@ -179,7 +193,13 @@ fun Modifier.pageTurnGesture(
                             lastX = change.position.x
                             gen = ++state.generation
                             state.outgoing = grab()
-                            scope.launch { state.anim.snapTo(0f) }
+                            // Seeded from the actual distance covered so far (usually just past
+                            // slop for an ordinary gradual drag) rather than always 0 — so a
+                            // flick that claims and releases within this same sample still has
+                            // real travel to show for it, instead of resetting to a flush 0 that
+                            // no subsequent event is left to move away from.
+                            offsetPx = totalX.coerceIn(-width, width)
+                            scope.launch { state.anim.snapTo(offsetPx) }
                             // Move the navigator now, hidden under the still, so the drag
                             // reveals the real next page instead of a copy of this one.
                             if (turn(forward)) turnedForward = forward
@@ -187,17 +207,19 @@ fun Modifier.pageTurnGesture(
                         } else if (abs(totalY) > slop) {
                             break // vertical — hand it to the page (scroll / vertical pan)
                         }
+                        if (!stillDown) break
                         continue
                     }
 
-                    change.consume()
-                    val next = (state.anim.value + (change.position.x - lastX)).coerceIn(-width, width)
+                    if (stillDown) change.consume()
+                    offsetPx = (offsetPx + (change.position.x - lastX)).coerceIn(-width, width)
                     lastX = change.position.x
-                    scope.launch { state.anim.snapTo(next) }
+                    scope.launch { state.anim.snapTo(offsetPx) }
+                    if (!stillDown) break
                 }
 
                 if (claimed) {
-                    val offset = state.anim.value
+                    val offset = offsetPx
                     val velocityX = velocityTracker.calculateVelocity().x
                     val flick = abs(velocityX) >= flickVelocityPxPerSec && abs(offset) >= flickDistancePx
                     val tf = turnedForward
@@ -206,7 +228,7 @@ fun Modifier.pageTurnGesture(
                         false -> offset >= width * commit || (flick && offset > 0f)
                         null -> false
                     }
-                    scope.launch { settle(state, gen, tf, stands, width, turn) }
+                    scope.launch { settle(state, gen, tf, stands, offset, width, turn) }
                 }
             }
         }
@@ -221,9 +243,14 @@ private suspend fun settle(
     gen: Int,
     turnedForward: Boolean?,
     stands: Boolean,
+    offset: Float,
     width: Float,
     turn: (Boolean) -> Boolean,
 ) {
+    // The gesture's own snapTo() calls race this coroutine's dispatch (the last one may not
+    // have run yet, especially for a flick claimed and released within a single event) — snap
+    // to the authoritative offset here rather than trust whatever state.anim already holds.
+    state.anim.snapTo(offset)
     if (turnedForward != null && stands) {
         state.anim.animateTo(
             targetValue = if (turnedForward) -width else width,
