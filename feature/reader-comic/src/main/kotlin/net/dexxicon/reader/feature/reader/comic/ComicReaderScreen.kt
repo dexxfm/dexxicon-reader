@@ -480,7 +480,14 @@ private fun ComicSettings(
             Modifier.fillMaxWidth().padding(top = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Right-to-left (manga)", Modifier.weight(1f))
+            Column(Modifier.weight(1f)) {
+                Text("Right-to-left (manga)")
+                Text(
+                    "On automatically for this book's genre — override just for now",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Switch(checked = rightToLeft, onCheckedChange = onToggleRightToLeft)
         }
     }
