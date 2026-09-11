@@ -351,6 +351,12 @@ private fun ReaderContent(
                     canTurn = { forward, touchX, touchY ->
                         pageView?.let { canTurnPastZoom(it, forward, touchX, touchY) } ?: true
                     },
+                    atBoundary = { forward ->
+                        // Same RTL inversion as onTurn — "forward" here is the raw physical
+                        // gesture, not yet translated to reading-order direction.
+                        val actuallyForward = forward != rtlEnabled
+                        if (actuallyForward) page >= state.pageCount else page <= 1
+                    },
                 ),
         ) {
             AndroidView(

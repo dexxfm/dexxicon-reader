@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
@@ -87,6 +88,13 @@ fun View.pageSnapshot(): ImageBitmap? {
  *   this gesture unconsumed instead — e.g. a pinch-zoomed page that still has room to pan
  *   further in that direction should keep panning, not turn. Defaults to always allowing
  *   the turn (the behaviour before this parameter existed).
+ * @param atBoundary checked alongside [canTurn] at the same claim point: true means this
+ *   direction is already known to be a no-op (the first page going backward, the last page
+ *   going forward). The drag is still claimed — so it doesn't leak into the page view as a
+ *   scroll/pan — but renders as a rubber-band pull on the live page itself (no snapshot, no
+ *   navigator call at all) rather than the normal lift-and-reveal-the-next-page turn, and
+ *   always springs back regardless of distance or flick speed. Defaults to never at a
+ *   boundary (the behaviour before this parameter existed).
  */
 fun Modifier.pageTurnGesture(
     state: PageTurnState,
@@ -95,6 +103,7 @@ fun Modifier.pageTurnGesture(
     snapshot: () -> ImageBitmap?,
     onTurn: (forward: Boolean) -> Boolean,
     canTurn: (forward: Boolean, touchX: Float, touchY: Float) -> Boolean = { _, _, _ -> true },
+    atBoundary: (forward: Boolean) -> Boolean = { false },
 ): Modifier = composed {
     if (!enabled) return@composed this
     val scope = rememberCoroutineScope()
@@ -102,14 +111,25 @@ fun Modifier.pageTurnGesture(
     val grab by rememberUpdatedState(snapshot)
     val commit by rememberUpdatedState(commitFraction)
     val allowTurn by rememberUpdatedState(canTurn)
+    val boundary by rememberUpdatedState(atBoundary)
     val density = LocalDensity.current
     val flickVelocityPxPerSec = with(density) { 450.dp.toPx() }
     val shadowPx = with(density) { 20.dp.toPx() }
+    // How far the rubber-band pull can stretch, in the classic UIScrollView sense: the
+    // offset asymptotically approaches this as the raw drag distance grows, never reaching
+    // it outright — a light drag stretches almost linearly, a hard one visibly resists.
+    val elasticMaxPx = with(density) { 72.dp.toPx() }
 
     this
         .drawWithContent {
+            val page = state.outgoing
+            if (page == null) {
+                // Idle (offset 0) or an elastic boundary pull in progress (offset != 0) —
+                // either way, no snapshot to lift: just translate the live page itself.
+                translate(left = state.offsetX) { this@drawWithContent.drawContent() }
+                return@drawWithContent
+            }
             drawContent()
-            val page = state.outgoing ?: return@drawWithContent
             val offset = state.offsetX
             // Shadow the lifting page casts onto the page revealed beneath it.
             if (offset < 0f) {
@@ -167,6 +187,14 @@ fun Modifier.pageTurnGesture(
                 // local mirror is what claim-seeding and the commit/flick check below use
                 // instead, kept exactly in step with every snapTo() call.
                 var offsetPx = 0f
+                // Set once, at claim, when this drag's direction is already known to be a
+                // no-op (the book's first/last page). Rendered as a damped rubber-band pull
+                // on the live page rather than a real turn — see [atBoundary].
+                var elastic = false
+                // Raw (undamped) cumulative delta since claim — rubberBand() is reapplied to
+                // this each time, rather than compounding damping onto an already-damped
+                // offsetPx, which would stretch far more slowly than intended.
+                var elasticRaw = 0f
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Initial)
                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
@@ -192,17 +220,27 @@ fun Modifier.pageTurnGesture(
                             claimed = true
                             lastX = change.position.x
                             gen = ++state.generation
-                            state.outgoing = grab()
-                            // Seeded from the actual distance covered so far (usually just past
-                            // slop for an ordinary gradual drag) rather than always 0 — so a
-                            // flick that claims and releases within this same sample still has
-                            // real travel to show for it, instead of resetting to a flush 0 that
-                            // no subsequent event is left to move away from.
-                            offsetPx = totalX.coerceIn(-width, width)
-                            scope.launch { state.anim.snapTo(offsetPx) }
-                            // Move the navigator now, hidden under the still, so the drag
-                            // reveals the real next page instead of a copy of this one.
-                            if (turn(forward)) turnedForward = forward
+                            elastic = boundary(forward)
+                            if (elastic) {
+                                // Already known to be a no-op — no snapshot, no navigator
+                                // call, just a damped pull on the live page.
+                                elasticRaw = totalX
+                                offsetPx = rubberBand(elasticRaw, elasticMaxPx)
+                                scope.launch { state.anim.snapTo(offsetPx) }
+                            } else {
+                                state.outgoing = grab()
+                                // Seeded from the actual distance covered so far (usually just
+                                // past slop for an ordinary gradual drag) rather than always 0
+                                // — so a flick that claims and releases within this same
+                                // sample still has real travel to show for it, instead of
+                                // resetting to a flush 0 that no subsequent event is left to
+                                // move away from.
+                                offsetPx = totalX.coerceIn(-width, width)
+                                scope.launch { state.anim.snapTo(offsetPx) }
+                                // Move the navigator now, hidden under the still, so the drag
+                                // reveals the real next page instead of a copy of this one.
+                                if (turn(forward)) turnedForward = forward
+                            }
                             change.consume()
                         } else if (abs(totalY) > slop) {
                             break // vertical — hand it to the page (scroll / vertical pan)
@@ -212,7 +250,12 @@ fun Modifier.pageTurnGesture(
                     }
 
                     if (stillDown) change.consume()
-                    offsetPx = (offsetPx + (change.position.x - lastX)).coerceIn(-width, width)
+                    if (elastic) {
+                        elasticRaw += change.position.x - lastX
+                        offsetPx = rubberBand(elasticRaw, elasticMaxPx)
+                    } else {
+                        offsetPx = (offsetPx + (change.position.x - lastX)).coerceIn(-width, width)
+                    }
                     lastX = change.position.x
                     scope.launch { state.anim.snapTo(offsetPx) }
                     if (!stillDown) break
@@ -232,6 +275,17 @@ fun Modifier.pageTurnGesture(
                 }
             }
         }
+}
+
+/**
+ * The classic UIScrollView rubber-band curve: [rawDelta] asymptotically maps onto
+ * (-[max], [max]) — a light pull tracks the finger almost linearly, a hard one visibly
+ * resists, and it can never actually reach [max] no matter how far the raw drag goes.
+ */
+private fun rubberBand(rawDelta: Float, max: Float, resistance: Float = 0.55f): Float {
+    val x = abs(rawDelta)
+    val damped = (x * max * resistance) / (max + resistance * x)
+    return if (rawDelta < 0f) -damped else damped
 }
 
 /**
