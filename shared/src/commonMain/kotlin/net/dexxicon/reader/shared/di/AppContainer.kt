@@ -3,7 +3,6 @@ package net.dexxicon.reader.shared.di
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
 import net.dexxicon.reader.core.data.ServerProber
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.TokenManager
@@ -31,12 +30,20 @@ import net.dexxicon.reader.core.serverapi.user.NativeUserApi
  * auth headers need `AuthHeaderProviderImpl` (`:core:data`, androidMain-only today) ported to
  * commonMain — left for a follow-up once shared UI makes an authenticated call (browse,
  * progress sync, etc).
+ *
+ * [io] has no commonMain default (unlike `:app`'s Hilt providers, which can default to
+ * `@Dispatcher(IO)`) — `kotlinx.coroutines.Dispatchers.IO` is `internal` on Kotlin/Native
+ * (public on Android/JVM only), so a `= Dispatchers.IO` default living in commonMain code
+ * fails to compile for the iOS target. Each platform's `createAppContainer` actual supplies
+ * its own: `Dispatchers.IO` on Android, `Dispatchers.Default` on iOS (no Native equivalent
+ * of the JVM's large-pool blocking-IO dispatcher; `Default`'s core-sized pool is the
+ * standard KMP substitute here).
  */
 class AppContainer(
     engine: HttpClientEngine,
     credentialStore: CredentialStore,
     database: DexxiconDatabase,
-    io: CoroutineDispatcher = Dispatchers.IO,
+    io: CoroutineDispatcher,
 ) {
     private val httpClient: HttpClient = createHttpClient(engine, NoAuthHeaderProvider)
 

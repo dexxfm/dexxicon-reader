@@ -30,5 +30,6 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
         engine = OkHttp.create(),
         credentialStore = credentialStore,
         database = database,
+        io = Dispatchers.IO,
     )
 }
