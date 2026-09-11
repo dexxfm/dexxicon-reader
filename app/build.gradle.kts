@@ -89,10 +89,22 @@ android {
 // build must carry the same signature or an in-place update is impossible and users have
 // to uninstall — losing every setting. Fires only when a release packaging/signing task
 // is actually scheduled; pass -PallowUnsignedRelease for a local build you won't distribute.
+//
+// Scoped to :app's own tasks (t.path, not just t.name) — every plain com.android.library
+// module (:core:datastore/:core:format/:core:media/:core:opds) has its own harmless
+// packageReleaseResources task (AAPT2 resource linking for its Release variant, not signing
+// anything) that Gradle schedules as part of ordinary cross-variant graph resolution even
+// for a plain `testDebugUnitTest testAndroidHostTest` run — an unqualified name check
+// false-positived on those and broke CI's "Unit tests — all modules" step on any machine
+// without keystore.properties (i.e. always on Codemagic, since that file is gitignored and
+// only the android-release workflow's env group supplies it). Confirmed via
+// `./gradlew testDebugUnitTest testAndroidHostTest --dry-run`: no :app:*Release* task is
+// scheduled by that run at all, only the other modules' packageReleaseResources — so :app:
+// scoping alone fixes the false positive without weakening the real guard.
 gradle.taskGraph.whenReady {
     val packagingRelease = allTasks.any { t ->
         val n = t.name
-        (n.startsWith("package") || n.startsWith("sign")) && n.contains("Release")
+        t.path.startsWith(":app:") && (n.startsWith("package") || n.startsWith("sign")) && n.contains("Release")
     }
     if (packagingRelease &&
         keystoreProps.getProperty("storeFile") == null &&
