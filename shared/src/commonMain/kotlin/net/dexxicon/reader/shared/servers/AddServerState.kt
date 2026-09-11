@@ -21,12 +21,9 @@ import net.dexxicon.reader.shared.sso.Pkce
  * `AddEditServerViewModel` (`feature/servers`), scoped down to what's actually needed here:
  * (issue #70) only the `WEBVIEW` SSO flow — both server families' handshakes always resolve
  * to it, `CUSTOM_SCHEME`/AppAuth is never actually produced (see [OidcAuthenticator]'s
- * callers) — and (issue #90) editing only covers [AuthMode.NATIVE] servers. Editing an OIDC
- * server would need the native form's `reauth` flow (re-running the SSO handshake to refresh
- * an expired token) — a separate, more involved piece tied to server-side `offline_access`
- * config, left for later. There's no `ViewModel`/Hilt here (see
- * [net.dexxicon.reader.shared.di.AppContainer]'s doc comment) — a plain class holding the
- * [scope] the caller got from `rememberCoroutineScope()` plays the same role.
+ * callers). There's no `ViewModel`/Hilt here (see [net.dexxicon.reader.shared.di.AppContainer]'s
+ * doc comment) — a plain class holding the [scope] the caller got from
+ * `rememberCoroutineScope()` plays the same role.
  *
  * [editingId] (issue #90), when non-null, switches this from "add" to "edit": the constructor
  * loads the existing [Server] from [serverRepository] and pre-fills the form, [canSave] no
@@ -34,6 +31,16 @@ import net.dexxicon.reader.shared.sso.Pkce
  * [save] keeps the server's existing id/type/auth-mode rather than minting a new one. A blank
  * [password] on save means "keep the stored one" — [ServerRepository.save]'s `password` param
  * is already nullable for exactly this.
+ *
+ * When [editingId] targets an [AuthMode.OIDC] server ([editingAuthMode]), the caller switches
+ * to a reauth-only UI (issue #94) instead of the native/password form — [ssoCandidateServer]
+ * carries [editingId] as its id (rather than `""`), so [completeSso] updates that same row via
+ * [ServerRepository.save]'s existing upsert-by-id behavior instead of inserting a new server.
+ * Deliberately **manual reauth only**: no automatic expired-session detection (the native
+ * app's `ShellViewModel.reauthRequests`/session-expired prompt is a separate, larger piece
+ * tied to detecting a 401 app-wide) — a fresh interactive SSO login here needs no server-side
+ * `offline_access` config either, unlike the *silent* refresh-token renewal tracked in the
+ * `auth-session-resilience` memory.
  */
 class AddServerState(
     private val serverProber: ServerProber,
@@ -59,11 +66,17 @@ class AddServerState(
 
     private var pendingPkce: Pkce? = null
 
-    /** Set once the edit target loads; null while loading and for a plain "add" form. */
-    private var loadedServer: Server? = null
+    /** Set once the edit target loads; null while loading and for a plain "add" form.
+     * `mutableStateOf`, not a plain `var` — [editingAuthMode] reads it to pick which form UI
+     * to show, so Compose needs to observe the write the way it does every other field here. */
+    private var loadedServer: Server? by mutableStateOf(null)
         private set
 
     val isEditing: Boolean get() = editingId != null
+
+    /** The persisted server's auth mode once loaded, null until then (or for a plain "add"
+     * form). Drives the reauth-only UI switch (issue #94) — see this class's doc comment. */
+    val editingAuthMode: AuthMode? get() = loadedServer?.authMode
 
     init {
         if (editingId != null) {
@@ -116,18 +129,24 @@ class AddServerState(
     fun save(onSaved: () -> Unit) {
         if (!canSave) return
         val success = testState as? TestState.Success
+        val base = loadedServer
         saving = true
         scope.launch {
             serverRepository.save(
-                server = Server(
+                // issue #96: copy from the loaded server, not a bare Server(...) — editing
+                // only ever changes the fields this form surfaces; building from scratch
+                // silently reset sortOrder/createdAt/koSync* to their defaults on every save.
+                server = (base ?: Server(id = "", displayName = "", baseUrl = "")).copy(
                     id = editingId ?: "",
                     displayName = displayName.trim(),
                     baseUrl = normalizeUrl(baseUrl),
-                    type = success?.type ?: loadedServer?.type ?: ServerType.GENERIC,
+                    type = success?.type ?: base?.type ?: ServerType.GENERIC,
                     // Keep an existing server's auth mode — editing a field shouldn't
-                    // silently downgrade an SSO server to password auth (moot for now since
-                    // OIDC servers aren't editable here yet, but matches the native form).
-                    authMode = loadedServer?.authMode ?: AuthMode.NATIVE,
+                    // silently downgrade an SSO server to password auth. Moot in practice:
+                    // this plain save() path is only reachable for NATIVE servers — an OIDC
+                    // one uses the reauth-only UI (issue #94), which saves via completeSso()
+                    // instead — but matches the native form's rule regardless.
+                    authMode = base?.authMode ?: AuthMode.NATIVE,
                     username = username.trim(),
                 ),
                 // Blank means "keep the stored password" when editing — never overwrite a
@@ -188,12 +207,21 @@ class AddServerState(
     fun onSsoError(message: String) { ssoState = SsoState.Error(message) }
     fun onSsoCancelled() { ssoState = SsoState.Idle }
 
-    private fun ssoCandidateServer(): Server = Server(
-        id = "",
-        displayName = displayName.trim().ifBlank { prettyHost(baseUrl) },
-        baseUrl = normalizeUrl(baseUrl),
-        authMode = AuthMode.OIDC,
-    )
+    private fun ssoCandidateServer(): Server {
+        // issue #96: copy from the loaded server (reauth) rather than building a bare
+        // Server(...) — same fix as save(), same reason: sortOrder/createdAt/koSync* would
+        // otherwise silently reset to their defaults on every reauth.
+        val base = loadedServer
+        return (base ?: Server(id = "", displayName = "", baseUrl = "")).copy(
+            // Reauth (issue #94) keeps the existing id so the save updates that row instead
+            // of inserting a new one; a plain add still mints a fresh one via
+            // ServerRepository.save.
+            id = editingId ?: "",
+            displayName = displayName.trim().ifBlank { prettyHost(baseUrl) },
+            baseUrl = normalizeUrl(baseUrl),
+            authMode = AuthMode.OIDC,
+        )
+    }
 
     private fun connectedLabel(type: ServerType): String =
         type.name.lowercase().replaceFirstChar(Char::uppercase) + " · connected"
