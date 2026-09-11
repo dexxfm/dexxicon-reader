@@ -47,6 +47,10 @@ kotlin {
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.ktor.client.core)
+            // Pkce (Slice 2, issue #70) — pure-Kotlin SHA-256 + secure random, works
+            // identically on Android and iOS. See the libs.versions.toml doc comment.
+            implementation(libs.kotlincrypto.hash.sha2)
+            implementation(libs.kotlincrypto.random)
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
