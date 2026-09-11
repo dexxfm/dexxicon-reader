@@ -295,6 +295,9 @@ private fun ReaderContent(
                         // contract RecyclerView/ViewPager use to arbitrate exactly this.
                         findPdfView(pageView)?.canScrollHorizontally(if (forward) 1 else -1) ?: true
                     },
+                    atBoundary = { forward ->
+                        if (forward) page >= state.pageCount else page <= 1
+                    },
                 ),
         ) {
             AndroidView(
