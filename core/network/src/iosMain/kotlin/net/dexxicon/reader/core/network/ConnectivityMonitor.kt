@@ -1,10 +1,12 @@
 package net.dexxicon.reader.core.network
 
 import dev.jordond.connectivity.Connectivity
+import kotlin.concurrent.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
@@ -36,7 +38,11 @@ actual class ConnectivityMonitor {
     actual fun currentStatus(): NetworkStatus = latest
 
     init {
-        scope.launch { status.collect() }
+        // Keeps `status` hot so its `onEach { latest = it }` side effect actually runs — the
+        // update itself happens upstream, this collector just needs to exist. A bare
+        // `.collect()` (no argument) was never valid: every collect() overload takes either a
+        // FlowCollector or an action lambda.
+        scope.launch { status.collect {} }
     }
 
     private fun Connectivity.Status.toNetworkStatus(): NetworkStatus = when (this) {
