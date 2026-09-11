@@ -19,8 +19,13 @@ actual class PlatformContext(val context: Context)
 
 /**
  * A plain OkHttp engine (not `:app`'s Hilt-provided [okhttp3.OkHttpClient] with its cookie
- * jar/logging) — `:shared` has no access to `:app`'s Hilt graph, and Slice 1 doesn't need
- * cookie-based session persistence (see [AppContainer]'s doc comment on [NoAuthHeaderProvider][net.dexxicon.reader.core.network.NoAuthHeaderProvider]).
+ * jar/logging) — `:shared` has no access to `:app`'s Hilt graph (see [AppContainer]'s doc
+ * comment on [AuthHeaderProviderImpl][net.dexxicon.reader.core.data.auth.AuthHeaderProviderImpl]
+ * for how it gets a real one anyway).
+ *
+ * `coil3.PlatformContext` is `android.content.Context` itself on Android (a typealias, per
+ * Coil's own `androidMain`) — [appContext] satisfies the [AppContainer] constructor's
+ * `coilPlatformContext` param with no extra wrapping needed.
  */
 actual fun createAppContainer(context: PlatformContext): AppContainer {
     val appContext = context.context.applicationContext
@@ -31,5 +36,6 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
         credentialStore = credentialStore,
         database = database,
         io = Dispatchers.IO,
+        coilPlatformContext = appContext,
     )
 }

@@ -128,6 +128,10 @@ retrofit-kotlinx-serialization = { module = "com.squareup.retrofit2:converter-ko
 
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
+# :shared's catalog UI (issue #78) — the Ktor-backed fetcher, so cover images reuse
+# AppContainer's own authenticated HttpClient instead of a second, unauthenticated one, and
+# so this works on iOS (coil-network-okhttp is Android/JVM-only, OkHttp has no iOS target).
+coil-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.ref = "coil" }
 
 appauth = { module = "net.openid:appauth", version.ref = "appauth" }
 androidx-browser = { module = "androidx.browser:browser", version.ref = "androidxBrowser" }

@@ -1,23 +1,33 @@
 package net.dexxicon.reader.shared.di
 
+import coil3.ImageLoader
+import coil3.PlatformContext as CoilPlatformContext
+import coil3.annotation.ExperimentalCoilApi
+import coil3.network.ktor3.KtorNetworkFetcherFactory
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.http.Url
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ProgressSeeder
 import net.dexxicon.reader.core.data.ServerProber
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.AuthHeaderProviderImpl
 import net.dexxicon.reader.core.data.auth.OidcAuthenticator
 import net.dexxicon.reader.core.data.auth.TokenManager
+import net.dexxicon.reader.core.data.catalog.BookOrbitCatalogSource
+import net.dexxicon.reader.core.data.catalog.GrimmoryCatalogSource
+import net.dexxicon.reader.core.data.catalog.OpdsCatalogSource
 import net.dexxicon.reader.core.database.DexxiconDatabase
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.createHttpClient
 import net.dexxicon.reader.core.security.CredentialStore
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthClient
+import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
+import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcClient
 import net.dexxicon.reader.core.serverapi.user.NativeUserApi
@@ -57,12 +67,21 @@ import net.dexxicon.reader.core.serverapi.user.NativeUserApi
  * construct, and Slice 2 doesn't need the "seed continue-reading rows right after sign-in"
  * behavior to work for SSO sign-in itself to work — just a real gap to close before shared UI
  * needs actual continue-reading data.
+ *
+ * [imageLoader] (issue #78) is Coil 3's [ImageLoader], built against this same [httpClient]
+ * via [KtorNetworkFetcherFactory] rather than a second, unauthenticated client — cover images
+ * on private catalogs need the same `Authorization` header everything else does. Needs one
+ * more platform-supplied value, [coilPlatformContext] (Coil's own `PlatformContext` — aliased
+ * to [CoilPlatformContext] on the import here to avoid colliding with this file's own
+ * [PlatformContext]): Android's is `android.content.Context` itself (a typealias), iOS's is
+ * `coil3.PlatformContext.INSTANCE`, a singleton with nothing to configure.
  */
 class AppContainer(
     engine: HttpClientEngine,
     credentialStore: CredentialStore,
     database: DexxiconDatabase,
     io: CoroutineDispatcher,
+    coilPlatformContext: CoilPlatformContext,
 ) {
     /** Process-lifetime scope for [AuthHeaderProviderImpl]'s server-list collector — mirrors
      * `:app`'s `@ApplicationScope` (`CoroutineScope(SupervisorJob() + Dispatchers.Default)`)
@@ -82,6 +101,13 @@ class AppContainer(
     private val nativeUserApi = NativeUserApi(httpClient)
     private val oidcApi = OidcApi(httpClient)
     private val oidcClient = OidcClient(oidcApi)
+    private val bookOrbitBrowseApi = BookOrbitBrowseApi(httpClient)
+    private val grimmoryBrowseApi = GrimmoryBrowseApi(httpClient)
+
+    @OptIn(ExperimentalCoilApi::class)
+    val imageLoader: ImageLoader = ImageLoader.Builder(coilPlatformContext)
+        .components { add(KtorNetworkFetcherFactory(httpClient = httpClient)) }
+        .build()
 
     val tokenManager: TokenManager = TokenManager(nativeAuthClient, credentialStore)
     val serverProber: ServerProber = ServerProber(nativeAuthClient, io)
@@ -97,6 +123,13 @@ class AppContainer(
         serverRepository = serverRepository,
         progressSeeder = NoOpProgressSeeder,
         tokenManager = tokenManager,
+        io = io,
+    )
+    val catalogRepository: CatalogRepository = CatalogRepository(
+        serverRepository = serverRepository,
+        grimmorySource = GrimmoryCatalogSource(grimmoryBrowseApi),
+        bookOrbitSource = BookOrbitCatalogSource(bookOrbitBrowseApi),
+        opdsSource = OpdsCatalogSource(),
         io = io,
     )
 
