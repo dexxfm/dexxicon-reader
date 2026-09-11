@@ -8,7 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -45,6 +45,7 @@ import net.dexxicon.reader.shared.catalog.BooksScreen
 import net.dexxicon.reader.shared.catalog.BrowseScreen
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.servers.AddServerState
+import net.dexxicon.reader.shared.servers.ServersState
 import net.dexxicon.reader.shared.servers.SsoState
 import net.dexxicon.reader.shared.servers.TestState
 import net.dexxicon.reader.shared.sso.SsoWebViewScreen
@@ -132,6 +133,7 @@ private fun ServersScreen(
 ) {
     val servers by container.serverRepository.servers.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
+    val serversState = remember { ServersState(container.serverRepository, scope) }
     var pendingDelete by remember { mutableStateOf<Server?>(null) }
 
     Scaffold(
@@ -147,12 +149,37 @@ private fun ServersScreen(
             list == null -> Unit // first emission still pending
             list.isEmpty() -> EmptyServersState(Modifier.fillMaxSize().padding(padding), onAddServer)
             else -> LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-                items(list, key = { it.id }) { server ->
+                itemsIndexed(list, key = { _, server -> server.id }) { index, server ->
                     ListItem(
                         headlineContent = { Text(server.displayName) },
-                        supportingContent = { Text(server.baseUrl) },
+                        supportingContent = {
+                            Column {
+                                Text(server.baseUrl)
+                                // issue #92 — "me" endpoint reads back who the app is
+                                // actually signed in as; absent until that call resolves
+                                // (or for a server type it doesn't apply to).
+                                serversState.accounts[server.id]?.let {
+                                    Text(
+                                        "Signed in as $it",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                        },
                         trailingContent = {
                             Row {
+                                // Plain up/down rather than the native Settings screen's
+                                // long-press drag gesture — issue #92 deliberately keeps this
+                                // simple (see ServersState's doc comment).
+                                TextButton(
+                                    onClick = { serversState.moveUp(list, server.id) },
+                                    enabled = index > 0,
+                                ) { Text("▲") }
+                                TextButton(
+                                    onClick = { serversState.moveDown(list, server.id) },
+                                    enabled = index < list.lastIndex,
+                                ) { Text("▼") }
                                 // NATIVE opens the field-editing form (#90); OIDC opens the
                                 // reauth-only screen instead (#94) — a BASIC server (generic
                                 // OPDS) gets neither, :shared has no add-flow for those.
