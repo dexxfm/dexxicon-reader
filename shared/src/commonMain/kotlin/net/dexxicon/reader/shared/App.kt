@@ -56,6 +56,10 @@ import net.dexxicon.reader.shared.theme.DexxiconTheme
 // #70), and read-only catalog browsing (issue #78) — wired to the Phase 1/2 data layer via
 // [AppContainer]. Renders identically on Android ([SharedPreviewActivity], debug-only) and
 // iOS ([MainViewController]).
+//
+// Phase 3 (issue #99): actually reading a book hands off to [onOpenReader] — see
+// [net.dexxicon.reader.shared.OnOpenReader]'s doc comment for why this is a plain callback
+// the platform host supplies, not a screen this NavHost owns itself.
 @Serializable private object ServersRoute
 @Serializable private object AddServerRoute
 @Serializable private data class EditServerRoute(val serverId: String)
@@ -64,7 +68,7 @@ import net.dexxicon.reader.shared.theme.DexxiconTheme
 @Serializable private data class BookDetailRoute(val serverId: String, val bookId: String)
 
 @Composable
-fun App(container: AppContainer) {
+fun App(container: AppContainer, onOpenReader: OnOpenReader) {
     DexxiconTheme {
         val nav = rememberNavController()
         NavHost(navController = nav, startDestination = ServersRoute) {
@@ -117,6 +121,7 @@ fun App(container: AppContainer) {
                     serverId = route.serverId,
                     bookId = route.bookId,
                     onBack = { nav.popBackStack() },
+                    onOpenReader = onOpenReader,
                 )
             }
         }
