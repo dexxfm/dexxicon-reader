@@ -2,7 +2,9 @@ package net.dexxicon.reader.feature.reader.pdf
 
 import android.content.res.Configuration
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
+import com.github.barteksc.pdfviewer.PDFView
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -287,6 +289,12 @@ private fun ReaderContent(
                     onTurn = { forward ->
                         (if (forward) navigator?.goForward(false) else navigator?.goBackward(false)) == true
                     },
+                    canTurn = { forward, _, _ ->
+                        // A zoomed-in page still has room to pan this way — let the pan
+                        // happen instead of turning; canScrollHorizontally is the same
+                        // contract RecyclerView/ViewPager use to arbitrate exactly this.
+                        findPdfView(pageView)?.canScrollHorizontally(if (forward) 1 else -1) ?: true
+                    },
                 ),
         ) {
             AndroidView(
@@ -513,3 +521,19 @@ private fun Center(content: @Composable () -> Unit) {
 
 private fun flatten(links: List<Link>, depth: Int = 0): List<Pair<Int, Link>> =
     links.flatMap { link -> listOf(depth to link) + flatten(link.children, depth + 1) }
+
+/**
+ * The pdfium navigator's single [PDFView] instance, wherever it sits under [root] — unlike
+ * the comic reader's per-page pager, there's exactly one for the whole viewport, so no
+ * hit-testing by touch point is needed to pick the right one.
+ */
+private fun findPdfView(root: View?): PDFView? {
+    if (root == null) return null
+    if (root is PDFView) return root
+    if (root is ViewGroup) {
+        for (i in 0 until root.childCount) {
+            findPdfView(root.getChildAt(i))?.let { return it }
+        }
+    }
+    return null
+}

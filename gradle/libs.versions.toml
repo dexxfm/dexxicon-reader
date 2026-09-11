@@ -40,6 +40,7 @@ mediarouter = "1.8.1"
 appcompat = "1.7.1"
 readium = "3.3.0"
 junrar = "7.5.5"
+androidPdfViewer = "3.2.8"
 appauth = "0.11.1"
 androidxBrowser = "1.10.0"
 
@@ -130,6 +131,10 @@ readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", v
 readium-opds = { module = "org.readium.kotlin-toolkit:readium-opds", version.ref = "readium" }
 readium-adapter-pdfium = { module = "org.readium.kotlin-toolkit:readium-adapter-pdfium", version.ref = "readium" }
 junrar = { module = "com.github.junrar:junrar", version.ref = "junrar" }
+# Pin matches what readium-adapter-pdfium-navigator resolves transitively today — bump this
+# alongside any `readium` version change, or PDFView's canScrollHorizontally() (used for the
+# zoomed-page-turn edge check) risks resolving to a mismatched copy of the class.
+android-pdf-viewer = { module = "com.github.marain87:AndroidPdfViewer", version.ref = "androidPdfViewer" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExt" }
