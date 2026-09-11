@@ -7,9 +7,15 @@ import dagger.hilt.components.SingletonComponent
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.http.Url
+import kotlinx.coroutines.CoroutineDispatcher
+import net.dexxicon.reader.core.common.DexxiconDispatcher
+import net.dexxicon.reader.core.common.Dispatcher
+import net.dexxicon.reader.core.data.ServerProber
+import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.DexxiconHttpClient
 import net.dexxicon.reader.core.network.createHttpClient
+import net.dexxicon.reader.core.security.CredentialStore
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthClient
 import net.dexxicon.reader.core.serverapi.oidc.OidcApi
@@ -19,11 +25,11 @@ import javax.inject.Provider
 import javax.inject.Singleton
 
 /**
- * Provides the sign-in path's Ktor client + API/orchestration classes (issue #52).
- * `NativeAuthApi`/`NativeAuthClient`/`OidcApi`/`OidcClient` live in `:core:serverapi`'s
- * commonMain and can't carry `@Inject` there — `javax.inject` isn't available on iOS — so,
- * like `NetworkModule`, this module supplies them explicitly instead of relying on
- * constructor injection.
+ * Provides the sign-in path's Ktor client + API/orchestration classes (issues #52, #54).
+ * `NativeAuthApi`/`NativeAuthClient`/`OidcApi`/`OidcClient`/`TokenManager`/`ServerProber`
+ * live in commonMain (`:core:serverapi`, `:core:data`) and can't carry `@Inject` there —
+ * `javax.inject` isn't available on iOS — so, like `NetworkModule`, this module supplies
+ * them explicitly instead of relying on constructor injection.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -68,4 +74,21 @@ object ServerAuthModule {
     @Provides
     @Singleton
     fun provideOidcClient(api: OidcApi): OidcClient = OidcClient(api)
+
+    @Provides
+    @Singleton
+    fun provideTokenManager(
+        authClient: NativeAuthClient,
+        credentialStore: CredentialStore,
+    ): TokenManager = TokenManager(authClient, credentialStore)
+
+    @Provides
+    @Singleton
+    fun provideServerProber(
+        authClient: NativeAuthClient,
+        // ServerProber's commonMain constructor takes a plain CoroutineDispatcher — the
+        // @Dispatcher qualifier is javax.inject-based (Hilt/androidMain-only) and can't live
+        // on a commonMain constructor, so the qualified binding is resolved here instead.
+        @Dispatcher(DexxiconDispatcher.IO) io: CoroutineDispatcher,
+    ): ServerProber = ServerProber(authClient, io)
 }

@@ -115,9 +115,11 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:datastore"))
     implementation(project(":core:media"))
-    // ServerAuthModule builds NativeAuthApi/OidcApi directly (moved here from
-    // :core:serverapi — Hilt can't apply to a KMP module; see ServerAuthModule's doc comment).
+    // ServerAuthModule builds NativeAuthApi/OidcApi/TokenManager/ServerProber directly
+    // (moved here from :core:serverapi/:core:data — Hilt can't apply to a KMP module; see
+    // ServerAuthModule's doc comment). CredentialStore is TokenManager's constructor param.
     implementation(project(":core:serverapi"))
+    implementation(project(":core:security"))
 
     implementation(libs.okhttp)
     // NetworkModule (moved here from :core:network — Hilt can't apply to a KMP module)
