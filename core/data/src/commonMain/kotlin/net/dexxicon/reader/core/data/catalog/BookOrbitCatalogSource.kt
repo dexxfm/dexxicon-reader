@@ -21,14 +21,13 @@ import net.dexxicon.reader.core.serverapi.browse.BookOrbitQuery
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitSort
 import io.ktor.client.plugins.ResponseException
 import kotlinx.io.IOException
-import javax.inject.Inject
 
 /**
  * Browses BookOrbit via its native REST API (JWT bearer) — no OPDS user required.
  * The book list comes from `POST /api/v1/books/query` (whole catalogue) or
  * `POST /api/v1/libraries/{id}/books` (one library); both share the request/response shape.
  */
-class BookOrbitCatalogSource @Inject constructor(
+class BookOrbitCatalogSource(
     private val api: BookOrbitBrowseApi,
 ) : CatalogSource {
 

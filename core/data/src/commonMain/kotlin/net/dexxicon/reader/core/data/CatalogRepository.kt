@@ -1,7 +1,5 @@
 package net.dexxicon.reader.core.data
 
-import net.dexxicon.reader.core.common.DexxiconDispatcher
-import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.catalog.BookOrbitCatalogSource
@@ -26,16 +24,19 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class CatalogRepository @Inject constructor(
+/**
+ * [io] is a plain, unqualified [CoroutineDispatcher] rather than `@Dispatcher(IO)` — that
+ * qualifier annotation is `javax.inject`-based (Hilt/androidMain-only) and can't live in
+ * commonMain; the `:app`-hosted provider resolves the qualified binding and passes the
+ * instance through instead, same as every other Phase 1/2 class with this shape.
+ */
+class CatalogRepository(
     private val serverRepository: ServerRepository,
     private val grimmorySource: GrimmoryCatalogSource,
     private val bookOrbitSource: BookOrbitCatalogSource,
     private val opdsSource: OpdsCatalogSource,
-    @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
+    private val io: CoroutineDispatcher,
 ) {
     /** The configured server ids — Browse re-queries whenever this changes (add / remove). */
     val serverIds: Flow<Set<String>> =
