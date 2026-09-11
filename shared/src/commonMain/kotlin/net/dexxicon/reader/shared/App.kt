@@ -40,6 +40,7 @@ import kotlinx.serialization.Serializable
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.shared.catalog.BookDetailScreen
 import net.dexxicon.reader.shared.catalog.BooksScreen
+import net.dexxicon.reader.shared.catalog.BrowseScreen
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.servers.AddServerState
 import net.dexxicon.reader.shared.servers.SsoState
@@ -53,6 +54,7 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 // iOS ([MainViewController]).
 @Serializable private object ServersRoute
 @Serializable private object AddServerRoute
+@Serializable private object BrowseRoute
 @Serializable private data class BooksRoute(val serverId: String)
 @Serializable private data class BookDetailRoute(val serverId: String, val bookId: String)
 
@@ -66,6 +68,7 @@ fun App(container: AppContainer) {
                     container = container,
                     onAddServer = { nav.navigate(AddServerRoute) },
                     onOpenServer = { serverId -> nav.navigate(BooksRoute(serverId)) },
+                    onBrowseAll = { nav.navigate(BrowseRoute) },
                 )
             }
             composable<AddServerRoute> {
@@ -73,6 +76,13 @@ fun App(container: AppContainer) {
                     container = container,
                     onBack = { nav.popBackStack() },
                     onSaved = { nav.popBackStack() },
+                )
+            }
+            composable<BrowseRoute> {
+                BrowseScreen(
+                    container = container,
+                    onBack = { nav.popBackStack() },
+                    onOpenBook = { serverId, bookId -> nav.navigate(BookDetailRoute(serverId, bookId)) },
                 )
             }
             composable<BooksRoute> { entry ->
@@ -103,12 +113,20 @@ private fun ServersScreen(
     container: AppContainer,
     onAddServer: () -> Unit,
     onOpenServer: (serverId: String) -> Unit,
+    onBrowseAll: () -> Unit,
 ) {
     val servers by container.serverRepository.servers.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
     var pendingDelete by remember { mutableStateOf<Server?>(null) }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Dexxicon") }) }) { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Dexxicon") },
+                actions = { TextButton(onClick = onBrowseAll) { Text("Browse all") } },
+            )
+        },
+    ) { padding ->
         val list = servers
         when {
             list == null -> Unit // first emission still pending
