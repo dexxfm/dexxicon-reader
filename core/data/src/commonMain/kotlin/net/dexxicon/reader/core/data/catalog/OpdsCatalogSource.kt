@@ -7,7 +7,6 @@ import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.CatalogShelf
 import net.dexxicon.reader.core.model.Server
-import javax.inject.Inject
 
 /**
  * OPDS 1.2/2.0 browsing for BookOrbit and generic servers. Requires a dedicated OPDS
@@ -15,7 +14,7 @@ import javax.inject.Inject
  *
  * TODO(phase 4b): wire readium-opds + per-server OPDS credentials.
  */
-class OpdsCatalogSource @Inject constructor() : CatalogSource {
+class OpdsCatalogSource : CatalogSource {
 
     override suspend fun shelves(server: Server): Outcome<List<CatalogShelf>> = unsupported()
 

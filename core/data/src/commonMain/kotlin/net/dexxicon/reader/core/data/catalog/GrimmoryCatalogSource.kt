@@ -17,11 +17,11 @@ import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBook
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import io.ktor.client.plugins.ResponseException
+import io.ktor.http.URLBuilder
 import kotlinx.io.IOException
-import javax.inject.Inject
 
 /** Browses Grimmory / BookLore via its native REST API (uses the JWT bearer). */
-class GrimmoryCatalogSource @Inject constructor(
+class GrimmoryCatalogSource(
     private val api: GrimmoryBrowseApi,
 ) : CatalogSource {
 
@@ -57,18 +57,16 @@ class GrimmoryCatalogSource @Inject constructor(
         page: Int,
         pageSize: Int,
     ): Outcome<BookPage> = call {
-        val params = buildList {
-            add("page=$page")
-            add("size=$pageSize")
-            add("sort=${sortKey(sort)}")
-            if (!query.isNullOrBlank()) {
-                add("query=" + java.net.URLEncoder.encode(query.trim(), "UTF-8"))
-            }
-            if (shelfId != null) {
-                add("facet=" + java.net.URLEncoder.encode("file_type:$shelfId", "UTF-8"))
-            }
-        }.joinToString("&")
-        val response = api.booksPage(server.resolve("/api/v1/books/page?$params"))
+        // Ktor's URLBuilder percent-encodes each parameter for us — java.net.URLEncoder
+        // (the original androidMain version's choice) is JVM-only, unreachable from iOS.
+        val url = URLBuilder(server.resolve("/api/v1/books/page")).apply {
+            parameters.append("page", page.toString())
+            parameters.append("size", pageSize.toString())
+            parameters.append("sort", sortKey(sort))
+            if (!query.isNullOrBlank()) parameters.append("query", query.trim())
+            if (shelfId != null) parameters.append("facet", "file_type:$shelfId")
+        }.buildString()
+        val response = api.booksPage(url)
         val books = response.content.map { it.toSummary(server) }
         val totalPages = response.effectiveTotalPages
         BookPage(
@@ -85,9 +83,13 @@ class GrimmoryCatalogSource @Inject constructor(
     override suspend fun wantToRead(server: Server): Outcome<List<BookSummary>> = call {
         // Grimmory has no "want to read"; the app stores that as UNREAD (see NativeProgressSync),
         // and books never touched carry no readStatus, so this facet is effectively the shelf.
-        val facet = java.net.URLEncoder.encode("read_status:UNREAD", "UTF-8")
-        api.booksPage(server.resolve("/api/v1/books/page?page=0&size=50&sort=-addedOn&facet=$facet"))
-            .content.map { it.toSummary(server) }
+        val url = URLBuilder(server.resolve("/api/v1/books/page")).apply {
+            parameters.append("page", "0")
+            parameters.append("size", "50")
+            parameters.append("sort", "-addedOn")
+            parameters.append("facet", "read_status:UNREAD")
+        }.buildString()
+        api.booksPage(url).content.map { it.toSummary(server) }
     }
 
     override suspend fun detail(server: Server, bookId: String): Outcome<BookDetail> = call {
