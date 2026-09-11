@@ -19,7 +19,7 @@ import net.dexxicon.reader.core.database.entity.DownloadEntity
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.fileExtension
-import net.dexxicon.reader.core.network.di.DexxiconHttpClient
+import net.dexxicon.reader.core.network.DexxiconHttpClient
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File

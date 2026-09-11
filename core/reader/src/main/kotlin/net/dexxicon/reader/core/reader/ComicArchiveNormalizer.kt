@@ -7,7 +7,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
-import net.dexxicon.reader.core.network.di.DexxiconHttpClient
+import net.dexxicon.reader.core.network.DexxiconHttpClient
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File

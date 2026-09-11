@@ -43,6 +43,14 @@ junrar = "7.5.5"
 androidPdfViewer = "3.2.8"
 appauth = "0.11.1"
 androidxBrowser = "1.10.0"
+# iOS-only for now (KMP :core:security) — KeychainSettings backs CredentialStore there,
+# since Keychain items are already encrypted at rest and need no separate app-level cipher.
+multiplatformSettings = "1.3.0"
+# iOS-only for now (KMP :core:network) — backs ConnectivityMonitor's iOS actual, since
+# NWPathMonitor itself isn't reachable from Kotlin/Native. ktor is versioned separately below,
+# for the same module's new (not yet Android-wired) Ktor HttpClient.
+connectivity = "2.2.1"
+ktor = "3.5.2"
 
 junit = "4.13.2"
 androidxTestExt = "1.3.0"
@@ -114,6 +122,14 @@ coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version
 
 appauth = { module = "net.openid:appauth", version.ref = "appauth" }
 androidx-browser = { module = "androidx.browser:browser", version.ref = "androidxBrowser" }
+multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", version.ref = "multiplatformSettings" }
+connectivity-core = { module = "dev.jordond.connectivity:connectivity-core", version.ref = "connectivity" }
+connectivity-apple = { module = "dev.jordond.connectivity:connectivity-apple", version.ref = "connectivity" }
+ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
+ktor-client-okhttp = { module = "io.ktor:ktor-client-okhttp", version.ref = "ktor" }
+ktor-client-darwin = { module = "io.ktor:ktor-client-darwin", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
+ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
 media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }

@@ -15,7 +15,7 @@ import dagger.hilt.android.HiltAndroidApp
 import net.dexxicon.reader.core.common.crash.CrashReporter
 import net.dexxicon.reader.core.data.auth.SessionRefreshWorker
 import net.dexxicon.reader.core.data.auth.SignInNotifier
-import net.dexxicon.reader.core.network.di.DexxiconHttpClient
+import net.dexxicon.reader.core.network.DexxiconHttpClient
 import okhttp3.OkHttpClient
 import okio.Path.Companion.toOkioPath
 import javax.inject.Inject

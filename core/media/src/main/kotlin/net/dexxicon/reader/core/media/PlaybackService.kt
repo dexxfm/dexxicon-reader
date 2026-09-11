@@ -41,7 +41,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import net.dexxicon.reader.core.network.di.DexxiconHttpClient
+import net.dexxicon.reader.core.network.DexxiconHttpClient
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.ByteArrayOutputStream

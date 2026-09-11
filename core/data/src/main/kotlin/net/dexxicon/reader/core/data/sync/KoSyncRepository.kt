@@ -9,7 +9,7 @@ import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.model.Server
-import net.dexxicon.reader.core.network.di.DexxiconHttpClient
+import net.dexxicon.reader.core.network.DexxiconHttpClient
 import net.dexxicon.reader.core.security.CredentialStore
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncProgressUpdate

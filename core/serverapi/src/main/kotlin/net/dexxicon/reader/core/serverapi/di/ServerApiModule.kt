@@ -5,7 +5,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import kotlinx.serialization.json.Json
-import net.dexxicon.reader.core.network.di.DexxiconHttpClient
+import net.dexxicon.reader.core.network.DexxiconHttpClient
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
 import net.dexxicon.reader.core.serverapi.annotation.AnnotationApi
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
