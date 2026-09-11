@@ -129,20 +129,24 @@ class AddServerState(
     fun save(onSaved: () -> Unit) {
         if (!canSave) return
         val success = testState as? TestState.Success
+        val base = loadedServer
         saving = true
         scope.launch {
             serverRepository.save(
-                server = Server(
+                // issue #96: copy from the loaded server, not a bare Server(...) — editing
+                // only ever changes the fields this form surfaces; building from scratch
+                // silently reset sortOrder/createdAt/koSync* to their defaults on every save.
+                server = (base ?: Server(id = "", displayName = "", baseUrl = "")).copy(
                     id = editingId ?: "",
                     displayName = displayName.trim(),
                     baseUrl = normalizeUrl(baseUrl),
-                    type = success?.type ?: loadedServer?.type ?: ServerType.GENERIC,
+                    type = success?.type ?: base?.type ?: ServerType.GENERIC,
                     // Keep an existing server's auth mode — editing a field shouldn't
                     // silently downgrade an SSO server to password auth. Moot in practice:
                     // this plain save() path is only reachable for NATIVE servers — an OIDC
                     // one uses the reauth-only UI (issue #94), which saves via completeSso()
                     // instead — but matches the native form's rule regardless.
-                    authMode = loadedServer?.authMode ?: AuthMode.NATIVE,
+                    authMode = base?.authMode ?: AuthMode.NATIVE,
                     username = username.trim(),
                 ),
                 // Blank means "keep the stored password" when editing — never overwrite a
@@ -203,14 +207,21 @@ class AddServerState(
     fun onSsoError(message: String) { ssoState = SsoState.Error(message) }
     fun onSsoCancelled() { ssoState = SsoState.Idle }
 
-    private fun ssoCandidateServer(): Server = Server(
-        // Reauth (issue #94) keeps the existing id so the save updates that row instead of
-        // inserting a new one; a plain add still mints a fresh one via ServerRepository.save.
-        id = editingId ?: "",
-        displayName = displayName.trim().ifBlank { prettyHost(baseUrl) },
-        baseUrl = normalizeUrl(baseUrl),
-        authMode = AuthMode.OIDC,
-    )
+    private fun ssoCandidateServer(): Server {
+        // issue #96: copy from the loaded server (reauth) rather than building a bare
+        // Server(...) — same fix as save(), same reason: sortOrder/createdAt/koSync* would
+        // otherwise silently reset to their defaults on every reauth.
+        val base = loadedServer
+        return (base ?: Server(id = "", displayName = "", baseUrl = "")).copy(
+            // Reauth (issue #94) keeps the existing id so the save updates that row instead
+            // of inserting a new one; a plain add still mints a fresh one via
+            // ServerRepository.save.
+            id = editingId ?: "",
+            displayName = displayName.trim().ifBlank { prettyHost(baseUrl) },
+            baseUrl = normalizeUrl(baseUrl),
+            authMode = AuthMode.OIDC,
+        )
+    }
 
     private fun connectedLabel(type: ServerType): String =
         type.name.lowercase().replaceFirstChar(Char::uppercase) + " · connected"
