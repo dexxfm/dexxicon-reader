@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,8 +22,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -30,7 +33,9 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.servers.AddServerState
 import net.dexxicon.reader.shared.servers.SsoState
@@ -70,6 +75,8 @@ fun App(container: AppContainer) {
 @Composable
 private fun ServersScreen(container: AppContainer, onAddServer: () -> Unit) {
     val servers by container.serverRepository.servers.collectAsState(initial = null)
+    val scope = rememberCoroutineScope()
+    var pendingDelete by remember { mutableStateOf<Server?>(null) }
 
     Scaffold(topBar = { TopAppBar(title = { Text("Dexxicon") }) }) { padding ->
         val list = servers
@@ -77,10 +84,13 @@ private fun ServersScreen(container: AppContainer, onAddServer: () -> Unit) {
             list == null -> Unit // first emission still pending
             list.isEmpty() -> EmptyServersState(Modifier.fillMaxSize().padding(padding), onAddServer)
             else -> LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-                items(list) { server ->
+                items(list, key = { it.id }) { server ->
                     ListItem(
                         headlineContent = { Text(server.displayName) },
                         supportingContent = { Text(server.baseUrl) },
+                        trailingContent = {
+                            TextButton(onClick = { pendingDelete = server }) { Text("Remove") }
+                        },
                     )
                     HorizontalDivider()
                 }
@@ -92,6 +102,26 @@ private fun ServersScreen(container: AppContainer, onAddServer: () -> Unit) {
                 }
             }
         }
+    }
+
+    // A confirmation dialog, not a swipe gesture — issue #72 deliberately keeps this to a
+    // tap + confirm so a stray touch (or an unfamiliar swipe direction on a round-cornered
+    // list) can never silently drop a configured server.
+    pendingDelete?.let { server ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("Remove ${server.displayName}?") },
+            text = { Text("This only removes it from Dexxicon — nothing changes on the server itself.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { container.serverRepository.delete(server.id) }
+                    pendingDelete = null
+                }) { Text("Remove") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("Cancel") }
+            },
+        )
     }
 }
 
