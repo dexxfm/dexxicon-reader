@@ -89,7 +89,12 @@ workflows:
       - *prepare_gradle
       - *android_sdk
       - name: Unit tests — all modules
-        script: ./gradlew testDebugUnitTest
+        # testDebugUnitTest is the classic com.android.library task name; KMP androidLibrary
+        # modules (:core:network, :core:security, :core:serverapi, …) run their Android unit
+        # tests under testAndroidHostTest instead — Gradle only runs a task in the modules
+        # that actually declare it, so both names are needed or those modules' tests
+        # silently don't run at all (no error, just skipped).
+        script: ./gradlew testDebugUnitTest testAndroidHostTest
       - name: Assemble debug APK
         script: ./gradlew :app:assembleDebug
       - name: Assemble release — unsigned (proves R8 + resource shrinking)
