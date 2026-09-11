@@ -251,6 +251,7 @@ private fun ReaderContent(
                 // the wrong one. Force every tap to just toggle chrome while it's active;
                 // swipe (unaffected by this) is the reliable way to step through panels.
                 enabled = { tapNavEnabled && !smartZoomEnabled },
+                rightToLeft = { rtlEnabled },
             ).also { l -> it.addInputListener(l) }
         }
         onDispose { if (nav != null && listener != null) nav.removeInputListener(listener) }
@@ -337,8 +338,13 @@ private fun ReaderContent(
                     commitFraction = swipeSensitivity.commitFraction,
                     snapshot = { pageView?.pageSnapshot() },
                     onTurn = { forward ->
+                        // goForward()/goBackward() pick +1 vs -1 from the system locale, not
+                        // this book's own reading direction — flip which one a physically
+                        // "forward" gesture calls so manga (right-to-left) actually turns the
+                        // right way instead of just running Readium's (always-LTR-here) default.
+                        val actuallyForward = forward != rtlEnabled
                         (
-                            if (forward) panelNavigator?.goForward(false)
+                            if (actuallyForward) panelNavigator?.goForward(false)
                             else panelNavigator?.goBackward(false)
                             ) == true
                     },
