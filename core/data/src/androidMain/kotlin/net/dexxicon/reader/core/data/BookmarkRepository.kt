@@ -15,7 +15,7 @@ import net.dexxicon.reader.core.serverapi.bookmark.BookOrbitBookmarkBody
 import net.dexxicon.reader.core.serverapi.bookmark.BookmarkApi
 import net.dexxicon.reader.core.serverapi.bookmark.GrimmoryBookmarkBody
 import org.json.JSONObject
-import retrofit2.HttpException
+import io.ktor.client.plugins.ResponseException
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -145,9 +145,9 @@ class BookmarkRepository @Inject constructor(
                     server.resolve("/api/v1/bookmarks"),
                     GrimmoryBookmarkBody(bookId = bookId, cfi = cfi, title = title),
                 ).id?.toString()
-            } catch (e: HttpException) {
+            } catch (e: ResponseException) {
                 // 409 = this cfi is already bookmarked server-side; recover its id.
-                if (e.code() != 409) throw e
+                if (e.response.status.value != 409) throw e
                 runCatching {
                     api.list(server.resolve("/api/v1/bookmarks/book/$bookId"))
                         .firstOrNull { it.cfi == cfi }?.id?.toString()

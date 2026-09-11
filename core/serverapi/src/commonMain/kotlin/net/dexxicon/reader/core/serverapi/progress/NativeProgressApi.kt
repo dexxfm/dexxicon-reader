@@ -1,13 +1,15 @@
 package net.dexxicon.reader.core.serverapi.progress
 
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.HttpMethod
+import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
-import retrofit2.Response
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.HTTP
-import retrofit2.http.POST
-import retrofit2.http.PUT
-import retrofit2.http.Url
+import net.dexxicon.reader.core.network.ApiResponse
+import net.dexxicon.reader.core.network.apiResponse
 
 /**
  * Native reading-progress APIs — the ones the servers' own web readers use, so progress
@@ -21,50 +23,61 @@ import retrofit2.http.Url
  *
  * Percentages are 0–100 on the wire.
  */
-interface NativeProgressApi {
+class NativeProgressApi(private val client: HttpClient) {
 
-    // GETs return Response<T>: the servers answer 200 with a literal `null` body when a book
-    // has no progress yet — NullableBodyConverterFactory turns that into a null body().
+    // GETs return ApiResponse<T>: the servers answer 200 with a literal `null` body when a
+    // book has no progress yet — ApiResponse's own deserialize-failure tolerance turns that
+    // into a null body(), same job NullableBodyConverterFactory did for Retrofit.
 
-    @GET
-    suspend fun bookOrbitFileProgress(@Url url: String): Response<BookOrbitFileProgress>
+    suspend fun bookOrbitFileProgress(url: String): ApiResponse<BookOrbitFileProgress> =
+        client.apiResponse(url) { method = HttpMethod.Get }
 
-    @POST
-    suspend fun bookOrbitSaveFileProgress(
-        @Url url: String,
-        @Body body: BookOrbitFileProgress,
-    ): Response<Unit>
+    suspend fun bookOrbitSaveFileProgress(url: String, body: BookOrbitFileProgress): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 
-    @GET
-    suspend fun bookOrbitAudioProgress(@Url url: String): Response<BookOrbitAudioProgress>
+    suspend fun bookOrbitAudioProgress(url: String): ApiResponse<BookOrbitAudioProgress> =
+        client.apiResponse(url) { method = HttpMethod.Get }
 
-    @HTTP(method = "PATCH", hasBody = true)
-    suspend fun bookOrbitSaveAudioProgress(
-        @Url url: String,
-        @Body body: BookOrbitAudioProgressUpdate,
-    ): Response<Unit>
+    suspend fun bookOrbitSaveAudioProgress(url: String, body: BookOrbitAudioProgressUpdate): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Patch
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 
-    @GET
-    suspend fun grimmoryProgress(@Url url: String): Response<GrimmoryProgressResponse>
+    suspend fun grimmoryProgress(url: String): ApiResponse<GrimmoryProgressResponse> =
+        client.apiResponse(url) { method = HttpMethod.Get }
 
-    @PUT
-    suspend fun grimmorySaveProgress(
-        @Url url: String,
-        @Body body: GrimmoryUpdateProgress,
-    ): Response<Unit>
+    suspend fun grimmorySaveProgress(url: String, body: GrimmoryUpdateProgress): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Put
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 
-    @GET
-    suspend fun grimmoryAppBook(@Url url: String): GrimmoryAppBook
+    suspend fun grimmoryAppBook(url: String): GrimmoryAppBook = client.get(url).body()
 
     // ---- reading status ----
     //  BookOrbit  PATCH  /api/v1/books/{id}/status        {status:"reading"}  (lower_snake)
     //  Grimmory   PUT    /api/v1/app/books/{id}/status    {status:"READING"}  (UPPER)
 
-    @HTTP(method = "PATCH", hasBody = true)
-    suspend fun bookOrbitSetStatus(@Url url: String, @Body body: ServerStatusUpdate): Response<Unit>
+    suspend fun bookOrbitSetStatus(url: String, body: ServerStatusUpdate): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Patch
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 
-    @PUT
-    suspend fun grimmorySetStatus(@Url url: String, @Body body: ServerStatusUpdate): Response<Unit>
+    suspend fun grimmorySetStatus(url: String, body: ServerStatusUpdate): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Put
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 }
 
 @Serializable

@@ -6,17 +6,15 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// KMP, following :core:network's pattern (issue #48 / PR #51). commonMain holds the sign-in
-// path — NativeAuthApi/NativeAuthClient, OidcApi/OidcClient — on Ktor, the actual Phase 1
-// milestone (issue #52: "sign in to BookOrbit + Grimmory from iOS, hold + refresh a
-// session"). androidMain keeps every other API (browse/bookmark/kosync/annotation/progress/
-// user) on Retrofit, unchanged, until each gets its own follow-up port — same "port what's
-// needed now" approach :core:network used for AuthInterceptor/PersistentCookieJar.
+// KMP, following :core:network's pattern (issue #48 / PR #51). Every API domain is now on
+// Ktor in commonMain — the sign-in path (NativeAuthApi/NativeAuthClient, OidcApi/OidcClient,
+// issue #52) plus browse/bookmark/kosync/annotation/progress/user (issue #56). No androidMain
+// source left at all: this module doesn't need one, since nothing in it is Android-specific
+// any more — the androidLibrary target below just makes it consumable from :app/:core:data.
 //
 // No Hilt/KSP plugin here — same reason as :core:network: the Hilt Gradle plugin refuses to
-// apply to a KMP module. ServerApiModule (the Retrofit bindings for the untouched APIs)
-// moved to :app; the new Ktor-backed classes are provided from a new :app-hosted module too
-// — they can't carry @Inject in commonMain (javax.inject isn't available on iOS).
+// apply to a KMP module. ServerApiModule/ServerAuthModule (the @Provides bindings) live in
+// :app — they can't carry @Inject in commonMain (javax.inject isn't available on iOS).
 kotlin {
     androidLibrary {
         namespace = "net.dexxicon.reader.core.serverapi"
@@ -25,6 +23,8 @@ kotlin {
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
         // Opt-in required by the KMP androidLibrary DSL — plain unit tests (no device) live
         // in src/androidHostTest, not src/test as with the classic com.android.library plugin.
+        // commonTest sources (all of this module's tests, now) run there too, alongside
+        // iosSimulatorArm64Test on Codemagic's ios-ci.
         withHostTestBuilder {}.configure {}
     }
     iosArm64()
@@ -39,19 +39,11 @@ kotlin {
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
         }
-        androidMain.dependencies {
-            api(libs.retrofit)
-            implementation(libs.retrofit.kotlinx.serialization)
-            implementation(libs.kotlinx.serialization.json)
-            implementation(libs.okhttp)
-            implementation(libs.kotlinx.coroutines.android)
-            implementation(libs.hilt.android)
-        }
-        getByName("androidHostTest").dependencies {
-            implementation(libs.junit)
-            implementation(libs.truth)
-            implementation(libs.mockwebserver)
+        commonTest.dependencies {
+            implementation(kotlin("test"))
             implementation(libs.kotlinx.coroutines.test)
+            implementation(libs.ktor.client.mock)
+            implementation(libs.ktor.serialization.kotlinx.json)
         }
     }
 }

@@ -60,9 +60,11 @@ kotlin {
             implementation(libs.truth)
             implementation(libs.turbine)
             implementation(libs.kotlinx.coroutines.test)
-            implementation(libs.mockwebserver)
-            implementation(libs.retrofit)
-            implementation(libs.retrofit.kotlinx.serialization)
+            // BookOrbitCatalogSourceTest mocks BookOrbitBrowseApi's Ktor client (issue #56) —
+            // MockWebServer/Retrofit are gone now that :core:serverapi is off Retrofit.
+            implementation(libs.ktor.client.mock)
+            implementation(libs.ktor.client.content.negotiation)
+            implementation(libs.ktor.serialization.kotlinx.json)
         }
     }
 }

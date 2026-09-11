@@ -25,11 +25,14 @@ import javax.inject.Provider
 import javax.inject.Singleton
 
 /**
- * Provides the sign-in path's Ktor client + API/orchestration classes (issues #52, #54).
- * `NativeAuthApi`/`NativeAuthClient`/`OidcApi`/`OidcClient`/`TokenManager`/`ServerProber`
- * live in commonMain (`:core:serverapi`, `:core:data`) and can't carry `@Inject` there —
- * `javax.inject` isn't available on iOS — so, like `NetworkModule`, this module supplies
- * them explicitly instead of relying on constructor injection.
+ * Provides the shared Ktor [HttpClient] every `:core:serverapi` API now uses (issues #52,
+ * #56), plus the sign-in path's own orchestration classes (issues #52, #54) —
+ * `NativeAuthApi`/`NativeAuthClient`/`OidcApi`/`OidcClient`/`TokenManager`/`ServerProber`.
+ * All of these live in commonMain (`:core:serverapi`, `:core:data`) and can't carry
+ * `@Inject` there — `javax.inject` isn't available on iOS — so, like `NetworkModule`, this
+ * module supplies them explicitly instead of relying on constructor injection. The other
+ * `:core:serverapi` APIs (browse/bookmark/kosync/annotation/progress/user) are provided from
+ * [ServerApiModule] instead, which just injects this module's [HttpClient].
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -37,7 +40,7 @@ object ServerAuthModule {
 
     @Provides
     @Singleton
-    fun provideAuthHttpClient(
+    fun provideServerHttpClient(
         @DexxiconHttpClient okHttpClient: OkHttpClient,
         // Provider<AuthHeaderProvider>, not the interface directly — AuthHeaderProviderImpl
         // depends on TokenManager, which depends (via NativeAuthClient) on this very client,

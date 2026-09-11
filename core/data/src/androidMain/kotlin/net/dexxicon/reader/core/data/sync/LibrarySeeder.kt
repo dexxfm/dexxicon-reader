@@ -14,8 +14,8 @@ import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryAppSummary
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
-import retrofit2.HttpException
-import java.io.IOException
+import io.ktor.client.plugins.ResponseException
+import kotlinx.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -53,11 +53,12 @@ class LibrarySeeder @Inject constructor(
                     else -> emptyList()
                 },
             )
-        } catch (e: HttpException) {
-            if (e.code() == 401 || e.code() == 403) {
-                Outcome.Failure(DexxiconError.Unauthorized("HTTP ${e.code()}"))
+        } catch (e: ResponseException) {
+            val status = e.response.status.value
+            if (status == 401 || status == 403) {
+                Outcome.Failure(DexxiconError.Unauthorized("HTTP $status"))
             } else {
-                Outcome.Failure(DexxiconError.Unknown("HTTP ${e.code()}", e))
+                Outcome.Failure(DexxiconError.Unknown("HTTP $status", e))
             }
         } catch (e: IOException) {
             Outcome.Failure(DexxiconError.Network(e.message ?: "Network error"))

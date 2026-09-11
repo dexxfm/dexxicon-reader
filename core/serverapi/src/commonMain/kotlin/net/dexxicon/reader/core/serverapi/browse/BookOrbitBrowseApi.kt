@@ -1,11 +1,14 @@
 package net.dexxicon.reader.core.serverapi.browse
 
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.Url
 
 /**
  * BookOrbit native browse endpoints (JWT bearer). Discovered from the web client:
@@ -17,20 +20,20 @@ import retrofit2.http.Url
  * Streaming: GET /api/v1/books/files/{fileId}/serve     (range-capable)
  * Download:  GET /api/v1/books/files/{fileId}/download  (whole file)
  */
-interface BookOrbitBrowseApi {
+class BookOrbitBrowseApi(private val client: HttpClient) {
 
-    @GET
-    suspend fun libraries(@Url url: String): List<BookOrbitLibrary>
+    suspend fun libraries(url: String): List<BookOrbitLibrary> = client.get(url).body()
 
-    @POST
-    suspend fun booksQuery(@Url url: String, @Body body: BookOrbitQuery): BookOrbitBookPage
+    suspend fun booksQuery(url: String, body: BookOrbitQuery): BookOrbitBookPage =
+        client.post(url) {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
 
-    @GET
-    suspend fun book(@Url url: String): BookOrbitBook
+    suspend fun book(url: String): BookOrbitBook = client.get(url).body()
 
     /** `GET /api/v1/dashboard/scrollers/{continue-reading|continue-listening}` → book cards. */
-    @GET
-    suspend fun dashboardScroller(@Url url: String): List<BookOrbitBook>
+    suspend fun dashboardScroller(url: String): List<BookOrbitBook> = client.get(url).body()
 }
 
 @Serializable

@@ -1,8 +1,9 @@
 package net.dexxicon.reader.core.serverapi.browse
 
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
 import kotlinx.serialization.Serializable
-import retrofit2.http.GET
-import retrofit2.http.Url
 
 /**
  * BookLore / Grimmory native browse endpoints (JWT bearer):
@@ -11,23 +12,18 @@ import retrofit2.http.Url
  *   GET /api/v1/books/{id}
  * Covers: /api/v1/media/book/{id}/cover  (accepts the bearer header).
  */
-interface GrimmoryBrowseApi {
+class GrimmoryBrowseApi(private val client: HttpClient) {
 
-    @GET
-    suspend fun libraries(@Url url: String): List<GrimmoryLibrary>
+    suspend fun libraries(url: String): List<GrimmoryLibrary> = client.get(url).body()
 
-    @GET
-    suspend fun booksPage(@Url url: String): GrimmoryBookPage
+    suspend fun booksPage(url: String): GrimmoryBookPage = client.get(url).body()
 
-    @GET
-    suspend fun book(@Url url: String): GrimmoryBook
+    suspend fun book(url: String): GrimmoryBook = client.get(url).body()
 
-    @GET
-    suspend fun facets(@Url url: String): GrimmoryFacetsResponse
+    suspend fun facets(url: String): GrimmoryFacetsResponse = client.get(url).body()
 
     /** `GET /api/v1/app/books/continue-reading` / `continue-listening` — in-progress books. */
-    @GET
-    suspend fun appInProgress(@Url url: String): List<GrimmoryAppSummary>
+    suspend fun appInProgress(url: String): List<GrimmoryAppSummary> = client.get(url).body()
 }
 
 /** A row from the app's `continue-reading` / `continue-listening` lists. */

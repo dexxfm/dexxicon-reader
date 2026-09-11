@@ -174,7 +174,7 @@ class NativeProgressSync @Inject constructor(
             )
         }
         if (!response.isSuccessful) {
-            val err = runCatching { response.errorBody()?.string() }.getOrNull()
+            val err = response.errorBody()
             error("BookOrbit progress save HTTP ${response.code()}: $err")
         }
     }
@@ -234,7 +234,7 @@ class NativeProgressSync @Inject constructor(
         )
         val response = api.grimmorySaveProgress(server.resolve("/api/v1/app/books/$bookId/progress"), body)
         if (!response.isSuccessful) {
-            val err = runCatching { response.errorBody()?.string() }.getOrNull()
+            val err = response.errorBody()
             error("Grimmory progress PUT HTTP ${response.code()}: $err")
         }
     }
