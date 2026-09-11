@@ -41,7 +41,12 @@ actual fun SsoWebView(
         factory = {
             WKWebView().apply {
                 navigationDelegate = delegate
-                loadRequest(NSURLRequest(URL = NSURL(string = url)))
+                // `uRL`, not `URL` — Kotlin/Native's cinterop binding lowercases the leading
+                // all-caps run of an Obj-C initializer's first parameter name (`initWithURL:`
+                // becomes `constructor(uRL: NSURL)`), so the Obj-C selector's own label isn't
+                // usable as the Kotlin named-argument here. Caught by issue #88's first real
+                // ios-ci run since this file was written.
+                loadRequest(NSURLRequest(uRL = NSURL(string = url)))
             }
         },
         modifier = modifier,
