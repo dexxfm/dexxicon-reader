@@ -1,6 +1,7 @@
 package net.dexxicon.reader
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.remember
@@ -27,7 +28,19 @@ class SharedPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val container = remember { createAppContainer(PlatformContext(applicationContext)) }
-            App(container)
+            App(container, onOpenReader = { _, _, format, _, _ ->
+                // issue #99 — this preview activity exists only to compare :shared's
+                // rendering against native, never to actually read a book: the real, already-
+                // working native reader stack (Readium/Media3) lives entirely in :app's own
+                // separate Hilt graph, which this debug-only composition root deliberately
+                // has no access to. iOS's actual (MainViewController) hands the same
+                // callback to a real Readium Swift Toolkit reader instead.
+                Toast.makeText(
+                    this@SharedPreviewActivity,
+                    "Reading isn't available in this shared-UI preview ($format) — open Dexxicon Reader to read this book.",
+                    Toast.LENGTH_LONG,
+                ).show()
+            })
         }
     }
 }

@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -31,16 +32,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import io.ktor.http.Url
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.ReadingStatus
+import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 
 /**
- * Read-only-ish book detail — title, authors, format, description, and (issue #84) a reading
- * status the user can change. No download and no actual reading: `BookActions`'s
- * download/remove and the reader modules (Readium/PDFium/Media3) are both out of scope, the
- * former genuinely Android-only today, the latter a separate, already-deferred decision.
+ * Read-only-ish book detail — title, authors, format, description, a reading status the user
+ * can change (issue #84), and (issue #99) a "Read" action that hands off to a native reader —
+ * see [OnOpenReader]'s doc comment for why that's a platform-supplied callback rather than a
+ * screen this file owns. `BookActions`'s download/remove stays out of scope — genuinely
+ * Android-only (WorkManager), unrelated to reading itself.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -49,6 +53,7 @@ fun BookDetailScreen(
     serverId: String,
     bookId: String,
     onBack: () -> Unit,
+    onOpenReader: OnOpenReader,
 ) {
     var detail by remember(serverId, bookId) { mutableStateOf<BookDetail?>(null) }
     var error by remember(serverId, bookId) { mutableStateOf<String?>(null) }
@@ -127,6 +132,16 @@ fun BookDetailScreen(
                             label = { Text(status.label) },
                         )
                     }
+                }
+
+                // issue #99 — the acquisition's URL + a freshly-resolved auth header are
+                // plain data by the time they leave :shared; the platform host never needs
+                // its own path back into the auth/network layer just to open a book.
+                currentDetail.primaryAcquisition?.let { acquisition ->
+                    Button(onClick = {
+                        val header = container.authHeaderProvider.authHeader(Url(acquisition.href))
+                        onOpenReader(serverId, bookId, currentDetail.summary.format, acquisition.href, header)
+                    }) { Text("Read") }
                 }
 
                 currentDetail.description?.let {

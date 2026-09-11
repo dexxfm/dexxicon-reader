@@ -51,7 +51,7 @@ import net.dexxicon.reader.shared.catalog.ReadingStatusActions
  * already solves for the same reason — `AuthHeaderProviderImpl` needs [TokenManager], which
  * needs [NativeAuthClient], which needs this very [httpClient] — broken here with a plain
  * deferred adapter object instead of Dagger's `Provider<T>` (there's no DI container to ask
- * for one): [httpClient] is built against [deferredAuthHeaderProvider], which forwards to
+ * for one): [httpClient] is built against [authHeaderProvider], which forwards to
  * [realAuthHeaderProvider] — set once, after every other `val` below has finished
  * constructing — rather than against the real implementation directly.
  *
@@ -97,11 +97,17 @@ class AppContainer(
     private val scope = CoroutineScope(SupervisorJob() + io)
 
     private lateinit var realAuthHeaderProvider: AuthHeaderProvider
-    private val deferredAuthHeaderProvider = object : AuthHeaderProvider {
+
+    /** Forwards to [realAuthHeaderProvider] once it exists (see this class's doc comment for
+     * why the cycle needs this indirection). Exposed publicly (issue #99) — the reader-launch
+     * hand-off needs a fresh `Authorization` header for a book's acquisition URL, and this is
+     * the same provider [httpClient] itself uses, so the header always matches what a real
+     * network call would have sent. */
+    val authHeaderProvider: AuthHeaderProvider = object : AuthHeaderProvider {
         override fun authHeader(url: Url) = realAuthHeaderProvider.authHeader(url)
         override fun refreshAuthHeader(url: Url) = realAuthHeaderProvider.refreshAuthHeader(url)
     }
-    private val httpClient: HttpClient = createHttpClient(engine, deferredAuthHeaderProvider)
+    private val httpClient: HttpClient = createHttpClient(engine, authHeaderProvider)
 
     private val nativeAuthApi = NativeAuthApi(httpClient)
     private val nativeAuthClient = NativeAuthClient(nativeAuthApi)
