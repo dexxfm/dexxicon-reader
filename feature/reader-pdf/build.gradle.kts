@@ -42,6 +42,10 @@ dependencies {
     implementation(libs.readium.shared)
     implementation(libs.readium.navigator)
     implementation(libs.readium.adapter.pdfium)
+    // Readium's pdfium adapter already pulls this in transitively for its PDFView; declared
+    // explicitly (same version) so PdfReaderScreen can call its public canScrollHorizontally()
+    // directly instead of by reflection — see the version catalog entry for the pin rationale.
+    implementation(libs.android.pdf.viewer)
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)
