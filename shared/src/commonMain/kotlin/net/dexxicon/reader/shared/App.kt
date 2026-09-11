@@ -1,55 +1,64 @@
 package net.dexxicon.reader.shared
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.navigation.toRoute
 import kotlinx.serialization.Serializable
-import net.dexxicon.reader.core.model.BookSummary
+import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.servers.AddServerState
+import net.dexxicon.reader.shared.servers.TestState
 
-// Phase 0: a shared Compose Multiplatform flow — a list and a detail screen behind a
-// NavHost (JetBrains' KMP navigation-compose). Renders identically on Android and iOS;
-// :core:model (already KMP) supplies the data.
-private val sample = listOf(
-    BookSummary(id = "1", serverId = "demo", title = "Her Final Words", authors = listOf("Brianna Labuskes")),
-    BookSummary(id = "2", serverId = "demo", title = "White Out", authors = listOf("Danielle Girard")),
-    BookSummary(id = "3", serverId = "demo", title = "Press Reset", authors = listOf("Jason Schreier")),
-    BookSummary(id = "4", serverId = "demo", title = "A Loyal Son of Terra", authors = listOf("Steven Mohan, Jr.")),
-)
-
-@Serializable private object ListRoute
-@Serializable private data class DetailRoute(val id: String)
+// Phase 2 Slice 1 (issue #62): the real app shell — a servers list (with a "no servers yet"
+// empty state) behind a NavHost, and a native-login add-server form wired to the Phase 1
+// data layer via [AppContainer]. Renders identically on Android ([SharedPreviewActivity],
+// debug-only) and iOS ([MainViewController]). Slice 2 (SSO/OIDC, needs WKWebView/UIKitView
+// interop) is deferred to a follow-up issue.
+@Serializable private object ServersRoute
+@Serializable private object AddServerRoute
 
 @Composable
-fun App() {
+fun App(container: AppContainer) {
     MaterialTheme {
         val nav = rememberNavController()
-        NavHost(navController = nav, startDestination = ListRoute) {
-            composable<ListRoute> {
-                BookListScreen(onOpen = { nav.navigate(DetailRoute(it.id)) })
+        NavHost(navController = nav, startDestination = ServersRoute) {
+            composable<ServersRoute> {
+                ServersScreen(
+                    container = container,
+                    onAddServer = { nav.navigate(AddServerRoute) },
+                )
             }
-            composable<DetailRoute> { entry ->
-                val id = entry.toRoute<DetailRoute>().id
-                BookDetailScreen(
-                    book = sample.firstOrNull { it.id == id },
+            composable<AddServerRoute> {
+                AddServerScreen(
+                    container = container,
                     onBack = { nav.popBackStack() },
+                    onSaved = { nav.popBackStack() },
                 )
             }
         }
@@ -58,39 +67,116 @@ fun App() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BookListScreen(onOpen: (BookSummary) -> Unit) {
-    Scaffold(topBar = { TopAppBar(title = { Text("Dexxicon — shared UI") }) }) { padding ->
-        LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-            items(sample) { book ->
-                ListItem(
-                    headlineContent = { Text(book.title) },
-                    supportingContent = { Text(book.authorLine) },
-                    modifier = Modifier.clickable { onOpen(book) },
-                )
-                HorizontalDivider()
+private fun ServersScreen(container: AppContainer, onAddServer: () -> Unit) {
+    val servers by container.serverRepository.servers.collectAsState(initial = null)
+
+    Scaffold(topBar = { TopAppBar(title = { Text("Dexxicon") }) }) { padding ->
+        val list = servers
+        when {
+            list == null -> Unit // first emission still pending
+            list.isEmpty() -> EmptyServersState(Modifier.fillMaxSize().padding(padding), onAddServer)
+            else -> LazyColumn(Modifier.fillMaxSize().padding(padding)) {
+                items(list) { server ->
+                    ListItem(
+                        headlineContent = { Text(server.displayName) },
+                        supportingContent = { Text(server.baseUrl) },
+                    )
+                    HorizontalDivider()
+                }
+                item {
+                    TextButton(
+                        onClick = onAddServer,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    ) { Text("+ Add a server") }
+                }
             }
         }
     }
 }
 
+@Composable
+private fun EmptyServersState(modifier: Modifier, onAddServer: () -> Unit) {
+    Column(
+        modifier = modifier.padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+    ) {
+        Text("No servers yet", style = MaterialTheme.typography.headlineSmall)
+        Text(
+            "Add your BookOrbit or Grimmory library to start browsing and reading.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Button(onClick = onAddServer) { Text("Add a server") }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BookDetailScreen(book: BookSummary?, onBack: () -> Unit) {
+private fun AddServerScreen(container: AppContainer, onBack: () -> Unit, onSaved: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val state = remember { AddServerState(container.serverProber, container.serverRepository, scope) }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(book?.title ?: "Not found") },
+                title = { Text("Add server") },
                 navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
             )
         },
     ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            Text(book?.authorLine.orEmpty(), style = MaterialTheme.typography.bodyLarge)
-            Text(
-                "This screen is served by the same commonMain code on Android and iOS.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            OutlinedTextField(
+                value = state.baseUrl,
+                onValueChange = state::onBaseUrlChange,
+                label = { Text("Server URL") },
+                placeholder = { Text("books.example.com") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
             )
+            OutlinedTextField(
+                value = state.username,
+                onValueChange = state::onUsernameChange,
+                label = { Text("Username") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = state.password,
+                onValueChange = state::onPasswordChange,
+                label = { Text("Password") },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth(),
+            )
+            OutlinedTextField(
+                value = state.displayName,
+                onValueChange = state::onDisplayNameChange,
+                label = { Text("Display name") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            val testState = state.testState
+            when (testState) {
+                TestState.Idle -> Unit
+                TestState.Testing -> CircularProgressIndicator(Modifier.padding(8.dp))
+                is TestState.Success -> Text(
+                    testState.detail,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                is TestState.Failure -> Text(
+                    testState.message,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
+            Button(onClick = state::test, enabled = state.canTest) { Text("Test connection") }
+            Button(onClick = { state.save(onSaved) }, enabled = state.canSave) {
+                Text(if (state.saving) "Saving…" else "Save")
+            }
         }
     }
 }
