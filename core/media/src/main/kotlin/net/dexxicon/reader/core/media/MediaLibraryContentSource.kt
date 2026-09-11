@@ -1,5 +1,7 @@
 package net.dexxicon.reader.core.media
 
+import net.dexxicon.reader.core.model.Chapter
+
 /**
  * Supplies the audiobook browse tree and playable-item resolution for the media browser
  * (Android Auto / Automotive). Implemented in `:core:data`, which owns the catalog,
@@ -76,4 +78,6 @@ data class PlayableAudiobook(
     val castUri: String? = null,
     /** MIME type for the Cast receiver; null lets it sniff. */
     val mimeType: String? = null,
+    /** Empty when the book has no chapter markers, or they couldn't be fetched (offline). */
+    val chapters: List<Chapter> = emptyList(),
 )
