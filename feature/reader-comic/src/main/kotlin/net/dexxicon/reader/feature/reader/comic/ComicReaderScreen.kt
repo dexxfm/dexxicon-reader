@@ -59,6 +59,7 @@ import androidx.fragment.app.FragmentContainerView
 import androidx.fragment.app.commit
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.viewpager.widget.ViewPager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.designsystem.component.pageSnapshot
@@ -76,6 +77,14 @@ private const val NAV_FRAGMENT_TAG = "dexxicon.comic.navigator"
 /** How long a page turn's own settle animation runs, roughly, before the new page's bitmap
  * is stable enough to analyse for panels. */
 private const val PANEL_DETECTION_SETTLE_DELAY_MS = 120L
+
+/**
+ * Readium never configures this, so its comic pager defaults to 1 — only one page ahead is
+ * pre-created and decoded at a time. Flipping faster than that refills shows a page that
+ * hasn't finished loading yet (a black flash). Raised once the navigator is ready — see
+ * [findViewPager].
+ */
+private const val COMIC_PAGE_PREFETCH_LIMIT = 4
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -181,6 +190,12 @@ private fun ReaderContent(
         }
     }
 
+    LaunchedEffect(navigator) {
+        if (navigator != null) {
+            findViewPager(pageView)?.offscreenPageLimit = COMIC_PAGE_PREFETCH_LIMIT
+        }
+    }
+
     // Wraps the real navigator so "forward"/"backward" step through the current page's
     // panels first (smart zoom), falling through to a real page turn once they're
     // exhausted — everything below that would otherwise call `navigator` directly
@@ -230,7 +245,12 @@ private fun ReaderContent(
                 navigator = it,
                 viewWidth = { it.publicationView.width },
                 onCenterTap = { chromeVisible = !chromeVisible },
-                enabled = { tapNavEnabled },
+                // Edge-tap zones are measured against the page's laid-out width, which no
+                // longer matches what's actually on screen once smart zoom has framed a
+                // panel — a tap meant for "next panel" can miss the zone entirely or catch
+                // the wrong one. Force every tap to just toggle chrome while it's active;
+                // swipe (unaffected by this) is the reliable way to step through panels.
+                enabled = { tapNavEnabled && !smartZoomEnabled },
             ).also { l -> it.addInputListener(l) }
         }
         onDispose { if (nav != null && listener != null) nav.removeInputListener(listener) }
@@ -422,8 +442,24 @@ private fun ComicSettings(
             Modifier.fillMaxWidth().padding(top = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Tap edges to turn pages", Modifier.weight(1f))
-            Switch(checked = tapNavigation, onCheckedChange = onToggleTapNavigation)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    "Tap edges to turn pages",
+                    color = if (smartZoom) {
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                )
+                if (smartZoom) {
+                    Text(
+                        "Off while Smart zoom is on — swipe to step through panels instead.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+            Switch(checked = tapNavigation && !smartZoom, onCheckedChange = onToggleTapNavigation, enabled = !smartZoom)
         }
         Row(
             Modifier.fillMaxWidth().padding(top = 20.dp),
@@ -448,6 +484,22 @@ private fun ComicSettings(
             Switch(checked = rightToLeft, onCheckedChange = onToggleRightToLeft)
         }
     }
+}
+
+/**
+ * The `ViewPager` Readium's comic navigator pages through, wherever it sits under [root] —
+ * unlike `PhotoView`, this one's a real compile-time dependency (`R2ViewPager` extends the
+ * plain AndroidX `ViewPager`), so no reflection is needed once it's found.
+ */
+private fun findViewPager(root: View?): ViewPager? {
+    if (root == null) return null
+    if (root is ViewPager) return root
+    if (root is ViewGroup) {
+        for (i in 0 until root.childCount) {
+            findViewPager(root.getChildAt(i))?.let { return it }
+        }
+    }
+    return null
 }
 
 /**
