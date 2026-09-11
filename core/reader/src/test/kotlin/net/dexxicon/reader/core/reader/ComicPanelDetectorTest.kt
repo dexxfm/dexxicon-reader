@@ -84,4 +84,34 @@ class ComicPanelDetectorTest {
 
         assertThat(ComicPanelDetector.detectPanels(bitmap)).isEmpty()
     }
+
+    /**
+     * The bitmap handed to the detector is a snapshot of the whole reader view, not just the
+     * page — when the page's aspect ratio doesn't match the screen (true almost always in
+     * practice), it's letterboxed against a solid fill. Reproduced here with the same 2x2 page
+     * pillarboxed into a wider canvas: pixel-perfect black bars either side, same as an actual
+     * reader snapshot.
+     */
+    @Test
+    fun `pillarboxed page still finds its panels, at the right position`() {
+        val margin = 200
+        val bitmap = Bitmap.createBitmap(400 + margin * 2, 600, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.BLACK)
+        canvas.drawRect(RectF(margin.toFloat(), 0f, (margin + 400).toFloat(), 600f), Paint().apply { color = Color.WHITE })
+        val paint = Paint().apply { color = Color.BLACK }
+        panelRects.forEach { canvas.drawRect(RectF(it.left + margin, it.top, it.right + margin, it.bottom), paint) }
+
+        val panels = ComicPanelDetector.detectPanels(bitmap)
+
+        assertThat(panels).hasSize(4)
+        // Fractions are relative to the *whole* (letterboxed) snapshot, so the panels should
+        // land within the pillarboxed page's own span, not smeared across the black bars.
+        val pageLeftFraction = margin / bitmap.width.toFloat()
+        val pageRightFraction = (margin + 400) / bitmap.width.toFloat()
+        panels.forEach { p ->
+            assertThat(p.left).isAtLeast(pageLeftFraction - 0.02f)
+            assertThat(p.right).isAtMost(pageRightFraction + 0.02f)
+        }
+    }
 }

@@ -186,7 +186,7 @@ fun BookDefaultsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltVi
             modifier = Modifier.padding(bottom = 4.dp),
         )
         SettingRow(
-            title = "Smart zoom",
+            title = "Smart zoom (Experimental)",
             subtitle = "Step through each panel in order, like a guided view. Falls back " +
                 "to the full page when panels can't be confidently detected.",
         ) {
