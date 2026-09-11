@@ -1,6 +1,15 @@
 package net.dexxicon.reader.core.data.catalog
 
 import com.google.common.truth.Truth.assertThat
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.toByteArray
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -10,17 +19,8 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
-import net.dexxicon.reader.core.serverapi.NullableBodyConverterFactory
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.mockwebserver.MockResponse
-import okhttp3.mockwebserver.MockWebServer
-import org.junit.After
-import org.junit.Before
 import org.junit.Test
-import retrofit2.Retrofit
-import retrofit2.converter.kotlinx.serialization.asConverterFactory
 
 /**
  * BookOrbit's `POST /api/v1/books/query` validates `sort[].field` against its `SortField`
@@ -29,39 +29,36 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
  */
 class BookOrbitCatalogSourceTest {
 
-    private lateinit var server: MockWebServer
-    private lateinit var source: BookOrbitCatalogSource
     private val json = Json { ignoreUnknownKeys = true; isLenient = true; explicitNulls = false }
+    private lateinit var lastRequestBody: String
 
-    @Before
-    fun setUp() {
-        server = MockWebServer().also { it.start() }
-        val api = Retrofit.Builder()
-            .baseUrl(server.url("/"))
-            .client(OkHttpClient())
-            .addConverterFactory(
-                NullableBodyConverterFactory(json.asConverterFactory("application/json".toMediaType())),
+    private fun sourceFor(response: String): BookOrbitCatalogSource {
+        val engine = MockEngine { request ->
+            lastRequestBody = request.body.toByteArray().decodeToString()
+            respond(
+                content = response,
+                status = HttpStatusCode.OK,
+                headers = headersOf(HttpHeaders.ContentType, "application/json"),
             )
-            .build()
-            .create(BookOrbitBrowseApi::class.java)
-        source = BookOrbitCatalogSource(api)
+        }
+        val client = HttpClient(engine) {
+            install(ContentNegotiation) { json(json) }
+        }
+        return BookOrbitCatalogSource(BookOrbitBrowseApi(client))
     }
-
-    @After
-    fun tearDown() = server.shutdown()
 
     private fun testServer() = Server(
         id = "bo",
         displayName = "BookOrbit",
-        baseUrl = server.url("/").toString().trimEnd('/'),
+        baseUrl = "https://bookorbit.example.test",
         type = ServerType.BOOKORBIT,
     )
 
     private fun sortFieldsFor(sort: BookSort): List<String> = runBlocking {
-        server.enqueue(MockResponse().setBody("""{"items":[],"total":0,"page":0,"size":50}"""))
+        val source = sourceFor("""{"items":[],"total":0,"page":0,"size":50}""")
         val outcome = source.books(testServer(), shelfId = null, query = null, sort = sort, page = 0, pageSize = 50)
         assertThat(outcome).isInstanceOf(Outcome.Success::class.java)
-        json.parseToJsonElement(server.takeRequest().body.readUtf8())
+        json.parseToJsonElement(lastRequestBody)
             .jsonObject.getValue("sort").jsonArray
             .map { it.jsonObject.getValue("field").jsonPrimitive.content }
     }

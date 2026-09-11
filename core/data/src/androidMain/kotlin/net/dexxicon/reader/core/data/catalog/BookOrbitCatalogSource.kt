@@ -19,8 +19,8 @@ import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitPagination
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitQuery
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitSort
-import retrofit2.HttpException
-import java.io.IOException
+import io.ktor.client.plugins.ResponseException
+import kotlinx.io.IOException
 import javax.inject.Inject
 
 /**
@@ -150,11 +150,12 @@ class BookOrbitCatalogSource @Inject constructor(
 
     private suspend inline fun <T> call(block: () -> T): Outcome<T> = try {
         Outcome.Success(block())
-    } catch (e: HttpException) {
-        if (e.code() == 401 || e.code() == 403) {
+    } catch (e: ResponseException) {
+        val status = e.response.status.value
+        if (status == 401 || status == 403) {
             Outcome.Failure(DexxiconError.Unauthorized("Session expired — reopen the server"))
         } else {
-            Outcome.Failure(DexxiconError.Network("Server returned HTTP ${e.code()}"))
+            Outcome.Failure(DexxiconError.Network("Server returned HTTP $status"))
         }
     } catch (e: IOException) {
         Outcome.Failure(DexxiconError.Network(e.message ?: "Network error"))

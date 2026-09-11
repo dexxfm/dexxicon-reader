@@ -1,8 +1,9 @@
 package net.dexxicon.reader.core.serverapi.user
 
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
 import kotlinx.serialization.Serializable
-import retrofit2.http.GET
-import retrofit2.http.Url
 
 /**
  * "Who am I" against a native server, so Settings can show which account the app is
@@ -11,10 +12,9 @@ import retrofit2.http.Url
  *   Grimmory   GET /api/v1/users/me
  * Both answer with at least `username` / `name` / `email`.
  */
-interface NativeUserApi {
+class NativeUserApi(private val client: HttpClient) {
 
-    @GET
-    suspend fun me(@Url url: String): NativeUser
+    suspend fun me(url: String): NativeUser = client.get(url).body()
 }
 
 @Serializable

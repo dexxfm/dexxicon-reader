@@ -1,13 +1,16 @@
 package net.dexxicon.reader.core.serverapi.annotation
 
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.plugins.expectSuccess
+import io.ktor.client.request.delete
+import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.put
+import io.ktor.client.request.setBody
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
-import retrofit2.Response
-import retrofit2.http.Body
-import retrofit2.http.DELETE
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.PUT
-import retrofit2.http.Url
 
 /**
  * BookLore / Grimmory annotation CRUD (JWT bearer):
@@ -17,22 +20,29 @@ import retrofit2.http.Url
  *   DELETE /api/v1/annotations/{id}
  * BookOrbit exposes only a read view: `GET /api/v1/annotations?bookId={id}` → { items: [...] }.
  */
-interface AnnotationApi {
+class AnnotationApi(private val client: HttpClient) {
 
-    @GET
-    suspend fun listForBook(@Url url: String): List<AnnotationDto>
+    suspend fun listForBook(url: String): List<AnnotationDto> = client.get(url).body()
 
-    @GET
-    suspend fun listBookOrbit(@Url url: String): BookOrbitAnnotationsPage
+    suspend fun listBookOrbit(url: String): BookOrbitAnnotationsPage = client.get(url).body()
 
-    @POST
-    suspend fun create(@Url url: String, @Body body: CreateAnnotationDto): AnnotationDto
+    suspend fun create(url: String, body: CreateAnnotationDto): AnnotationDto =
+        client.post(url) {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
 
-    @PUT
-    suspend fun update(@Url url: String, @Body body: UpdateAnnotationDto): AnnotationDto
+    suspend fun update(url: String, body: UpdateAnnotationDto): AnnotationDto =
+        client.put(url) {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
 
-    @DELETE
-    suspend fun delete(@Url url: String): Response<Unit>
+    /** Callers never inspected the Retrofit `Response<Unit>` this returned either — a failed
+     * delete doesn't stop the local-side cleanup that follows it. */
+    suspend fun delete(url: String) {
+        client.delete(url) { expectSuccess = false }
+    }
 }
 
 @Serializable
