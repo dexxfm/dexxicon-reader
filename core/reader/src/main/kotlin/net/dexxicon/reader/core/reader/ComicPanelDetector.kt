@@ -18,7 +18,18 @@ import android.graphics.RectF
 object ComicPanelDetector {
 
     fun detectPanels(bitmap: Bitmap, rightToLeft: Boolean = false): List<RectF> {
-        val grid = PixelGrid.from(bitmap) ?: return emptyList()
+        val fullGrid = PixelGrid.from(bitmap) ?: return emptyList()
+
+        // A page snapshot is the whole reader view, not just the page bitmap — when the
+        // page's aspect ratio doesn't match the screen (almost always), it's letterboxed
+        // against a solid fill colour. That flat border is a *perfectly* uniform band (real
+        // page art never is, even its white margins carry a little scan/compression noise),
+        // so it's trimmed before background-colour sampling — otherwise the border sample
+        // below picks up the letterbox instead of the page, and the whole page reads as
+        // "background" with nothing left to split.
+        val margins = fullGrid.uniformMargins()
+        val grid = fullGrid.subGrid(margins) ?: fullGrid
+
         val bg = grid.backgroundLuma()
 
         val rows = grid.bands(0, grid.height) { y -> grid.isBackgroundRow(y, bg) }
@@ -42,12 +53,15 @@ object ComicPanelDetector {
 
         if (panels.size <= 1) return emptyList()
 
+        // Panel fractions are relative to the *original* snapshot (letterbox included) —
+        // that's the coordinate space the caller's transform is drawn against — so shift by
+        // the trimmed margin before dividing by the untrimmed dimensions.
         return panels.map {
             RectF(
-                it.left.toFloat() / grid.width,
-                it.top.toFloat() / grid.height,
-                it.right.toFloat() / grid.width,
-                it.bottom.toFloat() / grid.height,
+                (margins.left + it.left).toFloat() / fullGrid.width,
+                (margins.top + it.top).toFloat() / fullGrid.height,
+                (margins.left + it.right).toFloat() / fullGrid.width,
+                (margins.top + it.bottom).toFloat() / fullGrid.height,
             )
         }
     }
@@ -69,6 +83,59 @@ object ComicPanelDetector {
         val height: Int,
     ) {
         fun luma(x: Int, y: Int): Int = luma[y * width + x].toInt() and 0xFF
+
+        /**
+         * How far a perfectly flat (zero-variance) fill runs in from each edge — a letterbox
+         * or pillarbox band, not page content. Real page margins can be flat too (especially
+         * a cleanly-rendered digital page with no scan noise), so a run only counts once it's
+         * substantial — [MIN_LETTERBOX_FRACTION] of that axis — which ordinary whitespace
+         * around the art falls well short of; only a page whose aspect ratio doesn't match the
+         * view crosses it. Never trims past the midpoint either, so a page that's genuinely
+         * one flat colour throughout still comes back as roughly itself rather than nothing.
+         */
+        fun uniformMargins(): IntRect {
+            var left = 0
+            while (left < width / 2 && isUniformColumn(left)) left++
+            if (left < width * MIN_LETTERBOX_FRACTION) left = 0
+
+            var right = width
+            while (right > width / 2 + 1 && isUniformColumn(right - 1)) right--
+            if (width - right < width * MIN_LETTERBOX_FRACTION) right = width
+
+            var top = 0
+            while (top < height / 2 && isUniformRow(top)) top++
+            if (top < height * MIN_LETTERBOX_FRACTION) top = 0
+
+            var bottom = height
+            while (bottom > height / 2 + 1 && isUniformRow(bottom - 1)) bottom--
+            if (height - bottom < height * MIN_LETTERBOX_FRACTION) bottom = height
+
+            return IntRect(left, top, right, bottom)
+        }
+
+        private fun isUniformRow(y: Int): Boolean {
+            val first = luma(0, y)
+            for (x in 1 until width) if (luma(x, y) != first) return false
+            return true
+        }
+
+        private fun isUniformColumn(x: Int): Boolean {
+            val first = luma(x, 0)
+            for (y in 1 until height) if (luma(x, y) != first) return false
+            return true
+        }
+
+        /** The sub-region [rect] as its own grid, or null if trimming to it left nothing
+         * (a degenerate width/height) — callers should fall back to the untrimmed grid. */
+        fun subGrid(rect: IntRect): PixelGrid? {
+            if (rect.left == 0 && rect.top == 0 && rect.right == width && rect.bottom == height) return this
+            if (rect.width <= 0 || rect.height <= 0) return null
+            val sub = ByteArray(rect.width * rect.height)
+            for (y in 0 until rect.height) {
+                System.arraycopy(luma, (rect.top + y) * width + rect.left, sub, y * rect.width, rect.width)
+            }
+            return PixelGrid(sub, rect.width, rect.height)
+        }
 
         fun backgroundLuma(): Int {
             // The page margin is background almost by definition — sample a thin border.
@@ -189,4 +256,5 @@ object ComicPanelDetector {
     private const val MIN_GUTTER_FRACTION = 0.008
     private const val MIN_GUTTER_PX = 3
     private const val MIN_PANEL_FRACTION = 0.06
+    private const val MIN_LETTERBOX_FRACTION = 0.08
 }
