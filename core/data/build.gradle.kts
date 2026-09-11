@@ -39,11 +39,13 @@ kotlin {
             implementation(project(":core:serverapi"))
             // ServerRepository (issue #60) needs ServerDao/ServerEntity directly.
             implementation(project(":core:database"))
+            // AuthHeaderProviderImpl (issue #74) implements AuthHeaderProvider; io.ktor.http.Url
+            // itself comes in transitively via :core:network's own api(libs.ktor.client.core).
+            implementation(project(":core:network"))
             implementation(libs.kotlinx.coroutines.core)
         }
         androidMain.dependencies {
             implementation(project(":core:datastore"))
-            implementation(project(":core:network"))
             implementation(project(":core:opds"))
             implementation(project(":core:format"))
             implementation(project(":core:media"))

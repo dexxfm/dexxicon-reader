@@ -2,14 +2,18 @@ package net.dexxicon.reader.shared.di
 
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
+import io.ktor.http.Url
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import net.dexxicon.reader.core.data.ProgressSeeder
 import net.dexxicon.reader.core.data.ServerProber
 import net.dexxicon.reader.core.data.ServerRepository
+import net.dexxicon.reader.core.data.auth.AuthHeaderProviderImpl
 import net.dexxicon.reader.core.data.auth.OidcAuthenticator
 import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.database.DexxiconDatabase
-import net.dexxicon.reader.core.network.NoAuthHeaderProvider
+import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.createHttpClient
 import net.dexxicon.reader.core.security.CredentialStore
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
@@ -28,12 +32,16 @@ import net.dexxicon.reader.core.serverapi.user.NativeUserApi
  * that genuinely differ per platform — the Ktor engine, [CredentialStore], and the Room
  * database builder; everything else is identical and lives in this constructor.
  *
- * The shared [HttpClient] uses [NoAuthHeaderProvider]: Slice 1 (issue #62) only exercises the
- * sign-in path (`ServerProber.probe()`, a login call Ktor's auth plugin already skips) and a
- * local DB write, neither of which needs a resolved `Authorization` header. Real per-server
- * auth headers need `AuthHeaderProviderImpl` (`:core:data`, androidMain-only today) ported to
- * commonMain — left for a follow-up once shared UI makes an authenticated call (browse,
- * progress sync, etc).
+ * The shared [HttpClient] uses the real [AuthHeaderProviderImpl] (issue #74 — commonMain since
+ * this class; Slice 1/2 used [net.dexxicon.reader.core.network.NoAuthHeaderProvider], since
+ * login and SSO discovery are the only calls that don't need a resolved `Authorization`
+ * header). Building it hits the same real Dagger-shaped cycle `:app`'s `ServerAuthModule`
+ * already solves for the same reason — `AuthHeaderProviderImpl` needs [TokenManager], which
+ * needs [NativeAuthClient], which needs this very [httpClient] — broken here with a plain
+ * deferred adapter object instead of Dagger's `Provider<T>` (there's no DI container to ask
+ * for one): [httpClient] is built against [deferredAuthHeaderProvider], which forwards to
+ * [realAuthHeaderProvider] — set once, after every other `val` below has finished
+ * constructing — rather than against the real implementation directly.
  *
  * [io] has no commonMain default (unlike `:app`'s Hilt providers, which can default to
  * `@Dispatcher(IO)`) — `kotlinx.coroutines.Dispatchers.IO` is `internal` on Kotlin/Native
@@ -56,7 +64,18 @@ class AppContainer(
     database: DexxiconDatabase,
     io: CoroutineDispatcher,
 ) {
-    private val httpClient: HttpClient = createHttpClient(engine, NoAuthHeaderProvider)
+    /** Process-lifetime scope for [AuthHeaderProviderImpl]'s server-list collector — mirrors
+     * `:app`'s `@ApplicationScope` (`CoroutineScope(SupervisorJob() + Dispatchers.Default)`)
+     * closely enough for this one purpose without needing a second platform-supplied
+     * dispatcher; [io] already differs correctly per platform (see this class's doc comment). */
+    private val scope = CoroutineScope(SupervisorJob() + io)
+
+    private lateinit var realAuthHeaderProvider: AuthHeaderProvider
+    private val deferredAuthHeaderProvider = object : AuthHeaderProvider {
+        override fun authHeader(url: Url) = realAuthHeaderProvider.authHeader(url)
+        override fun refreshAuthHeader(url: Url) = realAuthHeaderProvider.refreshAuthHeader(url)
+    }
+    private val httpClient: HttpClient = createHttpClient(engine, deferredAuthHeaderProvider)
 
     private val nativeAuthApi = NativeAuthApi(httpClient)
     private val nativeAuthClient = NativeAuthClient(nativeAuthApi)
@@ -80,6 +99,11 @@ class AppContainer(
         tokenManager = tokenManager,
         io = io,
     )
+
+    init {
+        realAuthHeaderProvider =
+            AuthHeaderProviderImpl(database.serverDao(), credentialStore, tokenManager, scope)
+    }
 }
 
 private object NoOpProgressSeeder : ProgressSeeder {
