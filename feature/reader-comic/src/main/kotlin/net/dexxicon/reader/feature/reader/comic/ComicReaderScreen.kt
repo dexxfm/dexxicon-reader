@@ -322,6 +322,9 @@ private fun ReaderContent(
                             else panelNavigator?.goBackward(false)
                             ) == true
                     },
+                    canTurn = { forward, touchX, touchY ->
+                        pageView?.let { canTurnPastZoom(it, forward, touchX, touchY) } ?: true
+                    },
                 ),
         ) {
             AndroidView(
@@ -455,20 +458,59 @@ private fun ComicSettings(
  */
 private fun setPagePhotoViewsZoomable(root: View?, zoomable: Boolean) {
     if (root == null) return
+    findPhotoViews(root).forEach { view ->
+        runCatching {
+            view.javaClass.getMethod("setZoomable", Boolean::class.javaPrimitiveType)
+                .invoke(view, zoomable)
+        }
+    }
+}
+
+/**
+ * True when a swipe starting at ([touchX], [touchY]) — in [root]'s own coordinate space,
+ * same as the enclosing `pageTurnGesture`'s pointer events — should turn the page rather
+ * than pan a pinch-zoomed panel further in [forward]'s direction. The pager preloads
+ * neighbour pages off-screen, so this hit-tests to the *touched* `PhotoView` rather than
+ * just taking the first one found.
+ *
+ * A `PhotoView` reports [getDisplayRect] flush with its own edges once there's no more
+ * image left to reveal that way — true at rest scale (nothing to pan at all) just as much
+ * as when zoomed in and panned as far as it goes, so this needs no separate "is it zoomed"
+ * check. Defaults to true (never blocks a turn) if the view can't be found or queried.
+ */
+private fun canTurnPastZoom(root: View, forward: Boolean, touchX: Float, touchY: Float): Boolean {
+    val photoView = findPhotoViews(root).firstOrNull { it.localBoundsIn(root).contains(touchX, touchY) }
+        ?: return true
+    return runCatching {
+        val rect = photoView.javaClass.getMethod("getDisplayRect").invoke(photoView) as? RectF
+            ?: return@runCatching true
+        val slack = 2f // px of float drift after a pan/fling settles
+        if (forward) rect.right <= photoView.width + slack else rect.left >= -slack
+    }.getOrDefault(true)
+}
+
+private fun findPhotoViews(root: View): List<View> {
+    val found = mutableListOf<View>()
     val queue = ArrayDeque<View>()
     queue.add(root)
     while (queue.isNotEmpty()) {
         val view = queue.removeFirst()
-        if (view.javaClass.simpleName == "PhotoView") {
-            runCatching {
-                view.javaClass.getMethod("setZoomable", Boolean::class.javaPrimitiveType)
-                    .invoke(view, zoomable)
-            }
-        }
+        if (view.javaClass.simpleName == "PhotoView") found += view
         if (view is ViewGroup) {
             for (i in 0 until view.childCount) queue.add(view.getChildAt(i))
         }
     }
+    return found
+}
+
+/** [this]'s bounds in [ancestor]'s own coordinate space — window coordinates cancel out
+ * however many plain `ViewGroup`s (the pager, its page containers, …) sit in between. */
+private fun View.localBoundsIn(ancestor: View): RectF {
+    val loc = IntArray(2).also { getLocationInWindow(it) }
+    val ancestorLoc = IntArray(2).also { ancestor.getLocationInWindow(it) }
+    val left = (loc[0] - ancestorLoc[0]).toFloat()
+    val top = (loc[1] - ancestorLoc[1]).toFloat()
+    return RectF(left, top, left + width, top + height)
 }
 
 @Composable
