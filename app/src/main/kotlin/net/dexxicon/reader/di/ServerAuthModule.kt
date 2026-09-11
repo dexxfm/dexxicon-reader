@@ -10,8 +10,12 @@ import io.ktor.http.Url
 import kotlinx.coroutines.CoroutineDispatcher
 import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
+import net.dexxicon.reader.core.data.ProgressSeeder
 import net.dexxicon.reader.core.data.ServerProber
+import net.dexxicon.reader.core.data.ServerRepository
+import net.dexxicon.reader.core.data.auth.OidcAuthenticator
 import net.dexxicon.reader.core.data.auth.TokenManager
+import net.dexxicon.reader.core.database.dao.ServerDao
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.DexxiconHttpClient
 import net.dexxicon.reader.core.network.createHttpClient
@@ -20,19 +24,21 @@ import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthClient
 import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcClient
+import net.dexxicon.reader.core.serverapi.user.NativeUserApi
 import okhttp3.OkHttpClient
 import javax.inject.Provider
 import javax.inject.Singleton
 
 /**
  * Provides the shared Ktor [HttpClient] every `:core:serverapi` API now uses (issues #52,
- * #56), plus the sign-in path's own orchestration classes (issues #52, #54) —
- * `NativeAuthApi`/`NativeAuthClient`/`OidcApi`/`OidcClient`/`TokenManager`/`ServerProber`.
- * All of these live in commonMain (`:core:serverapi`, `:core:data`) and can't carry
- * `@Inject` there — `javax.inject` isn't available on iOS — so, like `NetworkModule`, this
- * module supplies them explicitly instead of relying on constructor injection. The other
- * `:core:serverapi` APIs (browse/bookmark/kosync/annotation/progress/user) are provided from
- * [ServerApiModule] instead, which just injects this module's [HttpClient].
+ * #56), plus the sign-in path's own orchestration classes (issues #52, #54, #60) —
+ * `NativeAuthApi`/`NativeAuthClient`/`OidcApi`/`OidcClient`/`TokenManager`/`ServerProber`/
+ * `ServerRepository`/`OidcAuthenticator`. All of these live in commonMain (`:core:serverapi`,
+ * `:core:data`) and can't carry `@Inject` there — `javax.inject` isn't available on iOS — so,
+ * like `NetworkModule`, this module supplies them explicitly instead of relying on
+ * constructor injection. The other `:core:serverapi` APIs (browse/bookmark/kosync/annotation/
+ * progress/user) are provided from [ServerApiModule] instead, which just injects this
+ * module's [HttpClient].
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -94,4 +100,25 @@ object ServerAuthModule {
         // on a commonMain constructor, so the qualified binding is resolved here instead.
         @Dispatcher(DexxiconDispatcher.IO) io: CoroutineDispatcher,
     ): ServerProber = ServerProber(authClient, io)
+
+    @Provides
+    @Singleton
+    fun provideServerRepository(
+        serverDao: ServerDao,
+        credentialStore: CredentialStore,
+        tokenManager: TokenManager,
+        nativeUserApi: NativeUserApi,
+        @Dispatcher(DexxiconDispatcher.IO) io: CoroutineDispatcher,
+    ): ServerRepository = ServerRepository(serverDao, credentialStore, tokenManager, nativeUserApi, io)
+
+    @Provides
+    @Singleton
+    fun provideOidcAuthenticator(
+        oidcClient: OidcClient,
+        serverRepository: ServerRepository,
+        progressSeeder: ProgressSeeder,
+        tokenManager: TokenManager,
+        @Dispatcher(DexxiconDispatcher.IO) io: CoroutineDispatcher,
+    ): OidcAuthenticator =
+        OidcAuthenticator(oidcClient, serverRepository, progressSeeder, tokenManager, io)
 }

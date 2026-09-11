@@ -6,13 +6,13 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
-// KMP, following the pattern established for :core:network/:core:serverapi. commonMain
-// holds just TokenManager + ServerProber (issue #54) — the session cache/refresh logic and
-// the pre-save server check, both of which depend only on already-KMP pieces
-// (NativeAuthClient, CredentialStore). Everything else in this module (repositories, catalog
-// sources, sync, downloads, media) stays Android-only in androidMain, unchanged — those
-// depend on Room (:core:database) and other still-Android-only modules; porting them is a
-// separate, larger decision (see issue #54's own scope note on OidcAuthenticator).
+// KMP, following the pattern established for :core:network/:core:serverapi. commonMain holds
+// the sign-in path: TokenManager + ServerProber (issue #54), ServerRepository + OidcAuthenticator
+// + the ProgressSeeder interface (issue #60, completing Phase 1). Everything else in this
+// module (the other repositories, catalog sources, sync, downloads, media) stays Android-only
+// in androidMain, unchanged — those depend on other still-Android-only modules (KoSyncRepository
+// specifically needs Context/Settings.Secure/raw OkHttpClient); porting them is a separate,
+// larger decision.
 //
 // No Hilt/KSP plugin here — same reason as :core:network/:core:serverapi: the Hilt Gradle
 // plugin refuses to apply to a KMP module. DataModule (the one @Module in this module) moved
@@ -37,10 +37,11 @@ kotlin {
             implementation(project(":core:common"))
             implementation(project(":core:security"))
             implementation(project(":core:serverapi"))
+            // ServerRepository (issue #60) needs ServerDao/ServerEntity directly.
+            implementation(project(":core:database"))
             implementation(libs.kotlinx.coroutines.core)
         }
         androidMain.dependencies {
-            implementation(project(":core:database"))
             implementation(project(":core:datastore"))
             implementation(project(":core:network"))
             implementation(project(":core:opds"))

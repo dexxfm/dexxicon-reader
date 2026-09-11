@@ -4,6 +4,8 @@ import dagger.Binds
 import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import net.dexxicon.reader.core.data.ProgressSeeder
+import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.auth.AuthHeaderProviderImpl
 import net.dexxicon.reader.core.data.media.MediaLibraryContentSourceImpl
 import net.dexxicon.reader.core.data.media.PlaybackProgressSinkImpl
@@ -32,4 +34,11 @@ interface DataModule {
     @Binds
     @Singleton
     fun bindMediaLibraryContentSource(impl: MediaLibraryContentSourceImpl): MediaLibraryContentSource
+
+    // ProgressSeeder (:core:data commonMain, issue #60) exists so OidcAuthenticator doesn't
+    // need ReadingProgressRepository's full Android-specific dependency graph (KoSyncRepository)
+    // just to trigger this one thing after sign-in.
+    @Binds
+    @Singleton
+    fun bindProgressSeeder(impl: ReadingProgressRepository): ProgressSeeder
 }

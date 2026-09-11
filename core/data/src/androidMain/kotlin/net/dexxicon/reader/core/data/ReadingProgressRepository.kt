@@ -50,7 +50,7 @@ class ReadingProgressRepository @Inject constructor(
     private val downloadRepository: DownloadRepository,
     @ApplicationScope private val appScope: CoroutineScope,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
-) {
+) : ProgressSeeder {
     fun observe(serverId: String, bookId: String): Flow<ReadingProgress?> =
         dao.observe(key(serverId, bookId)).map { it?.toDomain() }
 
@@ -123,7 +123,7 @@ class ReadingProgressRepository @Inject constructor(
     }
 
     /** Fire-and-forget [seedFromServer] — for right after a server is added. */
-    fun seedFromServerAsync(serverId: String) {
+    override fun seedFromServerAsync(serverId: String) {
         appScope.launch { runCatching { seedFromServer(serverId) } }
     }
 
