@@ -157,7 +157,14 @@ fun BookDefaultsScreen(onBack: () -> Unit, viewModel: SettingsViewModel = hiltVi
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         LayoutSpacer(Modifier.height(12.dp))
-        SettingRow(title = "Tap edges to turn pages", subtitle = "EPUB and comics") {
+        SettingRow(
+            title = "Tap edges to turn pages",
+            subtitle = if (prefs.comicSmartZoom) {
+                "EPUB and comics — off for comics while Smart zoom is on"
+            } else {
+                "EPUB and comics"
+            },
+        ) {
             Switch(
                 checked = prefs.tapNavigation,
                 onCheckedChange = { on -> update { it.copy(tapNavigation = on) } },

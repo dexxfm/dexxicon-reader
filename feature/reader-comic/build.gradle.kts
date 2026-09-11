@@ -41,6 +41,9 @@ dependencies {
 
     implementation(libs.readium.shared)
     implementation(libs.readium.navigator)
+    // Already on the classpath transitively (R2ViewPager extends it) — declared explicitly
+    // so we can raise offscreenPageLimit for a bigger page-turn readahead buffer.
+    implementation(libs.androidx.viewpager)
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)

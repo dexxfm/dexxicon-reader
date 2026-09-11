@@ -135,6 +135,10 @@ junrar = { module = "com.github.junrar:junrar", version.ref = "junrar" }
 # alongside any `readium` version change, or PDFView's canScrollHorizontally() (used for the
 # zoomed-page-turn edge check) risks resolving to a mismatched copy of the class.
 android-pdf-viewer = { module = "com.github.marain87:AndroidPdfViewer", version.ref = "androidPdfViewer" }
+# readium-navigator's comic reader (R2ViewPager) extends this, so it's already on the
+# classpath transitively — declared explicitly so ComicReaderScreen can raise its
+# offscreenPageLimit (Readium never sets one, so it defaults to 1 page of readahead).
+androidx-viewpager = { module = "androidx.viewpager:viewpager", version = "1.0.0" }
 
 junit = { module = "junit:junit", version.ref = "junit" }
 androidx-test-ext-junit = { module = "androidx.test.ext:junit", version.ref = "androidxTestExt" }
