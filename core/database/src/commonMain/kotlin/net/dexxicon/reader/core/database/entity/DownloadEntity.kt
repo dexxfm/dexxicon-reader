@@ -3,6 +3,8 @@ package net.dexxicon.reader.core.database.entity
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
@@ -46,6 +48,7 @@ data class DownloadEntity(
     )
 
     companion object {
+        @OptIn(ExperimentalTime::class)
         fun new(
             serverId: String,
             bookId: String,
@@ -70,8 +73,8 @@ data class DownloadEntity(
             totalBytes = null,
             localPath = null,
             error = null,
-            updatedAt = System.currentTimeMillis(),
-            createdAt = System.currentTimeMillis(),
+            updatedAt = Clock.System.now().toEpochMilliseconds(),
+            createdAt = Clock.System.now().toEpochMilliseconds(),
         )
     }
 }
