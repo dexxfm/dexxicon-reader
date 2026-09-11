@@ -161,6 +161,10 @@ class AudiobookPlayer @Inject constructor(
                         .setArtist(audiobook.author)
                         .setArtworkUri(audiobook.coverUrl?.let(android.net.Uri::parse))
                         .setIsPlayable(true)
+                        // Without this, ChapterMetadataUpdater never sees this book's
+                        // chapters (its extras stay empty) — Android Auto's now-playing
+                        // card shows the author forever instead of the current chapter.
+                        .setExtras(Bundle().putChapters(audiobook.chapters))
                         .build(),
                 )
                 .build()
