@@ -120,6 +120,9 @@ dependencies {
     // ServerAuthModule's doc comment). CredentialStore is TokenManager's constructor param.
     implementation(project(":core:serverapi"))
     implementation(project(":core:security"))
+    // DatabaseModule builds DexxiconDatabase directly (moved here from :core:database —
+    // Hilt can't apply to a KMP module; see DatabaseModule's doc comment).
+    implementation(project(":core:database"))
 
     implementation(libs.okhttp)
     // NetworkModule (moved here from :core:network — Hilt can't apply to a KMP module)

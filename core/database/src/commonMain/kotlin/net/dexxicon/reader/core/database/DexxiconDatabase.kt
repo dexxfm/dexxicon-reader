@@ -1,7 +1,9 @@
 package net.dexxicon.reader.core.database
 
+import androidx.room.ConstructedBy
 import androidx.room.Database
 import androidx.room.RoomDatabase
+import androidx.room.RoomDatabaseConstructor
 import net.dexxicon.reader.core.database.dao.BookmarkDao
 import net.dexxicon.reader.core.database.dao.DownloadDao
 import net.dexxicon.reader.core.database.dao.HighlightDao
@@ -24,6 +26,7 @@ import net.dexxicon.reader.core.database.entity.ServerEntity
     version = 9,
     exportSchema = true,
 )
+@ConstructedBy(DexxiconDatabaseConstructor::class)
 abstract class DexxiconDatabase : RoomDatabase() {
     abstract fun serverDao(): ServerDao
     abstract fun readingProgressDao(): ReadingProgressDao
@@ -34,4 +37,10 @@ abstract class DexxiconDatabase : RoomDatabase() {
     companion object {
         const val NAME = "dexxicon.db"
     }
+}
+
+/** The Room compiler generates the `actual` for this on each platform. */
+@Suppress("KotlinNoActualForExpect")
+expect object DexxiconDatabaseConstructor : RoomDatabaseConstructor<DexxiconDatabase> {
+    override fun initialize(): DexxiconDatabase
 }
