@@ -1,4 +1,4 @@
-package net.dexxicon.reader.core.data.di
+package net.dexxicon.reader.di
 
 import dagger.Binds
 import dagger.Module
@@ -12,6 +12,11 @@ import net.dexxicon.reader.core.media.PlaybackProgressSink
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import javax.inject.Singleton
 
+/**
+ * Lives in `:app` (rather than `:core:data`) because Hilt modules are only compiled where
+ * the components are, and `:core:data` is now a Kotlin Multiplatform module — see
+ * `NetworkModule`'s own doc comment for the full reasoning (same one applies here).
+ */
 @Module
 @InstallIn(SingletonComponent::class)
 interface DataModule {
