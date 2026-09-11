@@ -7,6 +7,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
+import net.dexxicon.reader.core.data.KOSYNC_CREDENTIAL_PROVIDER
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.network.DexxiconHttpClient
@@ -46,8 +47,6 @@ class KoSyncRepository @Inject constructor(
 ) {
     private val digestCache = ConcurrentHashMap<String, String>()
 
-    companion object { const val KOSYNC_PROVIDER = "kosync" }
-
     private val deviceName: String = android.os.Build.MODEL ?: "Android"
     private val deviceId: String by lazy {
         @Suppress("HardwareIds")
@@ -60,7 +59,7 @@ class KoSyncRepository @Inject constructor(
     fun isConfigured(server: Server): Boolean = !server.koSyncUsername.isNullOrBlank()
 
     private suspend fun authKey(server: Server): String? {
-        val password = credentialStore.getSyncSecret(server.id, KOSYNC_PROVIDER) ?: return null
+        val password = credentialStore.getSyncSecret(server.id, KOSYNC_CREDENTIAL_PROVIDER) ?: return null
         return MessageDigest.getInstance("MD5").digest(password.toByteArray())
             .joinToString("") { "%02x".format(it) }
     }

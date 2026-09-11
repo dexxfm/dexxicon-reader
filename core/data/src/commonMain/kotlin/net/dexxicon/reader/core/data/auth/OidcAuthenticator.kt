@@ -1,25 +1,29 @@
 package net.dexxicon.reader.core.data.auth
 
-import net.dexxicon.reader.core.common.DexxiconDispatcher
-import net.dexxicon.reader.core.common.Dispatcher
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.common.Outcome
-import net.dexxicon.reader.core.data.ReadingProgressRepository
+import net.dexxicon.reader.core.data.ProgressSeeder
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.serverapi.oidc.OidcClient
 import net.dexxicon.reader.core.serverapi.oidc.OidcHandshake
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.withContext
-import javax.inject.Inject
 
-/** Orchestrates the OIDC login: discovery, then code exchange + persistence. */
-class OidcAuthenticator @Inject constructor(
+/**
+ * Orchestrates the OIDC login: discovery, then code exchange + persistence.
+ *
+ * [io] is a plain, unqualified [CoroutineDispatcher] rather than `@Dispatcher(IO)` — that
+ * qualifier annotation is `javax.inject`-based (Hilt/androidMain-only) and can't live on a
+ * commonMain constructor. The `:app`-hosted provider resolves the qualified binding and
+ * passes the instance through instead.
+ */
+class OidcAuthenticator(
     private val oidcClient: OidcClient,
     private val serverRepository: ServerRepository,
-    private val readingProgressRepository: ReadingProgressRepository,
+    private val progressSeeder: ProgressSeeder,
     private val tokenManager: TokenManager,
-    @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
+    private val io: CoroutineDispatcher,
 ) {
     suspend fun beginHandshake(server: Server): Outcome<OidcHandshake> =
         withContext(io) { oidcClient.beginHandshake(server) }
@@ -53,7 +57,7 @@ class OidcAuthenticator @Inject constructor(
                     password = null,
                 )
                 tokenManager.seedSession(saved.id, exchange.value)
-                readingProgressRepository.seedFromServerAsync(saved.id)
+                progressSeeder.seedFromServerAsync(saved.id)
                 Outcome.Success(saved)
             }
         }
