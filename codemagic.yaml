@@ -1,17 +1,23 @@
 # Codemagic CI for Dexxicon Reader.
 # https://docs.codemagic.io/yaml/yaml-getting-started/
 #
-# ── Live now ────────────────────────────────────────────────────────────────
-#   android-ci        The §09 invariant: :app assembles (debug + unsigned
-#                     release) and every module's unit tests pass. Runs on
-#                     every push to `main` and every pull request.
+# ── Manual-trigger only (rationing Codemagic minutes) ───────────────────────
+#   All four workflows below are start-by-hand now — none has a `triggering`
+#   block, which on Codemagic means "never fires automatically." This was
+#   changed 2026-09-11 (previously android-ci/ios-ci ran on every push/PR to
+#   main) specifically to stop burning macOS minutes automatically while
+#   credits are being rationed. To run one: Codemagic UI → Start new build →
+#   pick the workflow → pick the branch (or `gh api` / the REST API for the
+#   same thing without leaving a terminal). Restore automatic triggering
+#   later by re-adding a `triggering:` block (see git history on this file
+#   for the exact blocks that were removed) once minutes aren't tight.
 #
-# ── Dormant until the iOS port starts (manual-trigger only) ─────────────────
+#   android-ci        The §09 invariant: :app assembles (debug + unsigned
+#                     release) and every module's unit tests pass.
 #   android-release   Signed APK + AAB on a v* tag. Needs the `android_signing`
 #                     env group. Until then keep cutting releases locally.
 #   ios-ci            Shared framework + iosSimulatorArm64 tests + xcodebuild.
-#                     Self-skips while `shared/` and `iosApp/` don't exist;
-#                     wire `triggering` once Phase 0 lands.
+#                     Self-skips while `shared/` and `iosApp/` don't exist.
 #   ios-testflight    Archive + upload to TestFlight. Needs the App Store
 #                     Connect integration and an iOS signing identity.
 #
@@ -67,6 +73,7 @@ definitions:
 workflows:
 
   # ───────────────────────────────────────────────────────────────────────────
+  # MANUAL-TRIGGER ONLY (see the file header) — no `triggering` block.
   android-ci:
     name: Android CI
     # Android builds fine on the macOS image (SDK preinstalled). Switch to
@@ -75,14 +82,6 @@ workflows:
     max_build_duration: 60
     environment:
       java: 17
-    triggering:
-      events:
-        - push
-        - pull_request
-      branch_patterns:
-        - pattern: main
-          include: true
-      cancel_previous_builds: true
     cache:
       cache_paths: *gradle_cache
     scripts:
@@ -149,10 +148,10 @@ workflows:
       - app/build/outputs/**/mapping.txt
 
   # ───────────────────────────────────────────────────────────────────────────
+  # MANUAL-TRIGGER ONLY (see the file header) — no `triggering` block.
   # Validates the iOS side of the port as it lands: compiles every KMP module's
   # iOS target, builds the iosApp, and screenshots the shared UI on a phone + a
-  # tablet. Runs on `main`, PRs into it, and `spike/*`. Informational for now;
-  # make it a required check at the Phase 2 milestone (UI running on iOS).
+  # tablet.
   ios-ci:
     name: iOS CI
     instance_type: mac_mini_m2
@@ -161,16 +160,6 @@ workflows:
       java: 17
       xcode: latest
       cocoapods: default
-    triggering:
-      events:
-        - push
-        - pull_request
-      branch_patterns:
-        - pattern: main
-          include: true
-        - pattern: "spike/*"
-          include: true
-      cancel_previous_builds: true
     cache:
       cache_paths:
         - $HOME/.gradle/caches
