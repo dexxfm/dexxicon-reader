@@ -1,23 +1,38 @@
 package net.dexxicon.reader.shared
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -26,14 +41,20 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.navigation.NavDestination
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -44,10 +65,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import net.dexxicon.reader.core.designsystem.nav.FloatingPillNavBar
 import net.dexxicon.reader.core.designsystem.nav.PillNavigationRail
+import net.dexxicon.reader.core.datastore.AppPreferences
+import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.theme.DexxiconTheme
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
@@ -57,6 +81,7 @@ import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.HomeScreen
 import net.dexxicon.reader.shared.library.LibraryScreen
 import net.dexxicon.reader.shared.nav.TopLevelDestination
+import net.dexxicon.reader.shared.settings.SettingsScreen
 import net.dexxicon.reader.shared.servers.AddServerState
 import net.dexxicon.reader.shared.servers.ServersState
 import net.dexxicon.reader.shared.servers.SsoState
@@ -100,7 +125,15 @@ private fun TopLevelDestination.toRoute(): Any = when (this) {
 
 @Composable
 fun App(container: AppContainer, onOpenReader: OnOpenReader) {
-    DexxiconTheme {
+    // Phase 4 Stage E1 (issue #136) — Settings' theme chips need this to actually do
+    // something; a control that doesn't visibly change anything is worse than no control.
+    val theme by container.appPreferences.preferences.collectAsState(initial = AppPreferences())
+    val darkTheme = when (theme.theme) {
+        AppTheme.LIGHT -> false
+        AppTheme.DARK -> true
+        AppTheme.SYSTEM -> isSystemInDarkTheme()
+    }
+    DexxiconTheme(darkTheme = darkTheme) {
         val nav = rememberNavController()
         val backStackEntry by nav.currentBackStackEntryAsState()
         val currentDestination: NavDestination? = backStackEntry?.destination
@@ -170,7 +203,10 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
                             )
                         }
                         composable<SettingsRoute> {
-                            SettingsScreen(onManageServers = { nav.navigate(ManageServersRoute) })
+                            SettingsScreen(
+                                container = container,
+                                onManageServers = { nav.navigate(ManageServersRoute) },
+                            )
                         }
                         composable<AddServerRoute> {
                             AddServerScreen(
@@ -254,58 +290,42 @@ private fun ServersScreen(
         when {
             list == null -> Unit // first emission still pending
             list.isEmpty() -> EmptyServersState(Modifier.fillMaxSize().padding(padding), onAddServer)
-            else -> LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-                itemsIndexed(list, key = { _, server -> server.id }) { index, server ->
-                    ListItem(
-                        headlineContent = { Text(server.displayName) },
-                        supportingContent = {
-                            Column {
-                                Text(server.baseUrl)
-                                // issue #92 — "me" endpoint reads back who the app is
-                                // actually signed in as; absent until that call resolves
-                                // (or for a server type it doesn't apply to).
-                                serversState.accounts[server.id]?.let {
-                                    Text(
-                                        "Signed in as $it",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                        },
-                        trailingContent = {
-                            Row {
-                                // Plain up/down rather than the native Settings screen's
-                                // long-press drag gesture — issue #92 deliberately keeps this
-                                // simple (see ServersState's doc comment).
-                                TextButton(
-                                    onClick = { serversState.moveUp(list, server.id) },
-                                    enabled = index > 0,
-                                ) { Text("▲") }
-                                TextButton(
-                                    onClick = { serversState.moveDown(list, server.id) },
-                                    enabled = index < list.lastIndex,
-                                ) { Text("▼") }
-                                // NATIVE opens the field-editing form (#90); OIDC opens the
-                                // reauth-only screen instead (#94) — a BASIC server (generic
-                                // OPDS) gets neither, :shared has no add-flow for those.
-                                when (server.authMode) {
-                                    AuthMode.NATIVE -> TextButton(onClick = { onEditServer(server.id) }) { Text("Edit") }
-                                    AuthMode.OIDC -> TextButton(onClick = { onEditServer(server.id) }) { Text("Sign in again") }
-                                    AuthMode.BASIC -> Unit
-                                }
-                                TextButton(onClick = { pendingDelete = server }) { Text("Remove") }
-                            }
-                        },
-                        modifier = Modifier.clickable { onOpenServer(server.id) },
+            else -> Column(
+                Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+            ) {
+                if (list.size > 1) {
+                    Text(
+                        "Press and hold the handle to reorder. This order sets which library's " +
+                            "books come first when browsing.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 4.dp),
                     )
-                    HorizontalDivider()
                 }
-                item {
-                    TextButton(
-                        onClick = onAddServer,
-                        modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    ) { Text("+ Add a server") }
+                ReorderableServers(
+                    servers = list,
+                    accounts = serversState.accounts,
+                    onOpen = { onOpenServer(it.id) },
+                    // NATIVE opens the field-editing form (#90); OIDC opens the reauth-only
+                    // screen instead (#94) — a BASIC server (generic OPDS) gets neither,
+                    // :shared has no add-flow for those.
+                    editLabel = { server ->
+                        when (server.authMode) {
+                            AuthMode.NATIVE -> "Edit"
+                            AuthMode.OIDC -> "Sign in again"
+                            AuthMode.BASIC -> null
+                        }
+                    },
+                    onEdit = { onEditServer(it.id) },
+                    onRemove = { pendingDelete = it },
+                    onReorder = serversState::reorder,
+                )
+                OutlinedButton(
+                    onClick = onAddServer,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) {
+                    Icon(Icons.Filled.Add, contentDescription = null)
+                    Text("  Add server")
                 }
             }
         }
@@ -346,6 +366,148 @@ private fun EmptyServersState(modifier: Modifier, onAddServer: () -> Unit) {
         )
         Button(onClick = onAddServer) { Text("Add a server") }
     }
+}
+
+/**
+ * The Servers list with long-press drag-to-reorder (Phase 4 Stage E1, issue #136) — ported
+ * from native's `feature/settings/SettingsScreen.kt`. The order shown here is the display
+ * priority used everywhere servers are listed or their books merged. Previously
+ * deliberately skipped in favor of plain up/down buttons (issue #92 — see [ServersState]'s
+ * doc comment for why); with Stage D moving this screen out from under the Library tab, this
+ * is the natural point to close that UX gap instead of leaving it permanent.
+ */
+@Composable
+private fun ReorderableServers(
+    servers: List<Server>,
+    accounts: Map<String, String>,
+    onOpen: (Server) -> Unit,
+    editLabel: (Server) -> String?,
+    onEdit: (Server) -> Unit,
+    onRemove: (Server) -> Unit,
+    onReorder: (List<String>) -> Unit,
+) {
+    // A local copy so the drag reflows instantly; re-synced from upstream when not dragging.
+    var order by remember(servers) { mutableStateOf(servers) }
+    var dragIndex by remember { mutableStateOf<Int?>(null) }
+    var dragDelta by remember { mutableStateOf(0f) }
+    val rowHeights = remember { mutableStateMapOf<String, Int>() }
+    val canReorder = servers.size > 1
+
+    Column(Modifier.fillMaxWidth()) {
+        order.forEachIndexed { index, server ->
+            val dragging = dragIndex == index
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { rowHeights[server.id] = it.height }
+                    .zIndex(if (dragging) 1f else 0f)
+                    .offset { IntOffset(0, if (dragging) dragDelta.roundToInt() else 0) }
+                    .then(if (dragging) Modifier.shadow(6.dp) else Modifier)
+                    .background(
+                        if (dragging) MaterialTheme.colorScheme.surfaceContainerHighest
+                        else MaterialTheme.colorScheme.surface,
+                    ),
+            ) {
+                ServerRow(
+                    server = server,
+                    account = accounts[server.id],
+                    editLabel = editLabel(server),
+                    onOpen = { onOpen(server) },
+                    onEdit = { onEdit(server) },
+                    onRemove = { onRemove(server) },
+                    dragHandle = if (!canReorder) null else { modifier ->
+                        Icon(
+                            Icons.Filled.DragHandle,
+                            contentDescription = "Drag to reorder",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = modifier.pointerInput(order.size) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { dragIndex = index; dragDelta = 0f },
+                                    onDragEnd = {
+                                        if (dragIndex != null) onReorder(order.map { it.id })
+                                        dragIndex = null
+                                        dragDelta = 0f
+                                    },
+                                    onDragCancel = {
+                                        order = servers
+                                        dragIndex = null
+                                        dragDelta = 0f
+                                    },
+                                    onDrag = { change, amount ->
+                                        change.consume()
+                                        val cur = dragIndex ?: return@detectDragGesturesAfterLongPress
+                                        dragDelta += amount.y
+                                        val h = rowHeights[order[cur].id] ?: return@detectDragGesturesAfterLongPress
+                                        if (dragDelta > h / 2 && cur < order.lastIndex) {
+                                            order = order.toMutableList().apply { add(cur + 1, removeAt(cur)) }
+                                            dragIndex = cur + 1
+                                            dragDelta -= h
+                                        } else if (dragDelta < -h / 2 && cur > 0) {
+                                            order = order.toMutableList().apply { add(cur - 1, removeAt(cur)) }
+                                            dragIndex = cur - 1
+                                            dragDelta += h
+                                        }
+                                    },
+                                )
+                            },
+                        )
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ServerRow(
+    server: Server,
+    account: String?,
+    editLabel: String?,
+    onOpen: () -> Unit,
+    onEdit: () -> Unit,
+    onRemove: () -> Unit,
+    dragHandle: (@Composable (Modifier) -> Unit)? = null,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+    ListItem(
+        headlineContent = { Text(server.displayName) },
+        supportingContent = {
+            Column {
+                Text(server.baseUrl, style = MaterialTheme.typography.bodySmall)
+                // issue #92 — "me" endpoint reads back who the app is actually signed in
+                // as; absent until that call resolves (or for a server type it doesn't
+                // apply to).
+                account?.let {
+                    Text(
+                        "Signed in as $it",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        leadingContent = {
+            if (dragHandle != null) dragHandle(Modifier) else Icon(Icons.Filled.Dns, contentDescription = null)
+        },
+        trailingContent = {
+            IconButton(onClick = { menuOpen = true }) {
+                Icon(Icons.Filled.MoreVert, contentDescription = "More")
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    if (editLabel != null) {
+                        DropdownMenuItem(
+                            text = { Text(editLabel) },
+                            onClick = { menuOpen = false; onEdit() },
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text("Remove") },
+                        onClick = { menuOpen = false; onRemove() },
+                    )
+                }
+            }
+        },
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onOpen),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

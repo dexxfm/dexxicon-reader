@@ -123,6 +123,12 @@ class AppContainer(
     /** Phase 4 Stage D (issue #133) — Library's view-mode toggle and cover-tap-action need
      * this directly, the same way [progressRepository]/[bookActions] are exposed publicly. */
     val appPreferences: AppPreferencesStore,
+    /** Phase 4 Stage E1 (issue #136) — Settings' About row. Resolved once per platform, same
+     * "plain value, no expect/actual needed" shape as [koSyncRawDeviceId]/[koSyncDeviceModel]:
+     * Android reads it via `PackageManager` (the same call
+     * [net.dexxicon.reader.core.common.crash.CrashReporter.deviceBlock] already makes for the
+     * same value), iOS via `NSBundle.mainBundle`'s `CFBundleShortVersionString`. */
+    val appVersionName: String,
 ) {
     /** Process-lifetime scope for [AuthHeaderProviderImpl]'s server-list collector — mirrors
      * `:app`'s `@ApplicationScope` (`CoroutineScope(SupervisorJob() + Dispatchers.Default)`)
