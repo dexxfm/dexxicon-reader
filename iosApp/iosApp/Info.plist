@@ -22,6 +22,13 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- issue #114: without this, AVAudioSession playback is silently cut short the moment
+	     the app backgrounds — required for the audiobook player's whole reason for having
+	     MPNowPlayingInfoCenter/lock-screen controls at all, not optional polish. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

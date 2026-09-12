@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
+import ReadiumZIPFoundation
 import Unrar
-import ZIPFoundation
 
 /// iOS sibling of `core/reader/ComicArchiveNormalizer.kt` (issue #107, following #106/#108's
 /// CBZ + manga RTL + edge-tap work). Readium Swift's format sniffing is ZIP-only, same as the
@@ -13,11 +13,21 @@ import ZIPFoundation
 /// - **Reading the RAR**: [Unrar](https://github.com/mtgto/Unrar.swift) — wraps the same
 ///   official RARLAB unrar source UnrarKit does (real RAR5 support), the SPM-compatible
 ///   alternative issue #107 settled on after finding UnrarKit itself has no SPM support at all.
-/// - **Writing the ZIP**: [ZIPFoundation](https://github.com/weichsel/ZIPFoundation) — a
-///   genuinely new capability, not something already in the dependency graph under a
-///   different name: Foundation has no ZIP *writer* on Apple platforms (only Readium's own
-///   ZIP *reader*, pulled in transitively), unlike the JVM side, where `java.util.zip` already
-///   ships both directions in the standard library.
+/// - **Writing the ZIP**: `ReadiumZIPFoundation` — genuinely new capability, not something
+///   already in the dependency graph under a different name (Foundation has no ZIP *writer*
+///   on Apple platforms, only Readium's own ZIP *reader*, unlike the JVM side where
+///   `java.util.zip` ships both directions) — but *not* a separate dependency, despite the
+///   name suggesting otherwise. A real `ios-ci` run caught this: adding `weichsel/
+///   ZIPFoundation` directly, as originally written here, fails SPM resolution outright —
+///   `readium/swift-toolkit` already depends on **its own fork**, `readium/ZIPFoundation`
+///   (product `ReadiumZIPFoundation`), and SwiftPM identifies packages by the git URL's last
+///   path component, not the org — `weichsel/ZIPFoundation.git` and `readium/ZIPFoundation.git`
+///   collide as the same package identity with incompatible version constraints. Depending on
+///   Readium's own fork directly (same URL it already resolves) is both the fix and the
+///   correct call regardless — one shared instance, not two competing ZIP libraries. Its API
+///   is `async` throughout (confirmed against its real 3.0.1 source, not assumed identical to
+///   the upstream project it forked from) — `rarToCbz` below is `async` because of this, not
+///   because unpacking itself needs to be.
 ///
 /// ZIP inputs (CBZ) never reach this type at all — `ContentView.swift` only calls
 /// `normalize(url:authHeader:)` once it already knows the comic looks like a CBR via
@@ -38,7 +48,11 @@ enum ComicArchiveNormalizer {
         return dir
     }()
 
-    private static let imageExtensions: Set<String> = [
+    // `fileprivate`, not `private`: `private` only extends to extensions of *this same type*
+    // in the file — the `String.hasImageExtension` extension below is an extension of a
+    // different type (String), so `private` alone doesn't grant it access even in the same
+    // file. Real ios-ci error, not guessed.
+    fileprivate static let imageExtensions: Set<String> = [
         "jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "jxl",
     ]
 
@@ -78,7 +92,7 @@ enum ComicArchiveNormalizer {
         // magic bytes, same as Android's `isRar`. A mislabeled file that turns out to already
         // be a ZIP is copied straight through rather than fed to Unrar, which would just throw.
         if try isRar(downloaded) {
-            try rarToCbz(rar: downloaded, out: cached)
+            try await rarToCbz(rar: downloaded, out: cached)
         } else {
             try FileManager.default.copyItem(at: downloaded, to: cached)
         }
@@ -96,14 +110,17 @@ enum ComicArchiveNormalizer {
     }
 
     /// Unpacks every image entry of `rar` into a freshly-created ZIP at `out`. `Unrar.Archive`
-    /// and `ZIPFoundation.Archive` are module-qualified throughout this function — both
-    /// packages export an unrelated type named `Archive`.
-    private static func rarToCbz(rar: URL, out: URL) throws {
+    /// and `ReadiumZIPFoundation.Archive` are module-qualified throughout this function — both
+    /// packages export an unrelated type named `Archive`. `async` because
+    /// `ReadiumZIPFoundation.Archive`'s init and `addEntry` both are (confirmed against its
+    /// real 3.0.1 source — a real, breaking API difference from the upstream project it
+    /// forked from, not assumed).
+    private static func rarToCbz(rar: URL, out: URL) async throws {
         if FileManager.default.fileExists(atPath: out.path) {
             try FileManager.default.removeItem(at: out)
         }
         let source = try Unrar.Archive(fileURL: rar)
-        let destination = try ZIPFoundation.Archive(url: out, accessMode: .create)
+        let destination = try await ReadiumZIPFoundation.Archive(url: out, accessMode: .create)
 
         var wroteAny = false
         for entry in try source.entries() where !entry.directory && entry.fileName.hasImageExtension {
@@ -111,7 +128,7 @@ enum ComicArchiveNormalizer {
             // Same normalization as Android's rarToCbz — some RAR sources use Windows-style
             // backslash separators, which a ZIP-based container should never contain.
             let name = entry.fileName.replacingOccurrences(of: "\\", with: "/")
-            try destination.addEntry(
+            try await destination.addEntry(
                 with: name,
                 type: .file,
                 uncompressedSize: Int64(data.count)

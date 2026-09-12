@@ -35,7 +35,9 @@ import coil3.compose.AsyncImage
 import io.ktor.http.Url
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingStatus
+import net.dexxicon.reader.shared.AudiobookLaunchInfo
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 
@@ -144,7 +146,21 @@ fun BookDetailScreen(
                         // ComicReaderViewModel.mangaGenre, resolved here so the platform
                         // reader never needs its own path back into catalog data for it.
                         val isManga = currentDetail.categories.any { it.contains("manga", ignoreCase = true) }
-                        onOpenReader(serverId, bookId, currentDetail.summary.format, acquisition.href, header, isManga)
+                        // issue #114 — same metadata Android's PlayerViewModel.load() resolves
+                        // from this exact BookDetail/BookDetail.audio, bundled for the native
+                        // audiobook player; null for every other format.
+                        val audiobook = currentDetail.audio
+                            ?.takeIf { currentDetail.summary.format == ContentFormat.AUDIOBOOK }
+                            ?.let {
+                                AudiobookLaunchInfo(
+                                    title = currentDetail.summary.title,
+                                    author = currentDetail.summary.authorLine.takeIf { it.isNotBlank() },
+                                    coverUrl = currentDetail.summary.coverUrl,
+                                    durationMs = it.durationMs,
+                                    chapters = it.chapters,
+                                )
+                            }
+                        onOpenReader(serverId, bookId, currentDetail.summary.format, acquisition.href, header, isManga, audiobook)
                     }) { Text("Read") }
                 }
 

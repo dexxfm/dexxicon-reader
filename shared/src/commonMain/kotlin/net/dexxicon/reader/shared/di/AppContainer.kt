@@ -33,6 +33,7 @@ import net.dexxicon.reader.core.serverapi.oidc.OidcClient
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import net.dexxicon.reader.core.serverapi.user.NativeUserApi
 import net.dexxicon.reader.shared.catalog.ReadingStatusActions
+import net.dexxicon.reader.shared.reader.AudiobookProgressSync
 
 /**
  * Manual (non-Hilt) composition root for `:shared`'s commonMain UI. Every `:core:*` module
@@ -82,6 +83,12 @@ import net.dexxicon.reader.shared.catalog.ReadingStatusActions
  * `BookActions` — see [ReadingStatusActions]'s own doc comment for why. Built with [scope],
  * not a screen's own `rememberCoroutineScope()`, so a status push outlives the screen that
  * started it.
+ *
+ * [audiobookProgressSync] (issue #114) is iOS's native audiobook player's path to resume
+ * position + local/remote progress sync — same [scope]-outlives-the-screen reasoning as
+ * [readingStatusActions], and the same "deliberately narrower than the full native-app class"
+ * shape; see [AudiobookProgressSync]'s own doc comment for exactly what it reuses vs.
+ * reimplements.
  */
 class AppContainer(
     engine: HttpClientEngine,
@@ -149,6 +156,12 @@ class AppContainer(
     val readingStatusActions: ReadingStatusActions = ReadingStatusActions(
         api = nativeProgressApi,
         serverRepository = serverRepository,
+        scope = scope,
+    )
+    val audiobookProgressSync: AudiobookProgressSync = AudiobookProgressSync(
+        api = nativeProgressApi,
+        serverRepository = serverRepository,
+        progressDao = database.readingProgressDao(),
         scope = scope,
     )
 
