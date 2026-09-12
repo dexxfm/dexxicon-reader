@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.CatalogRepository
+import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.Acquisition
@@ -24,6 +25,7 @@ import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.core.model.fileExtension
 import net.dexxicon.reader.feature.catalog.navigation.BookDetailRoute
@@ -43,6 +45,7 @@ class BookDetailViewModel @Inject constructor(
     private val downloadRepository: DownloadRepository,
     private val serverRepository: ServerRepository,
     private val bookActions: BookActions,
+    progressRepository: ReadingProgressRepository,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
 
@@ -53,6 +56,13 @@ class BookDetailViewModel @Inject constructor(
 
     val download: StateFlow<Download?> =
         downloadRepository.download(route.serverId, route.bookId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** Reading position for the Phase 4 (issue #115) progress row on the detail screen —
+     * the same [ReadingProgressRepository] the Home shelves already read from, just scoped
+     * to this one book instead of every in-progress book. */
+    val progress: StateFlow<ReadingProgress?> =
+        progressRepository.observe(route.serverId, route.bookId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     init {

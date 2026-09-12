@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -41,14 +42,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -58,15 +59,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
+import net.dexxicon.reader.core.designsystem.theme.CoverShapeMedium
+import net.dexxicon.reader.core.designsystem.theme.Pill
 import net.dexxicon.reader.core.model.BookCopy
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -78,25 +84,22 @@ fun BookDetailScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val download by viewModel.download.collectAsStateWithLifecycle()
+    val progress by viewModel.progress.collectAsStateWithLifecycle()
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(state.detail?.summary?.title.orEmpty(), maxLines = 1) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-            )
-        },
-    ) { padding ->
+    // Phase 4 (issue #115): no TopAppBar — the mockup's Book Detail has no top bar at all,
+    // just an in-content pill "Back" button sitting above the cover (see BackPill). Title
+    // lives in the hero block instead of an app-bar title.
+    Scaffold { padding ->
         when {
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
                 CircularProgressIndicator()
             }
             state.error != null -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    BackPill(onBack)
+                    Spacer(Modifier.height(12.dp))
+                    Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
+                }
             }
             state.detail != null -> {
                 val detail = state.detail!!
@@ -107,6 +110,8 @@ fun BookDetailScreen(
                     detail = detail,
                     copies = copies,
                     download = download,
+                    progress = progress,
+                    onBack = onBack,
                     onOpen = { copy -> onRead(copy.serverId, copy.bookId, detail.summary.format) },
                     onDownload = viewModel::onDownload,
                     onRemoveDownload = viewModel::onRemoveDownload,
@@ -123,6 +128,8 @@ private fun DetailContent(
     detail: BookDetail,
     copies: List<BookCopy>,
     download: Download?,
+    progress: ReadingProgress?,
+    onBack: () -> Unit,
     onOpen: (BookCopy) -> Unit,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
@@ -147,9 +154,11 @@ private fun DetailContent(
                         .fillMaxHeight()
                         .verticalScroll(rememberScrollState()),
                 ) {
+                    BackPill(onBack)
+                    Spacer(Modifier.height(12.dp))
                     HeroBlock(detail, copies, onSetStatus, stacked = true)
                     Spacer(Modifier.height(16.dp))
-                    ActionButtons(detail, copies, download, onOpen, onDownload, onRemoveDownload)
+                    ActionButtons(detail, copies, download, progress, onOpen, onDownload, onRemoveDownload)
                 }
                 Column(
                     Modifier
@@ -171,15 +180,45 @@ private fun DetailContent(
                         .verticalScroll(rememberScrollState())
                         .padding(20.dp),
                 ) {
+                    BackPill(onBack)
+                    Spacer(Modifier.height(12.dp))
                     HeroBlock(detail, copies, onSetStatus, stacked = false)
                     Spacer(Modifier.height(20.dp))
-                    ActionButtons(detail, copies, download, onOpen, onDownload, onRemoveDownload)
+                    ActionButtons(detail, copies, download, progress, onOpen, onDownload, onRemoveDownload)
                     Spacer(Modifier.height(20.dp))
                     AboutSection(detail)
                     Spacer(Modifier.height(20.dp))
                     DetailsSection(detail)
                 }
             }
+        }
+    }
+}
+
+/** Phase 4 (issue #115) — replaces the standard TopAppBar's back arrow: a surface-colored
+ * pill with an arrow icon *and* the word "Back", matching the mockup exactly (it has no
+ * top app bar on this screen at all). */
+@Composable
+private fun BackPill(onBack: () -> Unit) {
+    Surface(
+        onClick = onBack,
+        shape = Pill,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        Row(
+            Modifier.padding(start = 12.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(Modifier.height(44.dp), contentAlignment = Alignment.Center) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+            }
+            Text(
+                "BACK",
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.sp,
+            )
         }
     }
 }
@@ -197,7 +236,7 @@ private fun HeroBlock(
         Box(
             m
                 .aspectRatio(0.66f)
-                .clip(RoundedCornerShape(8.dp))
+                .clip(CoverShapeMedium)
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         ) {
             s.coverUrl?.let {
@@ -231,7 +270,7 @@ private fun HeroBlock(
             }
             Spacer(Modifier.height(8.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(onClick = {}, label = { Text(formatLabel(detail)) })
+                AssistChip(onClick = {}, shape = Pill, label = { Text(formatLabel(detail)) })
                 ReadingStatusChip(detail.readingStatus, onSetStatus)
             }
             val serverNames = copies.map { it.serverName }.distinct()
@@ -265,13 +304,9 @@ private fun HeroBlock(
 private fun ServerChip(name: String) {
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .border(
-                1.dp,
-                MaterialTheme.colorScheme.outline,
-                RoundedCornerShape(8.dp),
-            )
-            .padding(horizontal = 8.dp, vertical = 3.dp),
+            .clip(Pill)
+            .border(1.dp, MaterialTheme.colorScheme.outline, Pill)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -291,6 +326,7 @@ private fun ReadingStatusChip(current: ReadingStatus?, onSet: (ReadingStatus) ->
     Box {
         AssistChip(
             onClick = { open = true },
+            shape = Pill,
             label = { Text(current?.label ?: "Set status") },
             leadingIcon = {
                 Icon(
@@ -320,6 +356,7 @@ private fun ActionButtons(
     detail: BookDetail,
     copies: List<BookCopy>,
     download: Download?,
+    progress: ReadingProgress?,
     onOpen: (BookCopy) -> Unit,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
@@ -332,22 +369,30 @@ private fun ActionButtons(
         format == ContentFormat.AUDIOBOOK
     var showPicker by remember { mutableStateOf(false) }
 
+    // Phase 4 (issue #115) — the "Modernist" base design system's own explicit rule: button
+    // labels are flush left, never centered, even in a button wider than its label. M3's
+    // Button centers its content Row by default with no exposed override, so [LeftAligned]'s
+    // fill-width inner Row (Start-aligned) is what actually left-aligns it — same helper
+    // every button on this screen uses, see [DownloadButton].
     Button(
         onClick = {
             if (copies.size > 1) showPicker = true else onOpen(copies.first())
         },
         enabled = canOpen,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().heightIn(min = 54.dp),
     ) {
-        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-        Text(
+        LeftAligned(
+            { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
             when {
-                isAudio -> "  Play"
-                canOpen -> "  Read"
-                else -> "  Read (reader coming soon)"
+                isAudio -> "Play"
+                canOpen -> "Read"
+                else -> "Read (reader coming soon)"
             },
         )
     }
+
+    ProgressRow(detail, progress)
+
     Spacer(Modifier.height(8.dp))
     DownloadButton(download, onDownload, onRemoveDownload)
 
@@ -373,8 +418,11 @@ private fun ActionButtons(
                             .fillMaxWidth()
                             .heightIn(min = 56.dp),
                     ) {
-                        Icon(Icons.Filled.PlayArrow, contentDescription = null)
-                        Text("  ${copy.serverName}", style = MaterialTheme.typography.titleMedium)
+                        LeftAligned(
+                            { Icon(Icons.Filled.PlayArrow, contentDescription = null) },
+                            copy.serverName,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                     }
                 }
             }
@@ -382,9 +430,65 @@ private fun ActionButtons(
     }
 }
 
+/** Phase 4 (issue #115) — the mockup's progress row (a pill track + a "42% · 4h 52m left"
+ * style line) directly under the Play/Read button. [ReadingProgress] only carries a
+ * percentage, no duration — for audiobooks the remaining time is computed from
+ * [BookDetail.audio]'s total duration, matching what the mockup shows; other formats just
+ * get a plain "NN% read". Hidden entirely below 1% (nothing started yet), rather than
+ * showing an empty bar. */
+@Composable
+private fun ProgressRow(detail: BookDetail, progress: ReadingProgress?) {
+    val pct = progress?.percent?.coerceIn(0.0, 1.0) ?: return
+    if (pct < 0.01) return
+    val isAudio = detail.summary.format == ContentFormat.AUDIOBOOK
+    val label = buildString {
+        append((pct * 100).toInt())
+        append("% ")
+        val durationMs = detail.audio?.durationMs
+        if (isAudio && durationMs != null && durationMs > 0) {
+            val remainingMin = ((durationMs * (1 - pct)) / 60_000).toInt()
+            append("· ")
+            if (remainingMin >= 60) {
+                append(remainingMin / 60).append("h ").append(remainingMin % 60).append("m left")
+            } else {
+                append(remainingMin).append("m left")
+            }
+        } else {
+            append(if (isAudio) "listened" else "read")
+        }
+    }
+    Row(
+        Modifier.fillMaxWidth().padding(top = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        LinearProgressIndicator(
+            progress = { pct.toFloat() },
+            modifier = Modifier.weight(1f).height(6.dp).clip(Pill),
+        )
+        Text(
+            label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+/** Phase 4 (issue #115) — the mockup's small-caps section header ("ABOUT", "DETAILS"),
+ * shared by both sections below instead of each rolling its own Text style. */
+@Composable
+private fun SectionHeader(text: String) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelLarge,
+        letterSpacing = 1.4.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
 @Composable
 private fun AboutSection(detail: BookDetail) {
-    Text("About", style = MaterialTheme.typography.titleMedium)
+    SectionHeader("About")
     val description = detail.description?.takeIf { it.isNotBlank() }
     Text(
         description ?: "No description available.",
@@ -394,30 +498,46 @@ private fun AboutSection(detail: BookDetail) {
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
-        modifier = Modifier.padding(top = 4.dp),
+        modifier = Modifier.padding(top = 6.dp),
     )
 }
 
 @Composable
 private fun DetailsSection(detail: BookDetail) {
     val s = detail.summary
-    Text("Details", style = MaterialTheme.typography.titleMedium)
-    Spacer(Modifier.height(4.dp))
-    MetaRow("Format", formatLabel(detail))
-    MetaRow("Series", s.series?.let {
-        buildString {
-            append(it)
-            s.seriesIndex?.let { n -> append(" #${n.toString().removeSuffix(".0")}") }
+    SectionHeader("Details")
+    Spacer(Modifier.height(8.dp))
+    // Phase 4 (issue #115) — the mockup wraps every meta row in one rounded card with
+    // divider lines between rows, instead of bare label/value pairs floating on the page.
+    val rows = listOfNotNull(
+        "Format" to formatLabel(detail),
+        s.series?.let {
+            "Series" to buildString {
+                append(it)
+                s.seriesIndex?.let { n -> append(" #${n.toString().removeSuffix(".0")}") }
+            }
+        },
+        detail.narratorLine.takeIf { it.isNotBlank() }?.let { "Narrator" to it },
+        detail.publisher?.let { "Publisher" to it },
+        detail.publishedDate?.let { "Published" to it },
+        detail.language?.let { "Language" to it },
+        detail.isbn?.let { "ISBN" to it },
+        detail.pageCount?.let { "Pages" to it.toString() },
+        detail.categories.takeIf { it.isNotEmpty() }?.let { "Categories" to it.joinToString(", ") },
+        detail.fileSizeBytes?.let { "File size" to formatFileSize(it) },
+    )
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.padding(horizontal = 14.dp)) {
+            rows.forEachIndexed { index, (label, value) ->
+                MetaRow(label, value)
+                if (index != rows.lastIndex) HorizontalDivider()
+            }
         }
-    })
-    MetaRow("Narrator", detail.narratorLine.takeIf { it.isNotBlank() })
-    MetaRow("Publisher", detail.publisher)
-    MetaRow("Published", detail.publishedDate)
-    MetaRow("Language", detail.language)
-    MetaRow("ISBN", detail.isbn)
-    MetaRow("Pages", detail.pageCount?.toString())
-    MetaRow("Categories", detail.categories.takeIf { it.isNotEmpty() }?.joinToString(", "))
-    MetaRow("File size", detail.fileSizeBytes?.let(::formatFileSize))
+    }
 }
 
 /** The file's extension (`epub`, `cbz`, `m4b`…), falling back to the content-type name. */
@@ -431,6 +551,28 @@ private fun formatFileSize(bytes: Long): String = when {
     else -> "$bytes B"
 }
 
+/** Phase 4 (issue #115) — the mockup's flush-left button-label rule (see [ActionButtons]'
+ * doc comment) applies to every pill button on this screen, not just Play/Read. Shared here
+ * since [DownloadButton] has four differently-labeled variants that all need it. */
+@Composable
+private fun RowScope.LeftAligned(
+    icon: @Composable () -> Unit,
+    label: String,
+    style: androidx.compose.ui.text.TextStyle? = null,
+) {
+    Row(
+        Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.Start),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        icon()
+        // Not defaulted to LocalTextStyle.current directly: Text's own no-arg default
+        // already does that, and passing an explicit TextStyle here (even
+        // TextStyle.Unspecified) would bypass that inheritance instead of merging with it.
+        if (style != null) Text(label, style = style) else Text(label)
+    }
+}
+
 @Composable
 private fun DownloadButton(
     download: Download?,
@@ -442,15 +584,16 @@ private fun DownloadButton(
             onClick = onRemove,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Icon(Icons.Filled.CheckCircle, contentDescription = null)
-            Text("  Downloaded — remove")
+            LeftAligned({ Icon(Icons.Filled.CheckCircle, contentDescription = null) }, "Downloaded — remove")
         }
 
         DownloadStatus.QUEUED, DownloadStatus.RUNNING -> Column(Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = onRemove, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Filled.Delete, contentDescription = null)
                 val pct = download.fraction?.let { " ${(it * 100).toInt()}%" }.orEmpty()
-                Text(if (download.status == DownloadStatus.RUNNING) "  Downloading$pct — cancel" else "  Queued — cancel")
+                LeftAligned(
+                    { Icon(Icons.Filled.Delete, contentDescription = null) },
+                    if (download.status == DownloadStatus.RUNNING) "Downloading$pct — cancel" else "Queued — cancel",
+                )
             }
             val fraction = download.fraction
             if (fraction != null) {
@@ -465,8 +608,7 @@ private fun DownloadButton(
 
         DownloadStatus.FAILED -> Column(Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
-                Icon(Icons.Filled.ErrorOutline, contentDescription = null)
-                Text("  Download failed — retry")
+                LeftAligned({ Icon(Icons.Filled.ErrorOutline, contentDescription = null) }, "Download failed — retry")
             }
             download.error?.let {
                 Text(
@@ -479,21 +621,19 @@ private fun DownloadButton(
         }
 
         null -> OutlinedButton(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
-            Icon(Icons.Filled.CloudDownload, contentDescription = null)
-            Text("  Make available offline")
+            LeftAligned({ Icon(Icons.Filled.CloudDownload, contentDescription = null) }, "Make available offline")
         }
     }
 }
 
 @Composable
-private fun MetaRow(label: String, value: String?) {
-    if (value.isNullOrBlank()) return
-    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), Arrangement.spacedBy(12.dp)) {
+private fun MetaRow(label: String, value: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), Arrangement.spacedBy(12.dp)) {
         Text(
             label,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.width(96.dp),
+            modifier = Modifier.width(104.dp),
         )
         Text(value, style = MaterialTheme.typography.bodyMedium)
     }

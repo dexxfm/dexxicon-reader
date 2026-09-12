@@ -1,5 +1,6 @@
 package net.dexxicon.reader.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
@@ -26,8 +26,16 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import net.dexxicon.reader.core.designsystem.theme.CoverShapeSmall
+import net.dexxicon.reader.core.designsystem.theme.Pill
 import net.dexxicon.reader.core.media.PlayerUiState
 
+/**
+ * Phase 4 (issue #115) — always the floating translucent pill, at every width. The mockup's
+ * own turn 4/5 (fold/tablet) shows a full-width bar instead once the rail replaces the
+ * bottom nav; overridden on request to keep the pill treatment everywhere rather than
+ * matching that split.
+ */
 @Composable
 fun MiniPlayer(
     playback: PlayerUiState,
@@ -36,63 +44,63 @@ fun MiniPlayer(
     onDismiss: () -> Unit,
 ) {
     val book = playback.audiobook ?: return
+    val fraction = playback.durationMs.takeIf { it > 0 }
+        ?.let { (playback.positionMs.toFloat() / it).coerceIn(0f, 1f) }
 
-    Surface(
-        tonalElevation = 3.dp,
-        shadowElevation = 6.dp,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column {
-            val fraction = playback.durationMs.takeIf { it > 0 }
-                ?.let { (playback.positionMs.toFloat() / it).coerceIn(0f, 1f) }
-            if (fraction != null) {
-                LinearProgressIndicator(
-                    progress = { fraction },
-                    modifier = Modifier.fillMaxWidth().height(2.dp),
-                )
-            }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { onOpen(book.serverId, book.bookId) }
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(6.dp)),
-                ) {
-                    book.coverUrl?.let {
-                        AsyncImage(model = it, contentDescription = null, modifier = Modifier.size(40.dp))
-                    }
-                }
-                Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                    Text(
-                        book.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Surface(
+            shape = Pill,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+            shadowElevation = 6.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.clip(Pill),
+        ) {
+            Column {
+                if (fraction != null) {
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.fillMaxWidth().height(2.dp),
                     )
-                    playback.currentChapterTitle?.let {
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpen(book.serverId, book.bookId) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(36.dp).clip(CoverShapeSmall)) {
+                        book.coverUrl?.let {
+                            AsyncImage(model = it, contentDescription = null, modifier = Modifier.size(36.dp))
+                        }
+                    }
+                    Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                         Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            book.title,
+                            style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        playback.currentChapterTitle?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
-                }
-                IconButton(onClick = onPlayPause) {
-                    Icon(
-                        if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (playback.isPlaying) "Pause" else "Play",
-                    )
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close player")
+                    IconButton(onClick = onPlayPause) {
+                        Icon(
+                            if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (playback.isPlaying) "Pause" else "Play",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close player")
+                    }
                 }
             }
         }

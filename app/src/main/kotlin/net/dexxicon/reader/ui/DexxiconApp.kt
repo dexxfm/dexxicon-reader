@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -16,10 +17,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -34,7 +31,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -114,7 +110,20 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
-                Column {
+                // Phase 4 (issue #115): the floating pill nav only shows in the compact
+                // (bottom-bar) layout — at >=600dp the destinations move into
+                // [PillNavigationRail] on the side instead. The mini-player stays the
+                // floating pill at every width (see MiniPlayer's own doc comment for why
+                // that's an override of the mockup's own full-width-at-wide behavior).
+                //
+                // navigationBarsPadding() here is load-bearing, not decorative: this
+                // Scaffold's contentWindowInsets is zeroed (each screen's own TopAppBar/
+                // Scaffold already consumes the status-bar inset itself — see the comment
+                // above), which also zeroes the bottom system-gesture inset the bottomBar
+                // would otherwise get automatically. Without this, the mini-player/nav pill
+                // sits flush against the very bottom edge, with the system's gesture swipe
+                // indicator drawn on top of it instead of below it (PR #120 feedback).
+                Column(Modifier.navigationBarsPadding()) {
                     if (miniPlayerVisible) {
                         MiniPlayer(
                             playback = playback,
@@ -124,32 +133,22 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
                         )
                     }
                     if (showBottomBar) {
-                        NavigationBar {
-                            TopLevelDestination.entries.forEach { destination ->
-                                NavigationBarItem(
-                                    selected = destination == currentTopLevel,
-                                    onClick = { navController.switchTopLevel(destination) },
-                                    icon = { Icon(destination.icon, contentDescription = null) },
-                                    label = { Text(stringResource(destination.labelRes)) },
-                                )
-                            }
-                        }
+                        FloatingPillNavBar(
+                            destinations = TopLevelDestination.entries,
+                            current = currentTopLevel,
+                            onSelect = { navController.switchTopLevel(it) },
+                        )
                     }
                 }
             },
         ) { innerPadding ->
             Row(Modifier.fillMaxSize().padding(innerPadding)) {
                 if (showRail) {
-                    NavigationRail {
-                        TopLevelDestination.entries.forEach { destination ->
-                            NavigationRailItem(
-                                selected = destination == currentTopLevel,
-                                onClick = { navController.switchTopLevel(destination) },
-                                icon = { Icon(destination.icon, contentDescription = null) },
-                                label = { Text(stringResource(destination.labelRes)) },
-                            )
-                        }
-                    }
+                    PillNavigationRail(
+                        destinations = TopLevelDestination.entries,
+                        current = currentTopLevel,
+                        onSelect = { navController.switchTopLevel(it) },
+                    )
                 }
                 Column(Modifier.weight(1f).fillMaxSize()) {
                     signInPrompts.forEach { prompt ->

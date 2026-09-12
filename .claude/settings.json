@@ -21,5 +21,8 @@
       "Read(./keystore.properties)",
       "Read(./app/release.keystore)"
     ]
-  }
+  },
+  "worktree": {
+    "bgIsolation": "none"
+}
 }

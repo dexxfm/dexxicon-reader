@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import net.dexxicon.reader.core.designsystem.theme.Pill
 import net.dexxicon.reader.core.model.ContentFormat
 
 /**
@@ -96,8 +97,12 @@ fun FormatBadge(format: ContentFormat, modifier: Modifier = Modifier) {
         fontSize = 9.sp,
         fontWeight = FontWeight.Bold,
         lineHeight = 10.sp,
+        // Phase 4 (issue #115): the mockup's format tags are always a true pill
+        // (border-radius:999px), including the small one on a cover — not the 4dp rect
+        // this used before. FormatLegend's own reference-key swatch below is untouched: the
+        // mockup has no legend screen to match it against.
         modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
+            .clip(Pill)
             .background(format.badgeColor)
             .padding(horizontal = 4.dp, vertical = 2.dp),
     )

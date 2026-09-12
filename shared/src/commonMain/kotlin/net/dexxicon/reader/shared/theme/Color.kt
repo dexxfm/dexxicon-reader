@@ -25,3 +25,11 @@ internal val Slate50 = Color(0xFFF4F6F9)
 // (no consumer in core/designsystem beyond its own declaration), so it isn't ported here either.
 internal val ErrorRed = Color(0xFFB3261E)
 internal val ErrorRedDark = Color(0xFFF2B8B5)
+
+// Phase 4 (issue #115) accent — "Aqua", ported verbatim from core/designsystem/theme/Color.kt
+// (same issue). See that file's doc comment for what *Hi means and why background/surface
+// don't change.
+internal val AquaAccentDark = Color(0xFF57C9B4)
+internal val AquaAccentDarkHi = Color(0xFF8FDCCD)
+internal val AquaAccentLight = Color(0xFF0E7A69)
+internal val AquaAccentLightHi = Color(0xFF0A5B4E)
