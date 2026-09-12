@@ -28,7 +28,7 @@ class SharedPreviewActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             val container = remember { createAppContainer(PlatformContext(applicationContext)) }
-            App(container, onOpenReader = { _, _, format, _, _ ->
+            App(container, onOpenReader = { _, _, format, _, _, _ ->
                 // issue #99 — this preview activity exists only to compare :shared's
                 // rendering against native, never to actually read a book: the real, already-
                 // working native reader stack (Readium/Media3) lives entirely in :app's own

@@ -23,6 +23,11 @@ import net.dexxicon.reader.core.model.ContentFormat
  * like every other callback (`onOpenBook`, `onBack`, …) already crossing into this shared UI
  * — and, once invoked, Swift's own `UINavigationController` pushes a fully native screen,
  * entirely outside Compose's render tree.
+ *
+ * [isManga] (issue #108) mirrors Android's `ComicReaderViewModel.mangaGenre`: true when the
+ * book's own genre/category tags mention "manga", so the platform reader can pick the right
+ * reading direction (and, on iOS, which edge means "next page") without needing its own path
+ * back into `:shared`'s catalog data just to check a genre tag.
  */
 typealias OnOpenReader = (
     serverId: String,
@@ -30,4 +35,5 @@ typealias OnOpenReader = (
     format: ContentFormat,
     url: String,
     authHeader: String?,
+    isManga: Boolean,
 ) -> Unit

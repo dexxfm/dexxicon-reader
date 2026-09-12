@@ -3,31 +3,44 @@ import ReadiumShared
 import ReadiumStreamer
 import ReadiumNavigator
 
-/// Real Readium Swift Toolkit EPUB reader (issue #101, following #99's plumbing). Opens
-/// `url` — already an absolute, resolved acquisition URL — with `authHeader` — already
-/// resolved by `:shared`'s `AppContainer.authHeaderProvider`, the same provider its own
-/// authenticated Ktor client uses — attached to every request. This mirrors what Android's
-/// `core/reader/PublicationStreamer` does with its authenticated OkHttp client: neither
-/// platform reader needs its own path back into the auth layer, both just get a
-/// ready-to-use URL + header.
+/// Real Readium Swift Toolkit EPUB reader (issue #101, following #99's plumbing) — also the
+/// reader for MOBI/AZW3/FB2 (server-converted to EPUB before either client requests bytes,
+/// see `ReaderLaunch.kt`) and for CBZ comics (issue #106: Readium's own changelog, 3.8.0,
+/// deprecated a separate `CBZNavigatorViewController` in favor of this exact reuse — kept
+/// this class's name regardless, matching Readium's own precedent of keeping
+/// `EPUBNavigatorViewController`'s name even once it also opens comics).
 ///
-/// Also the reader for MOBI/AZW3/FB2 (see `ReaderLaunch.kt`'s doc comment) — the server
-/// already converts those three to EPUB before either client ever requests bytes, so they
-/// open through this exact same path, no format-specific handling needed here.
+/// Opens `url` — already an absolute, resolved acquisition URL — with `authHeader` — already
+/// resolved by `:shared`'s `AppContainer.authHeaderProvider` — attached to every request.
+/// Mirrors what Android's `core/reader/PublicationStreamer` does with its authenticated
+/// OkHttp client: neither platform reader needs its own path back into the auth layer.
+///
+/// `isManga` (issue #108) drives two things, both real Readium Swift extension points, not
+/// custom rendering: the `ReadingProgression` preference (right-to-left page order) and
+/// which edge of [EdgeTapNavigator]'s tap zones means "next page". Deliberately **not**
+/// included this pass — see the "iOS Reading Support" proposal's Comics feature-parity
+/// section: Android's `ComicPanelDetector`/`PanelSteppingNavigator` "smart zoom" (a from-
+/// scratch pixel-analysis algorithm with zero Readium involvement even on Android — real new
+/// work, deferred until there's a real device to judge its output on) and its custom
+/// drag-page-turn-with-live-peel-preview gesture (Readium's own built-in paginated-mode swipe
+/// already turns pages for free, same as it already does for EPUB — the custom peel visual on
+/// top of that is a cosmetic addition, not a functional gap, and wasn't sized accurately in
+/// the original feasibility report).
 ///
 /// Not yet verified beyond compiling — no Mac available locally; the real test is a
-/// triggered `ios-ci` run. `EPUBNavigatorDelegate` is left unset (every one of its own
-/// methods has a default empty implementation) to keep this first real version minimal.
+/// triggered `ios-ci` run.
 final class EpubReaderViewController: UIViewController {
     private let url: URL
     private let authHeader: String?
+    private let isManga: Bool
 
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
     private var navigatorViewController: EPUBNavigatorViewController?
 
-    init(url: URL, authHeader: String?) {
+    init(url: URL, authHeader: String?, isManga: Bool) {
         self.url = url
         self.authHeader = authHeader
+        self.isManga = isManga
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -92,10 +105,18 @@ final class EpubReaderViewController: UIViewController {
         }
 
         do {
+            // issue #108: manga reads right-to-left — nil (not .ltr) lets a non-manga book
+            // fall back to its own publication metadata instead of forcing left-to-right on
+            // something that might disagree (e.g. an Arabic EPUB).
+            let config = EPUBNavigatorViewController.Configuration(
+                preferences: EPUBPreferences(readingProgression: isManga ? .rtl : nil)
+            )
             let navigator = try EPUBNavigatorViewController(
                 publication: publication,
-                initialLocation: nil
+                initialLocation: nil,
+                config: config
             )
+            navigator.delegate = self
             embed(navigator)
         } catch {
             showError("Couldn't open this book.")
@@ -137,8 +158,8 @@ extension EpubReaderViewController {
     /// Wraps the reader in its own `UINavigationController` with a "Done" button, ready to
     /// present modally from any view controller — no dependency on the app having its own
     /// root navigation controller (it doesn't, today).
-    static func presentable(url: URL, authHeader: String?) -> UIViewController {
-        let reader = EpubReaderViewController(url: url, authHeader: authHeader)
+    static func presentable(url: URL, authHeader: String?, isManga: Bool) -> UIViewController {
+        let reader = EpubReaderViewController(url: url, authHeader: authHeader, isManga: isManga)
         reader.title = "Reading"
         reader.navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .done,
@@ -154,4 +175,54 @@ extension EpubReaderViewController {
         // this being wrapped in its own UINavigationController.
         dismiss(animated: true)
     }
+}
+
+/// Edge-tap page turning (issue #108) — the Swift equivalent of Android's
+/// `core/reader/EdgeTapNavigator`: tap the left/right `edgeFraction` of the screen to turn a
+/// page, RTL-aware (same reasoning as Android's own comment — a manga read right-to-left still
+/// needs the *physical* left edge to mean "next", not whichever `goForward`/`goBackward`
+/// happens to mean by default). A middle tap is a no-op for now — Android's version toggles
+/// reader chrome, which this minimal reader doesn't have yet.
+///
+/// This hooks Readium's own extension point rather than adding a competing gesture
+/// recognizer: `EPUBNavigatorViewController` already forwards unhandled taps to
+/// `delegate?.navigator(self, didTapAt:)` internally (confirmed against its real source), so
+/// conforming to `EPUBNavigatorDelegate` and implementing that one method is all that's
+/// needed — no fighting with the navigator's own WKWebView-based tap handling.
+extension EpubReaderViewController: EPUBNavigatorDelegate {
+    private static let edgeFraction: CGFloat = 0.28
+
+    func navigator(_ navigator: VisualNavigator, didTapAt point: CGPoint) {
+        let width = navigator.view.bounds.width
+        guard width > 0 else { return }
+
+        if point.x < width * Self.edgeFraction {
+            turnPage(navigator, physicallyForward: false)
+        } else if point.x > width * (1 - Self.edgeFraction) {
+            turnPage(navigator, physicallyForward: true)
+        }
+        // Centre tap: no reader chrome to toggle yet, so intentionally a no-op.
+    }
+
+    private func turnPage(_ navigator: VisualNavigator, physicallyForward: Bool) {
+        // Same inversion as Android's EdgeTapNavigator: a manga's *reading* forward is the
+        // physical left edge, not the right, so flip which Navigator call the tapped edge
+        // maps to rather than reinterpreting the tap location itself.
+        let readingForward = physicallyForward != isManga
+        Task {
+            if readingForward {
+                _ = await navigator.goForward(options: .animated)
+            } else {
+                _ = await navigator.goBackward(options: .animated)
+            }
+        }
+    }
+
+    /// `NavigatorDelegate`'s one method with no default implementation (every other method
+    /// on `EPUBNavigatorDelegate`'s whole protocol chain — `VisualNavigatorDelegate`,
+    /// `SelectableNavigatorDelegate`, `ViewportObservingNavigatorDelegate` — has one,
+    /// confirmed against their real source before relying on it). Non-fatal (e.g. a
+    /// DRM copy-forbidden action) — nothing to surface yet in this minimal reader; the
+    /// full-screen `showError(_:)` path is reserved for actual open failures.
+    func navigator(_ navigator: Navigator, presentError error: NavigatorError) {}
 }
