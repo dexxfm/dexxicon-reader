@@ -139,7 +139,7 @@ class BookOrbitCatalogSource(
     private fun formatOf(format: String?): ContentFormat = when (format?.lowercase()) {
         "epub", "kepub" -> ContentFormat.EPUB
         "pdf" -> ContentFormat.PDF
-        "cbz", "cbr", "cb7" -> ContentFormat.COMIC
+        "cbz", "cbr" -> ContentFormat.COMIC // cb7 deliberately excluded — issue #110
         "m4b", "mp3", "m4a", "opus", "ogg", "flac", "aac" -> ContentFormat.AUDIOBOOK
         "mobi", "prc" -> ContentFormat.MOBI
         "azw3", "azw" -> ContentFormat.AZW3

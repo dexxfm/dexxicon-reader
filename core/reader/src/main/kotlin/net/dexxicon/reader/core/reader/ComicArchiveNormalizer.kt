@@ -20,10 +20,14 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Readium's archive support is ZIP-only, so it can open CBZ but not CBR (RAR) or CB7 (7z).
- * This normalizes a comic archive to a CBZ the navigator can read: ZIP inputs pass straight
- * through; RAR inputs are unpacked (junrar) and repacked as a stored ZIP, cached by content
- * hash. RAR can't be range-streamed, so remote CBRs are fetched in full first.
+ * Readium's archive support is ZIP-only, so it can open CBZ but not CBR (RAR). This normalizes
+ * a comic archive to a CBZ the navigator can read: ZIP inputs pass straight through; RAR
+ * inputs are unpacked (junrar) and repacked as a stored ZIP, cached by content hash. RAR can't
+ * be range-streamed, so remote CBRs are fetched in full first.
+ *
+ * CB7 (7z) never reaches this class at all — issue #110 dropped CB7 support rather than add a
+ * real 7z-extraction path here: `ContentFormat` no longer recognizes it as `COMIC`, so it's
+ * never routed to the comic reader in the first place.
  */
 @Singleton
 class ComicArchiveNormalizer @Inject constructor(
