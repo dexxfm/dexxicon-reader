@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared
 
+import net.dexxicon.reader.core.model.Chapter
 import net.dexxicon.reader.core.model.ContentFormat
 
 /**
@@ -28,6 +29,10 @@ import net.dexxicon.reader.core.model.ContentFormat
  * book's own genre/category tags mention "manga", so the platform reader can pick the right
  * reading direction (and, on iOS, which edge means "next page") without needing its own path
  * back into `:shared`'s catalog data just to check a genre tag.
+ *
+ * [audiobook] (issue #114) is non-null only for [ContentFormat.AUDIOBOOK] — bundled into one
+ * small data class rather than four more positional parameters most other formats would never
+ * use, the same reasoning [AudiobookLaunchInfo] itself documents.
  */
 typealias OnOpenReader = (
     serverId: String,
@@ -36,4 +41,20 @@ typealias OnOpenReader = (
     url: String,
     authHeader: String?,
     isManga: Boolean,
+    audiobook: AudiobookLaunchInfo?,
 ) -> Unit
+
+/**
+ * Metadata iOS's native audiobook player needs that no other reader does — Now Playing
+ * info (title/author/cover) and chapter navigation — grouped here instead of growing
+ * [OnOpenReader]'s own parameter list with fields only one format ever reads. Mirrors exactly
+ * what Android's `PlayerViewModel.load()` already resolves from the same `BookDetail`/
+ * `BookDetail.audio`, so both platforms start a book with identical metadata.
+ */
+data class AudiobookLaunchInfo(
+    val title: String,
+    val author: String?,
+    val coverUrl: String?,
+    val durationMs: Long,
+    val chapters: List<Chapter>,
+)
