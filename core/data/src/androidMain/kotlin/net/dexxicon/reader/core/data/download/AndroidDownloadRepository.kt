@@ -15,11 +15,11 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
-import kotlinx.coroutines.flow.first
 import net.dexxicon.reader.core.database.dao.DownloadDao
 import net.dexxicon.reader.core.database.entity.DownloadEntity
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
@@ -31,39 +31,37 @@ import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/** Real, `WorkManager`-backed [DownloadRepository] — unchanged behavior from before this
+ * interface existed; see that interface's doc comment for why the split. */
 @Singleton
-class DownloadRepository @Inject constructor(
+class AndroidDownloadRepository @Inject constructor(
     @ApplicationContext private val context: Context,
     private val dao: DownloadDao,
     private val appPreferences: AppPreferencesStore,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
-) {
+) : DownloadRepository {
     private val workManager get() = WorkManager.getInstance(context)
 
-    val downloads: Flow<List<Download>> =
+    override val downloads: Flow<List<Download>> =
         dao.observeAll().map { list -> list.map { it.toDomain() } }
 
-    /** Approximate bytes held by downloads (done + in flight). */
-    val usedBytes: Flow<Long> =
+    override val usedBytes: Flow<Long> =
         dao.observeAll().map { list -> list.sumOf { it.approxBytes() } }
 
     private fun DownloadEntity.approxBytes(): Long =
         totalBytes ?: downloadedBytes.takeIf { it > 0L } ?: 0L
 
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 4)
+    override val messages: SharedFlow<String> = _messages.asSharedFlow()
 
-    /** User-facing notices from download attempts (e.g. the storage limit was hit). */
-    val messages: SharedFlow<String> = _messages.asSharedFlow()
-
-    fun download(serverId: String, bookId: String): Flow<Download?> =
+    override fun download(serverId: String, bookId: String): Flow<Download?> =
         dao.observe(key(serverId, bookId)).map { it?.toDomain() }
 
-    suspend fun get(serverId: String, bookId: String): Download? = withContext(io) {
+    override suspend fun get(serverId: String, bookId: String): Download? = withContext(io) {
         dao.find(key(serverId, bookId))?.toDomain()
     }
 
-    /** Queue (or re-queue) an offline copy of [detail]. */
-    suspend fun enqueue(detail: BookDetail): EnqueueResult = withContext(io) {
+    override suspend fun enqueue(detail: BookDetail): EnqueueResult = withContext(io) {
         val prefs = appPreferences.preferences.first()
         val wifiOnly = prefs.downloadsWifiOnly
         val s = detail.summary
@@ -123,7 +121,7 @@ class DownloadRepository @Inject constructor(
         EnqueueResult.Queued
     }
 
-    suspend fun remove(serverId: String, bookId: String) = withContext(io) {
+    override suspend fun remove(serverId: String, bookId: String) = withContext(io) {
         val key = key(serverId, bookId)
         workManager.cancelUniqueWork(DownloadWorker.workName(key))
         dao.find(key)?.localPath?.let { path ->
@@ -133,11 +131,10 @@ class DownloadRepository @Inject constructor(
         dao.deleteByKey(key)
     }
 
-    /** The on-disk file for a completed download, or null. */
-    suspend fun localFile(serverId: String, bookId: String): File? = withContext(io) {
+    override suspend fun localFile(serverId: String, bookId: String): String? = withContext(io) {
         val entity = dao.find(key(serverId, bookId)) ?: return@withContext null
         if (entity.status != DownloadStatus.DONE.name) return@withContext null
-        entity.localPath?.let(::File)?.takeIf { it.exists() }
+        entity.localPath?.takeIf { File(it).exists() }
     }
 
     private fun key(serverId: String, bookId: String) = "$serverId::$bookId"
@@ -146,19 +143,4 @@ class DownloadRepository @Inject constructor(
         val gb = bytes / (1024.0 * 1024 * 1024)
         return if (gb >= 10 || gb == gb.toLong().toDouble()) "${gb.toLong()} GB" else "%.1f GB".format(gb)
     }
-}
-
-/** Outcome of [DownloadRepository.enqueue]. */
-sealed interface EnqueueResult {
-    data object Queued : EnqueueResult
-
-    /** Nothing downloadable on the book. */
-    data object NoFile : EnqueueResult
-
-    /** The download would push total downloaded media past the storage limit. */
-    data class OverLimit(
-        val neededBytes: Long,
-        val usedBytes: Long,
-        val limitBytes: Long,
-    ) : EnqueueResult
 }

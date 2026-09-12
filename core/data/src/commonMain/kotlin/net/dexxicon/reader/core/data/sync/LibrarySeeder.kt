@@ -1,11 +1,11 @@
 package net.dexxicon.reader.core.data.sync
 
-import android.util.Log
+import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
-import net.dexxicon.reader.core.common.DexxiconDispatcher
+import kotlinx.io.IOException
 import net.dexxicon.reader.core.common.DexxiconError
-import net.dexxicon.reader.core.common.Dispatcher
+import net.dexxicon.reader.core.common.Logger
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingProgress
@@ -14,10 +14,6 @@ import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryAppSummary
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
-import io.ktor.client.plugins.ResponseException
-import kotlinx.io.IOException
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * Pulls a server's own "continue reading" / "continue listening" lists — the ones its web
@@ -26,19 +22,21 @@ import javax.inject.Singleton
  *
  * Fetch + map only; persistence (and "don't clobber local progress") lives in
  * [ReadingProgressRepository.seedFromServer].
+ *
+ * Phase 4 restructure (issue #126) — moved to commonMain; see [NativeProgressSync]'s doc
+ * comment for the `@Inject`/`@Singleton` -> `:app`-hosted `@Provides` reasoning.
  */
-@Singleton
-class LibrarySeeder @Inject constructor(
+class LibrarySeeder(
     private val grimmory: GrimmoryBrowseApi,
     private val bookOrbit: BookOrbitBrowseApi,
-    @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
+    private val io: CoroutineDispatcher,
 ) {
     /** Every in-progress book the server knows about, as progress rows ready to persist. */
     suspend fun inProgress(server: Server): List<ReadingProgress> =
         when (val result = inProgressResult(server)) {
             is Outcome.Success -> result.value
             is Outcome.Failure -> {
-                Log.w(TAG, "seed ${server.type} ${server.displayName} failed: ${result.error.message}")
+                Logger.w(TAG, "seed ${server.type} ${server.displayName} failed: ${result.error.message}")
                 emptyList()
             }
         }

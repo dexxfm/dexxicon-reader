@@ -23,6 +23,7 @@ import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.reader.PublicationStreamer
 import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
+import java.io.File
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
 import net.dexxicon.reader.core.reader.ReaderPreferencesStore
 import net.dexxicon.reader.feature.reader.pdf.navigation.PdfReaderRoute
@@ -104,7 +105,9 @@ class PdfReaderViewModel @Inject constructor(
     }
 
     private suspend fun load() {
-        val localFile = downloadRepository.localFile(route.serverId, route.bookId)
+        // DownloadRepository.localFile returns a plain path (issue #126 — java.io.File isn't
+        // portable), so this Android-only caller wraps it back into a File itself.
+        val localFile = downloadRepository.localFile(route.serverId, route.bookId)?.let(::File)
         val downloadTitle = downloadRepository.get(route.serverId, route.bookId)?.title
         val detail = (catalogRepository.detail(route.serverId, route.bookId) as? Outcome.Success)?.value
 

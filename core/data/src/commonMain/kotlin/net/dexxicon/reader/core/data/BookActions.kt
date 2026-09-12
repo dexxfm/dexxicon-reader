@@ -1,32 +1,32 @@
 package net.dexxicon.reader.core.data
 
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.common.Logger
 import net.dexxicon.reader.core.common.Outcome
-import net.dexxicon.reader.core.common.di.ApplicationScope
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.NativeProgressSync
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * The item-level actions offered by the long-press menu on a book: set reading status,
  * mark read/unread and download/remove. Runs on the application scope so an action started
  * from a card that the user then navigates away from still completes.
+ *
+ * Phase 4 restructure (issue #126) — moved to commonMain; see
+ * [net.dexxicon.reader.core.data.sync.NativeProgressSync]'s doc comment for the
+ * `@Inject`/`@Singleton` -> `:app`-hosted `@Provides` reasoning.
  */
-@Singleton
-class BookActions @Inject constructor(
+class BookActions(
     private val catalogRepository: CatalogRepository,
     private val downloadRepository: DownloadRepository,
     private val progressRepository: ReadingProgressRepository,
     private val serverRepository: ServerRepository,
     private val nativeProgressSync: NativeProgressSync,
-    @ApplicationScope private val scope: CoroutineScope,
+    private val scope: CoroutineScope,
 ) {
     /**
      * Set the server's per-user reading status. **Read** / **Unread** also nudge the
@@ -45,7 +45,7 @@ class BookActions @Inject constructor(
             copies.distinct().forEach { (serverId, bookId) ->
                 val server = serverRepository.get(serverId) ?: return@forEach
                 runCatching { nativeProgressSync.pushStatus(server, bookId, status) }
-                    .onFailure { Log.w("BookActions", "set status failed: ${it.message}") }
+                    .onFailure { Logger.w("BookActions", "set status failed: ${it.message}") }
                 when (status) {
                     ReadingStatus.READ -> pushProgress(serverId, bookId, 1.0)
                     ReadingStatus.UNREAD -> pushProgress(serverId, bookId, 0.0)

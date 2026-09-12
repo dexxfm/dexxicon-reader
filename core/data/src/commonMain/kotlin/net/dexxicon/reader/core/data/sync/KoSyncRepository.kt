@@ -1,31 +1,28 @@
 package net.dexxicon.reader.core.data.sync
 
-import android.content.Context
-import android.provider.Settings
-import dagger.hilt.android.qualifiers.ApplicationContext
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.request.get
+import io.ktor.client.request.header
+import io.ktor.http.HttpHeaders
+import io.ktor.http.isSuccess
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import net.dexxicon.reader.core.common.DexxiconDispatcher
-import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.data.KOSYNC_CREDENTIAL_PROVIDER
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.model.Server
-import net.dexxicon.reader.core.network.DexxiconHttpClient
 import net.dexxicon.reader.core.security.CredentialStore
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncProgressUpdate
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.io.File
-import java.io.RandomAccessFile
-import java.security.MessageDigest
-import java.util.concurrent.ConcurrentHashMap
-import javax.inject.Inject
-import javax.inject.Singleton
+import org.kotlincrypto.hash.md.MD5
 
 /** Where to read bytes from to compute a book's KOReader digest. */
 sealed interface DigestSource {
-    data class LocalFile(val file: File) : DigestSource
+    /** [path] a local filesystem path — `java.io.File` itself isn't portable, so this is the
+     * plain path string [readFileRange] takes. */
+    data class LocalFile(val path: String) : DigestSource
     data class Remote(val url: String) : DigestSource
 }
 
@@ -35,33 +32,43 @@ data class RemoteProgress(val percentage: Double, val timestamp: Long)
  * Syncs reading position with a server's KOReader sync (`kosync`) endpoint so progress is
  * shared with the KOReader e-reader app and other devices. We only round-trip the
  * **percentage** — Readium and KOReader don't share a position format.
+ *
+ * Phase 4 restructure (issue #126) — moved to commonMain (the "full portability lift" over
+ * stubbing this one Android-only, since BookOrbit/Grimmory aren't the only backends Book
+ * Detail's progress row should work for on iOS too):
+ *  - the raw HTTP range-GET for a remote digest sample now goes through the shared [HttpClient]
+ *    instead of a raw `okhttp3.OkHttpClient` call;
+ *  - MD5 (auth keys, [KoReaderDigest]'s partial-document hash) comes from
+ *    `org.kotlincrypto.hash.md` instead of `java.security.MessageDigest`;
+ *  - local-file digest sampling goes through [readFileRange] instead of
+ *    `java.io.RandomAccessFile` directly;
+ *  - [rawDeviceId]/[deviceModel] are passed in already-resolved rather than read from
+ *    `Context`/`android.os.Build` here — both are one-time values the composition root
+ *    (`:app`'s Hilt module, `:shared`'s `AppContainer`) can already compute with its own
+ *    platform APIs, so no expect/actual is needed just to thread a `Context` through.
+ *  `@Inject`/`@Singleton` dropped; see [NativeProgressSync]'s doc comment for the
+ *  `:app`-hosted `@Provides` reasoning.
  */
-@Singleton
-class KoSyncRepository @Inject constructor(
-    @ApplicationContext private val context: Context,
+class KoSyncRepository(
     private val api: KoSyncApi,
     private val credentialStore: CredentialStore,
     private val syncStateStore: SyncStateStore,
-    @DexxiconHttpClient private val httpClient: OkHttpClient,
-    @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
+    private val httpClient: HttpClient,
+    private val io: CoroutineDispatcher,
+    rawDeviceId: String,
+    private val deviceModel: String,
 ) {
-    private val digestCache = ConcurrentHashMap<String, String>()
+    private val digestCacheMutex = Mutex()
+    private val digestCache = mutableMapOf<String, String>()
 
-    private val deviceName: String = android.os.Build.MODEL ?: "Android"
-    private val deviceId: String by lazy {
-        @Suppress("HardwareIds")
-        val androidId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
-            ?: "dexxicon"
-        MessageDigest.getInstance("MD5").digest("dexxicon:$androidId".toByteArray())
-            .joinToString("") { "%02x".format(it) }
-    }
+    private val deviceId: String =
+        MD5().let { it.update("dexxicon:$rawDeviceId".encodeToByteArray()); it.digest() }.toHex()
 
     fun isConfigured(server: Server): Boolean = !server.koSyncUsername.isNullOrBlank()
 
     private suspend fun authKey(server: Server): String? {
         val password = credentialStore.getSyncSecret(server.id, KOSYNC_CREDENTIAL_PROVIDER) ?: return null
-        return MessageDigest.getInstance("MD5").digest(password.toByteArray())
-            .joinToString("") { "%02x".format(it) }
+        return MD5().let { it.update(password.encodeToByteArray()); it.digest() }.toHex()
     }
 
     /** Verify credentials against `{base}/users/auth`; a success also counts as "synced now". */
@@ -107,7 +114,7 @@ class KoSyncRepository @Inject constructor(
                         document = digest,
                         progress = percentage.coerceIn(0.0, 1.0).toString(),
                         percentage = percentage.coerceIn(0.0, 1.0),
-                        device = deviceName,
+                        device = deviceModel,
                         device_id = deviceId,
                     ),
                 )
@@ -116,38 +123,21 @@ class KoSyncRepository @Inject constructor(
         }
 
     private suspend fun digestFor(cacheKey: String, source: DigestSource): String? {
-        digestCache[cacheKey]?.let { return it }
+        digestCacheMutex.withLock { digestCache[cacheKey] }?.let { return it }
         val readAt: suspend (Long, Int) -> ByteArray = when (source) {
-            is DigestSource.LocalFile -> { offset, length -> readFromFile(source.file, offset, length) }
+            is DigestSource.LocalFile -> { offset, length -> readFileRange(source.path, offset, length) }
             is DigestSource.Remote -> { offset, length -> readFromRemote(source.url, offset, length) }
         }
         return runCatching { KoReaderDigest.compute(readAt) }.getOrNull()
-            ?.also { digestCache[cacheKey] = it }
+            ?.also { digest -> digestCacheMutex.withLock { digestCache[cacheKey] = digest } }
     }
 
-    private fun readFromFile(file: File, offset: Long, length: Int): ByteArray {
-        if (!file.exists() || offset >= file.length()) return ByteArray(0)
-        RandomAccessFile(file, "r").use { raf ->
-            raf.seek(offset)
-            val buffer = ByteArray(minOf(length.toLong(), file.length() - offset).toInt())
-            var read = 0
-            while (read < buffer.size) {
-                val n = raf.read(buffer, read, buffer.size - read)
-                if (n < 0) break
-                read += n
+    private suspend fun readFromRemote(url: String, offset: Long, length: Int): ByteArray =
+        runCatching {
+            val response = httpClient.get(url) {
+                header(HttpHeaders.Range, "bytes=$offset-${offset + length - 1}")
             }
-            return if (read == buffer.size) buffer else buffer.copyOf(read)
-        }
-    }
-
-    private fun readFromRemote(url: String, offset: Long, length: Int): ByteArray {
-        val request = Request.Builder()
-            .url(url)
-            .header("Range", "bytes=$offset-${offset + length - 1}")
-            .build()
-        httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return ByteArray(0)
-            return response.body?.bytes() ?: ByteArray(0)
-        }
-    }
+            if (!response.status.isSuccess()) return@runCatching ByteArray(0)
+            response.body<ByteArray>()
+        }.getOrDefault(ByteArray(0))
 }

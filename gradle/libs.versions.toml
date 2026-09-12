@@ -25,6 +25,9 @@ room = "2.8.4"
 sqlite = "2.6.2"
 datastore = "1.2.1"
 work = "2.11.2"
+# SyncStateStore's file-path producer (issue #126) — DataStore's multiplatform Preferences
+# API (PreferenceDataStoreFactory.createWithPath) takes an okio.Path, not an Android Context.
+okio = "3.16.4"
 fragment = "1.8.9"
 
 coroutines = "1.11.0"
@@ -56,8 +59,13 @@ ktor = "3.5.2"
 # :shared's Pkce (Slice 2, issue #70) — pure-Kotlin multiplatform SHA-256 + secure random,
 # so PKCE's crypto works on iOS without hand-rolled CommonCrypto/Security cinterop (same
 # "prefer a mature library over cinterop" call as ConnectivityMonitor's dev.jordond.connectivity).
+# Same family/version also supplies KoSyncRepository/KoReaderDigest's MD5 (issue #126 —
+# KOReader's kosync protocol needs it for auth keys and partial-document digests).
 kotlincryptoHash = "0.8.0"
 kotlincryptoRandom = "0.6.0"
+# ReadingProgressRepository/NativeProgressSync's server-timestamp parsing (issue #126) — the
+# one JVM-only bit (`java.time.Instant`) in an otherwise-portable sync path.
+kotlinxDatetime = "0.7.1"
 
 junit = "4.13.2"
 androidxTestExt = "1.3.0"
@@ -111,6 +119,8 @@ androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "
 androidx-sqlite-bundled = { module = "androidx.sqlite:sqlite-bundled", version.ref = "sqlite" }
 
 androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+androidx-datastore-preferences-core = { module = "androidx.datastore:datastore-preferences-core", version.ref = "datastore" }
+okio = { module = "com.squareup.okio:okio", version.ref = "okio" }
 androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version.ref = "work" }
 androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "fragment" }
 androidx-fragment-compose = { module = "androidx.fragment:fragment-compose", version.ref = "fragment" }
@@ -146,7 +156,9 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 ktor-client-mock = { module = "io.ktor:ktor-client-mock", version.ref = "ktor" }
 
 kotlincrypto-hash-sha2 = { module = "org.kotlincrypto.hash:sha2", version.ref = "kotlincryptoHash" }
+kotlincrypto-hash-md = { module = "org.kotlincrypto.hash:md", version.ref = "kotlincryptoHash" }
 kotlincrypto-random = { module = "org.kotlincrypto.random:crypto-rand", version.ref = "kotlincryptoRandom" }
+kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
 
 media3-exoplayer = { module = "androidx.media3:media3-exoplayer", version.ref = "media3" }
 media3-session = { module = "androidx.media3:media3-session", version.ref = "media3" }

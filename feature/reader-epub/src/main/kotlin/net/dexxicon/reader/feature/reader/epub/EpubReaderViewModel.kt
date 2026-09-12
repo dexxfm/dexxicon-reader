@@ -23,6 +23,7 @@ import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.DigestSource
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.ContentFormat
+import java.io.File
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.core.reader.PublicationStreamer
@@ -123,8 +124,11 @@ class EpubReaderViewModel @Inject constructor(
             ?: detail?.primaryAcquisition?.href
 
         val opened = if (localFile != null) {
+            // DownloadRepository.localFile returns a plain path (issue #126 — java.io.File
+            // isn't portable): DigestSource.LocalFile takes that path directly, while
+            // streamer.open (Readium, Android-only) still needs a real File.
             digestSource = DigestSource.LocalFile(localFile)
-            streamer.open(localFile, MediaType.EPUB)
+            streamer.open(File(localFile), MediaType.EPUB)
         } else {
             val acquisition = detail!!.acquisitions.firstOrNull { it.format == ContentFormat.EPUB }
                 ?: detail.primaryAcquisition

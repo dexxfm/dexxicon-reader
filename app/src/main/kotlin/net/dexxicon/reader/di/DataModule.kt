@@ -11,6 +11,8 @@ import net.dexxicon.reader.core.data.ProgressSeeder
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.auth.AuthHeaderProviderImpl
 import net.dexxicon.reader.core.data.auth.TokenManager
+import net.dexxicon.reader.core.data.download.AndroidDownloadRepository
+import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.media.MediaLibraryContentSourceImpl
 import net.dexxicon.reader.core.data.media.PlaybackProgressSinkImpl
 import net.dexxicon.reader.core.database.dao.ServerDao
@@ -50,11 +52,18 @@ abstract class DataModule {
     abstract fun bindMediaLibraryContentSource(impl: MediaLibraryContentSourceImpl): MediaLibraryContentSource
 
     // ProgressSeeder (:core:data commonMain, issue #60) exists so OidcAuthenticator doesn't
-    // need ReadingProgressRepository's full Android-specific dependency graph (KoSyncRepository)
-    // just to trigger this one thing after sign-in.
+    // need ReadingProgressRepository's full dependency graph (ProgressSyncModule's whole sync
+    // stack) just to trigger this one thing after sign-in.
     @Binds
     @Singleton
     abstract fun bindProgressSeeder(impl: ReadingProgressRepository): ProgressSeeder
+
+    // DownloadRepository (issue #126) is a commonMain interface now; AndroidDownloadRepository
+    // is the real WorkManager-backed implementation, unchanged and still Hilt-constructible
+    // (it never left androidMain) — this is the only binding it needs.
+    @Binds
+    @Singleton
+    abstract fun bindDownloadRepository(impl: AndroidDownloadRepository): DownloadRepository
 
     companion object {
         @Provides

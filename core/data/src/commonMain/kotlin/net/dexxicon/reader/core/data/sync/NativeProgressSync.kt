@@ -1,10 +1,11 @@
 package net.dexxicon.reader.core.data.sync
 
-import android.util.Log
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import net.dexxicon.reader.core.common.DexxiconDispatcher
-import net.dexxicon.reader.core.common.Dispatcher
+import kotlinx.datetime.Instant
+import net.dexxicon.reader.core.common.Logger
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingStatus
@@ -16,9 +17,6 @@ import net.dexxicon.reader.core.serverapi.progress.GrimmoryFileProgress
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryUpdateProgress
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import net.dexxicon.reader.core.serverapi.progress.ServerStatusUpdate
-import java.time.Instant
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /** A reading position from a server's native (web-reader) progress store. */
 data class NativeProgress(
@@ -37,15 +35,23 @@ data class NativeProgress(
  * ones their web readers use — so a position set on the website shows up in the app and
  * vice-versa. This is separate from (and complementary to) KOReader `kosync`, which is a
  * device-app silo.
+ *
+ * Phase 4 restructure (issue #126) — moved to commonMain. `@Inject`/`@Singleton` dropped
+ * (`javax.inject` isn't available on iOS); `:app`'s `ProgressSyncModule` now provides this
+ * explicitly for Hilt, the same pattern `ServerAuthModule` already established for
+ * `TokenManager`/`ServerProber`.
  */
-@Singleton
-class NativeProgressSync @Inject constructor(
+class NativeProgressSync(
     private val api: NativeProgressApi,
     private val syncStateStore: SyncStateStore,
-    @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
+    private val io: CoroutineDispatcher,
 ) {
-    /** Grimmory `bookFileId` per "serverId::bookId::format" — avoids re-fetching on every push. */
-    private val bookFileIdCache = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    /** Grimmory `bookFileId` per "serverId::bookId::format" — avoids re-fetching on every
+     * push. A plain map guarded by [Mutex] rather than `ConcurrentHashMap` (JVM-only, not
+     * available on Kotlin/Native) — this cache is a pure optimization, so a `Mutex` (cheap,
+     * portable) is simpler than reaching for a lock-free structure. */
+    private val bookFileIdCacheMutex = Mutex()
+    private val bookFileIdCache = mutableMapOf<String, Long>()
 
     fun supports(server: Server): Boolean =
         server.type == ServerType.BOOKORBIT || server.type == ServerType.GRIMMORY
@@ -69,8 +75,8 @@ class NativeProgressSync @Inject constructor(
             }
         }.onSuccess {
             syncStateStore.markSynced(server.id)
-            Log.i(TAG, "pushStatus ${server.type} $bookId -> $status ok")
-        }.onFailure { Log.w(TAG, "pushStatus ${server.type} $bookId failed: ${it.message}") }
+            Logger.i(TAG, "pushStatus ${server.type} $bookId -> $status ok")
+        }.onFailure { Logger.w(TAG, "pushStatus ${server.type} $bookId failed: ${it.message}") }
         Unit
     }
 
@@ -87,9 +93,9 @@ class NativeProgressSync @Inject constructor(
                 else -> null
             }
         }.onSuccess { syncStateStore.markSynced(server.id) }
-            .onFailure { Log.w(TAG, "pull ${server.type} $bookId $format failed: ${it.message}") }
+            .onFailure { Logger.w(TAG, "pull ${server.type} $bookId $format failed: ${it.message}") }
             .getOrNull()
-            ?.also { Log.i(TAG, "pull ${server.type} $bookId $format -> $it") }
+            ?.also { Logger.i(TAG, "pull ${server.type} $bookId $format -> $it") }
     }
 
     suspend fun push(
@@ -109,8 +115,8 @@ class NativeProgressSync @Inject constructor(
             }
         }.onSuccess {
             syncStateStore.markSynced(server.id)
-            Log.i(TAG, "push ${server.type} $bookId $format pct=$percent pos=${position ?: positionMs} ok")
-        }.onFailure { Log.w(TAG, "push ${server.type} $bookId $format failed: ${it.message}") }
+            Logger.i(TAG, "push ${server.type} $bookId $format pct=$percent pos=${position ?: positionMs} ok")
+        }.onFailure { Logger.w(TAG, "push ${server.type} $bookId $format failed: ${it.message}") }
         Unit
     }
 
@@ -241,7 +247,7 @@ class NativeProgressSync @Inject constructor(
 
     private suspend fun grimmoryBookFileId(server: Server, bookId: String, format: ContentFormat): Long? {
         val cacheKey = "${server.id}::$bookId::$format"
-        bookFileIdCache[cacheKey]?.let { return it }
+        bookFileIdCacheMutex.withLock { bookFileIdCache[cacheKey] }?.let { return it }
 
         val book = api.grimmoryAppBook(server.resolve("/api/v1/app/books/$bookId"))
         val wantType = when (format) {
@@ -254,7 +260,7 @@ class NativeProgressSync @Inject constructor(
             book.files.firstOrNull { it.bookType?.equals(wantType, ignoreCase = true) == true }?.id
                 ?: book.files.firstOrNull { it.isPrimaryFile }?.id
                 ?: book.files.firstOrNull()?.id
-            )?.also { bookFileIdCache[cacheKey] = it }
+            )?.also { id -> bookFileIdCacheMutex.withLock { bookFileIdCache[cacheKey] = id } }
     }
 
     private fun fileIdFrom(url: String?): Long? {
@@ -263,7 +269,7 @@ class NativeProgressSync @Inject constructor(
     }
 
     private fun isoToMillis(iso: String?): Long? =
-        iso?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
+        iso?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() }
 
     private companion object {
         const val TAG = "NativeProgressSync"

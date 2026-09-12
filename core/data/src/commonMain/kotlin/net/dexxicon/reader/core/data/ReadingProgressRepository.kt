@@ -1,15 +1,22 @@
 package net.dexxicon.reader.core.data
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import net.dexxicon.reader.core.common.DexxiconDispatcher
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
+import kotlinx.serialization.json.put
 import net.dexxicon.reader.core.common.DexxiconError
-import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.common.Outcome
-import net.dexxicon.reader.core.common.di.ApplicationScope
+import net.dexxicon.reader.core.common.currentTimeMillis
 import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.DigestSource
@@ -25,11 +32,6 @@ import net.dexxicon.reader.core.database.entity.ReadingProgressEntity
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.Server
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
-import javax.inject.Inject
-import javax.inject.Singleton
 
 /**
  * Stores where each book was left off, and keeps that position **two-way** with the server.
@@ -38,9 +40,13 @@ import javax.inject.Singleton
  *  - **BookOrbit / Grimmory** → the server's own native progress API ([NativeProgressSync]),
  *    the exact one its web reader uses, so positions round-trip with the website.
  *  - **Generic OPDS servers** → the KOReader `kosync` protocol ([KoSyncRepository]).
+ *
+ * Phase 4 restructure (issue #126) — moved to commonMain; see [NativeProgressSync]'s doc
+ * comment for the `@Inject`/`@Singleton` -> `:app`-hosted `@Provides` reasoning. Locator JSON
+ * (audiobook position, comic/PDF page) is now built with `kotlinx.serialization.json` instead
+ * of Android's bundled `org.json.JSONObject`, which isn't available on iOS.
  */
-@Singleton
-class ReadingProgressRepository @Inject constructor(
+class ReadingProgressRepository(
     private val dao: ReadingProgressDao,
     private val koSync: KoSyncRepository,
     private val nativeSync: NativeProgressSync,
@@ -48,8 +54,8 @@ class ReadingProgressRepository @Inject constructor(
     private val serverRepository: ServerRepository,
     private val tokenManager: TokenManager,
     private val downloadRepository: DownloadRepository,
-    @ApplicationScope private val appScope: CoroutineScope,
-    @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
+    private val appScope: CoroutineScope,
+    private val io: CoroutineDispatcher,
 ) : ProgressSeeder {
     fun observe(serverId: String, bookId: String): Flow<ReadingProgress?> =
         dao.observe(key(serverId, bookId)).map { it?.toDomain() }
@@ -86,7 +92,7 @@ class ReadingProgressRepository @Inject constructor(
         val existing = dao.find(progress.key)
         val merged = ReadingProgressEntity.fromDomain(
             progress.copy(
-                updatedAt = System.currentTimeMillis(),
+                updatedAt = currentTimeMillis(),
                 title = progress.title ?: existing?.title,
                 author = progress.author ?: existing?.author,
                 coverUrl = progress.coverUrl ?: existing?.coverUrl,
@@ -135,7 +141,7 @@ class ReadingProgressRepository @Inject constructor(
     /** Persist newly-seen "continue" rows. A book already tracked here is left alone —
      *  its local position may be newer than the server's list. */
     private suspend fun persistSeeded(rows: List<ReadingProgress>) {
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis()
         for (row in rows) {
             if (row.percent == null) continue
             if (dao.find(row.key) != null) continue
@@ -226,7 +232,7 @@ class ReadingProgressRepository @Inject constructor(
      * nothing yet. The returned [SyncReport] names any server that couldn't be reached.
      */
     suspend fun syncProgress(): SyncReport = withContext(io) {
-        val at = System.currentTimeMillis()
+        val at = currentTimeMillis()
         val allServers = serverRepository.servers.first()
         val failures = mutableListOf<ServerSyncFailure>()
 
@@ -350,7 +356,9 @@ class ReadingProgressRepository @Inject constructor(
     private fun positionMsOf(progress: ReadingProgress): Long? {
         if (progress.format != ContentFormat.AUDIOBOOK) return null
         val loc = progress.locator ?: return null
-        return runCatching { JSONObject(loc).optLong("position", 0L).takeIf { it > 0L } }.getOrNull()
+        return runCatching {
+            Json.parseToJsonElement(loc).jsonObject["position"]?.jsonPrimitive?.long?.takeIf { it > 0L }
+        }.getOrNull()
     }
 
     /**
@@ -362,7 +370,8 @@ class ReadingProgressRepository @Inject constructor(
         if (progress.format != ContentFormat.COMIC && progress.format != ContentFormat.PDF) return null
         val loc = progress.locator ?: return null
         return runCatching {
-            JSONObject(loc).optJSONObject("locations")?.optInt("position", 0)?.takeIf { it > 0 }?.toString()
+            Json.parseToJsonElement(loc).jsonObject["locations"]?.jsonObject?.get("position")
+                ?.jsonPrimitive?.int?.takeIf { it > 0 }?.toString()
         }.getOrNull()
     }
 
@@ -372,14 +381,17 @@ class ReadingProgressRepository @Inject constructor(
      * from the previous position can't win. Kept valid so `Locator.fromJSON` accepts it.
      */
     private fun locatorAtPage(page: Int, percent: Double, format: ContentFormat): String =
-        JSONObject()
-            .put("href", "sync")
-            .put("type", if (format == ContentFormat.PDF) "application/pdf" else "image/jpeg")
-            .put(
+        buildJsonObject {
+            put("href", "sync")
+            put("type", if (format == ContentFormat.PDF) "application/pdf" else "image/jpeg")
+            put(
                 "locations",
-                JSONObject().put("position", page).put("totalProgression", percent.coerceIn(0.0, 1.0)),
+                buildJsonObject {
+                    put("position", page)
+                    put("totalProgression", percent.coerceIn(0.0, 1.0))
+                },
             )
-            .toString()
+        }.toString()
 
     private suspend fun digestSourceFor(
         serverId: String,
