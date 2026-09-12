@@ -49,6 +49,7 @@ fun NavGraphBuilder.catalogSection(
             onOpenBook = { serverId, bookId ->
                 navController.navigate(BookDetailRoute(serverId, bookId))
             },
+            onOpenReader = onOpenReader,
         )
     }
     composable<BookDetailRoute> {

@@ -55,10 +55,12 @@ import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.ContentFilterChips
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.component.ViewModeToggle
+import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.ContentFilter
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingStatus
 
@@ -76,12 +78,20 @@ private data class BrowseItemActions(
 @Composable
 fun BrowseScreen(
     onOpenBook: (AggregatedBook) -> Unit,
+    onOpenReader: (serverId: String, bookId: String, format: ContentFormat) -> Unit = { _, _, _ -> },
     viewModel: BrowseViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val overlays by viewModel.overlays.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
+
+    // Issue #124 — see CatalogScreen's onTapCover for the same reasoning; this is Browse's
+    // (merged, cross-server) equivalent.
+    fun onTapCover(book: AggregatedBook) = when (state.coverTapAction) {
+        CoverTapAction.OPEN_DETAILS -> onOpenBook(book)
+        CoverTapAction.OPEN_BOOK -> onOpenReader(book.primary.serverId, book.primary.bookId, book.format)
+    }
 
     val shouldLoadMore by remember {
         derivedStateOf {
@@ -188,7 +198,7 @@ fun BrowseScreen(
                                 book = book,
                                 progress = book.progressFrom(overlays),
                                 downloaded = book.downloadedIn(overlays),
-                                onClick = { onOpenBook(book) },
+                                onClick = { onTapCover(book) },
                                 actions = actionsFor(book),
                             )
                         }
@@ -203,7 +213,7 @@ fun BrowseScreen(
                                 book = book,
                                 progress = book.progressFrom(overlays),
                                 downloaded = book.downloadedIn(overlays),
-                                onClick = { onOpenBook(book) },
+                                onClick = { onTapCover(book) },
                                 actions = actionsFor(book),
                             )
                             HorizontalDivider()

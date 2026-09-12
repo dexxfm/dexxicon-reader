@@ -24,6 +24,7 @@ import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
+import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
@@ -37,6 +38,7 @@ data class BrowseUiState(
     val sort: BookSort = BookSort.RECENT,
     val filter: ContentFilter = ContentFilter.ALL,
     val viewMode: BookViewMode = BookViewMode.GRID,
+    val coverTapAction: CoverTapAction = CoverTapAction.OPEN_DETAILS,
     val books: List<AggregatedBook> = emptyList(),
     val loading: Boolean = true,
     val loadingMore: Boolean = false,
@@ -86,6 +88,11 @@ class BrowseViewModel @Inject constructor(
         viewModelScope.launch {
             appPreferences.preferences.map { it.browseView }.distinctUntilChanged().collect { mode ->
                 _uiState.update { it.copy(viewMode = mode) }
+            }
+        }
+        viewModelScope.launch {
+            appPreferences.preferences.map { it.coverTapAction }.distinctUntilChanged().collect { action ->
+                _uiState.update { it.copy(coverTapAction = action) }
             }
         }
         viewModelScope.launch {

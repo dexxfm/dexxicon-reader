@@ -65,12 +65,19 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.dexxicon.reader.core.datastore.AppTheme
+import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.designsystem.component.FormatLegend
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.Server
 import kotlin.math.roundToInt
 
 private const val GB = 1024L * 1024 * 1024
+
+private val CoverTapAction.label: String
+    get() = when (this) {
+        CoverTapAction.OPEN_DETAILS -> "Open book details"
+        CoverTapAction.OPEN_BOOK -> "Open book"
+    }
 
 /** Storage-limit presets. `null` = no limit. */
 private val DOWNLOAD_LIMIT_OPTIONS: List<Pair<String, Long?>> = listOf(
@@ -191,6 +198,25 @@ fun SettingsScreen(
                         selected = prefs.bookViewDefault == mode,
                         onClick = { viewModel.setBookViewDefault(mode) },
                         label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                    )
+                }
+            }
+
+            LayoutSpacer(Modifier.height(16.dp))
+            Text("Tapping a cover", style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "In the catalog and Browse — Home's Continue/On Deck shelves always jump " +
+                    "straight into the reader either way.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp),
+            )
+            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                CoverTapAction.entries.forEach { action ->
+                    FilterChip(
+                        selected = prefs.coverTapAction == action,
+                        onClick = { viewModel.setCoverTapAction(action) },
+                        label = { Text(action.label) },
                     )
                 }
             }
