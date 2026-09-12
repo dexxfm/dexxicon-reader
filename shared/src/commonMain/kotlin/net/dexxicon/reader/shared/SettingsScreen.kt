@@ -18,7 +18,7 @@ import androidx.compose.ui.unit.dp
  * Phase 4 (issue #115) — `:shared`'s first Settings screen; there was none before this (Phase
  * 2 never ported `feature/settings`). Deliberately narrower than native's `SettingsScreen.kt`:
  *
- * - **Appearance**: display-only — [net.dexxicon.reader.shared.theme.DexxiconTheme] only
+ * - **Appearance**: display-only — [net.dexxicon.reader.core.designsystem.theme.DexxiconTheme] only
  *   follows the system setting today (see its own doc comment), so there's no manual
  *   light/dark toggle to wire up yet. Showing a segmented control the user could tap but that
  *   silently does nothing would be worse than not having one.

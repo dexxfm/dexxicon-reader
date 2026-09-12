@@ -9,8 +9,10 @@ import androidx.compose.ui.graphics.vector.ImageVector
 /**
  * Phase 4 (issue #115) — `:shared`'s equivalent of the native app's
  * `navigation/TopLevelDestination.kt`: the three destinations the adaptive shell
- * ([net.dexxicon.reader.shared.AppShell]) hosts behind [net.dexxicon.reader.shared.nav.FloatingPillNavBar] /
- * [net.dexxicon.reader.shared.nav.PillNavigationRail]. Unlike native, there's no
+ * ([net.dexxicon.reader.shared.AppShell]) hosts behind [net.dexxicon.reader.core.designsystem.nav.FloatingPillNavBar] /
+ * [net.dexxicon.reader.core.designsystem.nav.PillNavigationRail] (issue #126 restructure — one
+ * shared implementation of those two, generic over each platform's own destination type).
+ * Unlike native, there's no
  * `stringResource`/`R.string` in commonMain, so labels are plain strings here.
  */
 enum class TopLevelDestination(val label: String, val icon: ImageVector) {

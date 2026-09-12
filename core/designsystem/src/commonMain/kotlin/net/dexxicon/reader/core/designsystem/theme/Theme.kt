@@ -1,14 +1,11 @@
 package net.dexxicon.reader.core.designsystem.theme
 
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
 
 // Phase 4 (issue #115): primary/tertiary now carry the Aqua accent (the mockup's confirmed
 // pick) instead of the old Navy/Blue brand color — background/surface/secondary are
@@ -60,25 +57,35 @@ private val DarkColors = darkColorScheme(
     onError = Navy900,
 )
 
+/**
+ * Phase 4 restructure (issue #126) — the one `DexxiconTheme`, used by native `:app` and
+ * `:shared` alike (previously two near-identical copies: this module's own, with dynamic
+ * color, and a narrower one in shared/theme/Theme.kt with no dynamic color and no manual
+ * light/dark/system override). [dynamicColor] only ever does anything on Android 12+
+ * ([resolveDynamicColorScheme]'s androidMain actual) — its iosMain actual always returns
+ * null, so passing `true` on iOS is a harmless no-op rather than a platform check every
+ * call site would otherwise need.
+ */
 @Composable
 fun DexxiconTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit,
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColors
-        else -> LightColors
-    }
+    val dynamicScheme = if (dynamicColor) resolveDynamicColorScheme(darkTheme) else null
+    val colorScheme = dynamicScheme ?: if (darkTheme) DarkColors else LightColors
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = DexxiconTypography,
+        typography = dexxiconTypography(),
         shapes = DexxiconShapes,
         content = content,
     )
 }
+
+/** Android 12+ wallpaper-seeded color scheme — genuinely platform-specific (no iOS
+ * equivalent), so this is the one thing behind an expect/actual rather than a runtime check
+ * every caller would otherwise need. Null means "not available/not requested"; the caller
+ * falls back to [LightColors]/[DarkColors]. */
+@Composable
+internal expect fun resolveDynamicColorScheme(darkTheme: Boolean): ColorScheme?

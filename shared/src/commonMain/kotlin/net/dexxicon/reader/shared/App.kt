@@ -46,21 +46,21 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import net.dexxicon.reader.core.designsystem.nav.FloatingPillNavBar
+import net.dexxicon.reader.core.designsystem.nav.PillNavigationRail
+import net.dexxicon.reader.core.designsystem.theme.DexxiconTheme
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.shared.catalog.BookDetailScreen
 import net.dexxicon.reader.shared.catalog.BooksScreen
 import net.dexxicon.reader.shared.catalog.BrowseScreen
 import net.dexxicon.reader.shared.di.AppContainer
-import net.dexxicon.reader.shared.nav.FloatingPillNavBar
-import net.dexxicon.reader.shared.nav.PillNavigationRail
 import net.dexxicon.reader.shared.nav.TopLevelDestination
 import net.dexxicon.reader.shared.servers.AddServerState
 import net.dexxicon.reader.shared.servers.ServersState
 import net.dexxicon.reader.shared.servers.SsoState
 import net.dexxicon.reader.shared.servers.TestState
 import net.dexxicon.reader.shared.sso.SsoWebViewScreen
-import net.dexxicon.reader.shared.theme.DexxiconTheme
 
 // Phase 2: the real app shell — a servers list (with a "no servers yet" empty state) behind a
 // NavHost, an add-server form (native login, Slice 1 issue #62; SSO WebView, Slice 2 issue
@@ -121,6 +121,8 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
                         FloatingPillNavBar(
                             destinations = TopLevelDestination.entries,
                             current = currentTopLevel,
+                            icon = { it.icon },
+                            label = { it.label },
                             onSelect = { nav.switchTopLevel(it) },
                             modifier = Modifier.navigationBarsPadding(),
                         )
@@ -132,6 +134,8 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
                         PillNavigationRail(
                             destinations = TopLevelDestination.entries,
                             current = currentTopLevel,
+                            icon = { it.icon },
+                            label = { it.label },
                             onSelect = { nav.switchTopLevel(it) },
                         )
                     }

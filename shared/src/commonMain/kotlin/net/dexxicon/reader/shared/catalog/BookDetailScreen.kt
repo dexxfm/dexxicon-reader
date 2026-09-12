@@ -51,9 +51,9 @@ import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.AudiobookLaunchInfo
 import net.dexxicon.reader.shared.OnOpenReader
+import net.dexxicon.reader.core.designsystem.theme.CoverShapeMedium
+import net.dexxicon.reader.core.designsystem.theme.Pill
 import net.dexxicon.reader.shared.di.AppContainer
-import net.dexxicon.reader.shared.theme.CoverShapeMedium
-import net.dexxicon.reader.shared.theme.Pill
 
 /**
  * Read-only-ish book detail — title, authors, format, description, a reading status the user

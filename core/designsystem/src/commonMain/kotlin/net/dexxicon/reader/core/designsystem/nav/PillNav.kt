@@ -1,4 +1,4 @@
-package net.dexxicon.reader.shared.nav
+package net.dexxicon.reader.core.designsystem.nav
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -31,25 +31,54 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import net.dexxicon.reader.shared.theme.Pill
+import net.dexxicon.reader.core.designsystem.theme.Pill
 
-// Phase 4 (issue #115) — ported from app/ui/PillNav.kt (native) with the same behavior,
-// including the same PR-review fixes: press feedback confined to a shape behind the icon
-// (a circle in the compact bar, the same pill the rail's active-state highlight uses)
-// instead of the whole rectangular tap target, and the compact bar centered (fillMaxWidth +
-// Alignment.Center) rather than left-aligned by its parent Column. Press feedback is a
-// hand-rolled fade (collectIsPressedAsState + animateColorAsState), not
-// Modifier.indication + a ripple factory — see the native file's doc comment for why
-// (androidx.compose.material3.ripple.ripple() isn't visible from this commonMain at the
-// Compose Multiplatform version this project pins).
-
+/**
+ * Phase 4 (issue #115) — the floating pill bottom nav from the Claude Design mockup, replacing
+ * [androidx.compose.material3.NavigationBar]. Icon-only (no labels — the mockup's phone frame
+ * never shows one), translucent tonal pill, selected/unselected states are a color swap only
+ * (accent vs. muted `onSurfaceVariant`), not a background change — see [PillNavigationRail] for
+ * the wider-screen equivalent, which *does* pill-highlight the active icon.
+ *
+ * Phase 4 restructure (issue #126) — this used to be two byte-for-byte copies (native
+ * `app/ui/PillNav.kt`, `:shared`'s `shared/nav/PillNav.kt`), differing only in how each
+ * platform's `TopLevelDestination` enum resolves an icon/label (native's carries a
+ * `stringResource` id plus a real navigation-graph route; `:shared`'s carries a plain string
+ * and no route at all — genuinely different types, not a styling gap, since a navigation
+ * route is a per-platform concern this design-system module has no business depending on).
+ * Generic over [T] so both call sites can keep their own destination type and just hand this
+ * composable an icon/label resolver instead. [label] is `@Composable` so a caller that has
+ * real string resources (native) can use `stringResource` inline; one that doesn't (`:shared`)
+ * just returns a plain string.
+ *
+ * True floating (overlaying content with a scrim behind it, rather than reserving space below
+ * it like [androidx.compose.material3.Scaffold]'s `bottomBar` slot) is deliberately not
+ * attempted — this renders inside that slot like the bar it's replacing, just pill-shaped and
+ * translucent. Real backdrop blur needs a `RenderEffect` (Android 12+ only, and no direct
+ * multiplatform equivalent for the iOS build), so this approximates the mockup's blurred glass
+ * look with a semi-transparent tonal surface instead of literally blurring content behind it.
+ *
+ * Press feedback (both here and in [PillNavigationRail]) is a hand-rolled fade, not
+ * `Modifier.indication` + a ripple factory: `androidx.compose.material3.ripple.ripple()`
+ * resolves fine in a plain Android module but isn't visible from commonMain at the Compose
+ * Multiplatform version this project pins (material3 1.9.0) — rather than have the two
+ * platforms' nav bars diverge in how press feedback is built, both use this same
+ * `collectIsPressedAsState` + `animateColorAsState` overlay, which only needs
+ * `compose.foundation` (available everywhere).
+ */
 @Composable
-fun FloatingPillNavBar(
-    destinations: List<TopLevelDestination>,
-    current: TopLevelDestination?,
-    onSelect: (TopLevelDestination) -> Unit,
+fun <T> FloatingPillNavBar(
+    destinations: List<T>,
+    current: T?,
+    icon: (T) -> ImageVector,
+    label: @Composable (T) -> String,
+    onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // fillMaxWidth() is what actually makes contentAlignment=Center center the pill — without
+    // it this Box shrinks to wrap the pill's own width, and the pill ends up wherever its
+    // parent Column (the host Scaffold's bottomBar slot) puts a Start-aligned child: flush
+    // left, not centered (issue #115 PR feedback).
     Box(modifier.fillMaxWidth().padding(bottom = 16.dp), contentAlignment = Alignment.Center) {
         Surface(
             shape = Pill,
@@ -60,6 +89,11 @@ fun FloatingPillNavBar(
             Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 destinations.forEach { destination ->
                     val selected = destination == current
+                    // The full 74x52dp box is the tap target (accessibility/touch-size), but
+                    // the press feedback itself is confined to a 44dp circle behind the icon —
+                    // a plain `.selectable()` with no shape-clipped feedback here read as a
+                    // hard square flash instead of the mockup's soft, borderless rounded
+                    // highlight (see this file's PR discussion, issue #115).
                     val interactionSource = remember { MutableInteractionSource() }
                     val pressed by interactionSource.collectIsPressedAsState()
                     val overlay by animateColorAsState(
@@ -82,8 +116,8 @@ fun FloatingPillNavBar(
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
-                                destination.icon,
-                                contentDescription = destination.label,
+                                icon(destination),
+                                contentDescription = label(destination),
                                 tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
                         }
@@ -94,15 +128,26 @@ fun FloatingPillNavBar(
     }
 }
 
+/**
+ * Phase 4 (issue #115) — the wide-screen (>=600dp) rail from the mockup's turn 4/5 (fold and
+ * tablet). Unlike [FloatingPillNavBar], the active destination gets a pill background behind
+ * its icon (56x32dp per the mockup markup) and every destination keeps a visible label — dimmed
+ * to `onSurfaceVariant` when not selected, full `onSurface` when selected — rather than
+ * [current]'s label alone standing out via color as in the compact bar.
+ */
 @Composable
-fun PillNavigationRail(
-    destinations: List<TopLevelDestination>,
-    current: TopLevelDestination?,
-    onSelect: (TopLevelDestination) -> Unit,
+fun <T> PillNavigationRail(
+    destinations: List<T>,
+    current: T?,
+    icon: (T) -> ImageVector,
+    label: @Composable (T) -> String,
+    onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     // fillMaxHeight() is what actually makes the centered Arrangement below center the icon
-    // group within the rail — see the native file's doc comment (same fix, same root cause).
+    // group within the rail — without it, the Column just wraps its own content height and
+    // sits at the top of whatever the parent Row gives it (issue #115 PR feedback: same root
+    // cause as the compact bar's earlier missing fillMaxWidth()).
     Column(
         modifier
             .width(88.dp)
@@ -115,8 +160,8 @@ fun PillNavigationRail(
     ) {
         destinations.forEach { destination ->
             RailItem(
-                icon = destination.icon,
-                label = destination.label,
+                icon = icon(destination),
+                label = label(destination),
                 selected = destination == current,
                 onClick = { onSelect(destination) },
             )
@@ -125,12 +170,13 @@ fun PillNavigationRail(
 }
 
 @Composable
-private fun RailItem(
-    icon: ImageVector,
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
+private fun RailItem(icon: ImageVector, label: String, selected: Boolean, onClick: () -> Unit) {
+    // Same split as FloatingPillNavBar: the whole column (icon + label) is the click target,
+    // but the press feedback is confined to the icon's own pill (a real Shape here, not just a
+    // circle — the pill is already visible at rest when selected, so its feedback should
+    // follow that same shape). The selected tint and the press overlay are two stacked
+    // `.background()` layers rather than one combined color, so a press on an already-selected
+    // item still visibly darkens instead of being a no-op.
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val pressOverlay by animateColorAsState(
