@@ -124,7 +124,7 @@ class LibrarySeeder @Inject constructor(
     private fun formatOf(raw: String?): ContentFormat = when (raw?.lowercase()) {
         "epub", "kepub" -> ContentFormat.EPUB
         "pdf" -> ContentFormat.PDF
-        "cbx", "cbz", "cbr", "cb7" -> ContentFormat.COMIC
+        "cbx", "cbz", "cbr" -> ContentFormat.COMIC // cb7 deliberately excluded — issue #110
         "audiobook", "m4b", "mp3", "m4a", "opus", "ogg", "flac", "aac" -> ContentFormat.AUDIOBOOK
         "mobi", "prc" -> ContentFormat.MOBI
         "azw3", "azw" -> ContentFormat.AZW3

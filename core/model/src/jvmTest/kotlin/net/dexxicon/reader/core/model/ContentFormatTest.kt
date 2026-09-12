@@ -28,6 +28,11 @@ class ContentFormatTest {
     }
 
     @Test
+    fun `cb7 comics are deliberately UNKNOWN, not COMIC — issue 110`() {
+        assertThat(ContentFormat.fromMediaType("application/x-cb7")).isEqualTo(ContentFormat.UNKNOWN)
+    }
+
+    @Test
     fun `needsConversion for the formats without a native reader`() {
         assertThat(ContentFormat.FB2.needsConversion).isTrue()
         assertThat(ContentFormat.MOBI.needsConversion).isTrue()

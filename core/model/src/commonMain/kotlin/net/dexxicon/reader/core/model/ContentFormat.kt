@@ -21,7 +21,9 @@ enum class ContentFormat(val priority: Int, val streamable: Boolean) {
             put("application/vnd.comicbook-rar", COMIC)
             put("application/x-cbz", COMIC)
             put("application/x-cbr", COMIC)
-            put("application/x-cb7", COMIC)
+            // application/x-cb7 (7z) deliberately NOT mapped to COMIC — issue #110: dropped
+            // support rather than adding real 7z-extraction to back it, so it falls through
+            // to UNKNOWN like any other archive format nothing here can actually open.
             put("application/audiobook+zip", AUDIOBOOK)
             put("application/audiobook+json", AUDIOBOOK)
             put("audio/mpeg", AUDIOBOOK)

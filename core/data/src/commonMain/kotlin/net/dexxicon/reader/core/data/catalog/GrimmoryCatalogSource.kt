@@ -180,7 +180,7 @@ class GrimmoryCatalogSource(
         else -> when (extension?.lowercase()) {
             "epub", "kepub" -> ContentFormat.EPUB
             "pdf" -> ContentFormat.PDF
-            "cbz", "cbr", "cb7" -> ContentFormat.COMIC
+            "cbz", "cbr" -> ContentFormat.COMIC // cb7 deliberately excluded — issue #110
             "m4b", "mp3", "m4a" -> ContentFormat.AUDIOBOOK
             "mobi", "prc" -> ContentFormat.MOBI
             "azw3", "azw" -> ContentFormat.AZW3
