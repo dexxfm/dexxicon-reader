@@ -52,4 +52,12 @@ class ServersState(
         ids[target] = moved
         scope.launch { serverRepository.reorder(ids) }
     }
+
+    /** Commit a drag-to-reorder result (Phase 4 Stage E1, issue #136) — [orderedIds]
+     * top-to-bottom, first = highest priority. Same shape as native's
+     * `ServerListViewModel.reorder`; [moveUp]/[moveDown] stay for now since nothing requires
+     * removing them. */
+    fun reorder(orderedIds: List<String>) {
+        scope.launch { serverRepository.reorder(orderedIds) }
+    }
 }

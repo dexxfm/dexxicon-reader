@@ -57,6 +57,9 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
         koSyncRawDeviceId = deviceId(appContext),
         koSyncDeviceModel = Build.MODEL ?: "Android",
         appPreferences = appPreferences,
+        appVersionName = runCatching {
+            appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName
+        }.getOrNull() ?: "unknown",
     )
 }
 

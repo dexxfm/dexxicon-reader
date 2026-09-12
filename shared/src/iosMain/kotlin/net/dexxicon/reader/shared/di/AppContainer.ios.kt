@@ -10,6 +10,7 @@ import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.PlatformStorageContext
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.security.CredentialStore
+import platform.Foundation.NSBundle
 import platform.UIKit.UIDevice
 
 /** iOS [actual]: no platform handle is needed — [getDatabaseBuilder] resolves the app's own
@@ -46,5 +47,7 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
         // factory reset.
         koSyncRawDeviceId = UIDevice.currentDevice.identifierForVendor?.UUIDString ?: "dexxicon",
         koSyncDeviceModel = UIDevice.currentDevice.model,
+        appVersionName = (NSBundle.mainBundle.infoDictionary?.get("CFBundleShortVersionString") as? String)
+            ?: "unknown",
     )
 }
