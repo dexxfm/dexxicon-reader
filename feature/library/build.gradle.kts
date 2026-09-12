@@ -18,6 +18,9 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:designsystem"))
     implementation(project(":core:data"))
+    // Home (issue #130) — HomeState/HomeContent now live here instead of a Hilt ViewModel;
+    // see LibraryScreen.kt.
+    implementation(project(":shared"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.runtime)

@@ -18,11 +18,18 @@ import okio.Path.Companion.toPath
  * Android-only `Context.preferencesDataStore` delegate this used before. `@Inject`/
  * `@Singleton` dropped; see `NativeProgressSync`'s (`:core:data`) doc comment for the
  * `:app`-hosted `@Provides` reasoning this follows.
+ *
+ * Stage C (issue #130) surfaced a real crash here: native's Hilt graph (`ProgressSyncModule`)
+ * and `:shared`'s [net.dexxicon.reader.shared.di.AppContainer] each independently construct
+ * their own `SyncStateStore` for the same file — one as soon as Home/Book Detail touch
+ * `progressRepository`, the other whenever a Hilt-injected reader ViewModel is first created —
+ * and DataStore hard-throws (`IllegalStateException`) if two `DataStore<Preferences>` instances
+ * ever have the same file open at once. [dataStoreFor] memoizes by resolved path so every
+ * `SyncStateStore` pointed at the same file — regardless of which composition root built it —
+ * shares the one underlying `DataStore`.
  */
 class SyncStateStore(context: PlatformStorageContext) {
-    private val dataStore: DataStore<Preferences> = PreferenceDataStoreFactory.createWithPath(
-        produceFile = { syncStateFilePath(context).toPath() },
-    )
+    private val dataStore: DataStore<Preferences> = dataStoreFor(syncStateFilePath(context))
 
     private fun key(serverId: String) = longPreferencesKey("last_synced_$serverId")
 
@@ -39,6 +46,19 @@ class SyncStateStore(context: PlatformStorageContext) {
 
     suspend fun markSynced(serverId: String, atMillis: Long = currentTimeMillis()) {
         dataStore.edit { it[key(serverId)] = atMillis }
+    }
+
+    private companion object {
+        /** Every `SyncStateStore` construction in this process funnels through here, keyed by
+         * resolved file path — see this class's doc comment. Construction is single-threaded
+         * in practice (DI-graph startup on the main thread on both platforms), so a plain map
+         * is enough; there's no genuinely concurrent access pattern to guard against here. */
+        private val dataStores = mutableMapOf<String, DataStore<Preferences>>()
+
+        private fun dataStoreFor(path: String): DataStore<Preferences> =
+            dataStores.getOrPut(path) {
+                PreferenceDataStoreFactory.createWithPath(produceFile = { path.toPath() })
+            }
     }
 }
 
