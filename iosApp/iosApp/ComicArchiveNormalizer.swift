@@ -48,7 +48,11 @@ enum ComicArchiveNormalizer {
         return dir
     }()
 
-    private static let imageExtensions: Set<String> = [
+    // `fileprivate`, not `private`: `private` only extends to extensions of *this same type*
+    // in the file — the `String.hasImageExtension` extension below is an extension of a
+    // different type (String), so `private` alone doesn't grant it access even in the same
+    // file. Real ios-ci error, not guessed.
+    fileprivate static let imageExtensions: Set<String> = [
         "jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "jxl",
     ]
 

@@ -15,6 +15,11 @@ struct ComposeView: UIViewControllerRepresentable {
         // native reader screen — `hostVC` is the same view controller Compose renders into,
         // captured so there's something to present from.
         var hostVC: UIViewController!
+        // issue #114: adding `audiobook` (a nullable Kotlin data class) as this closure's 7th
+        // parameter changed how Kotlin/Native bridges the whole block signature to Swift —
+        // `isManga` (a primitive Kotlin Boolean) now arrives boxed as `KotlinBoolean` instead
+        // of a native `Bool`, confirmed via a real ios-ci compile error, not guessed. `.boolValue`
+        // unwraps it at each use below.
         hostVC = MainViewControllerKt.MainViewController(onOpenReader: { serverId, bookId, format, url, authHeader, isManga, audiobook in
             guard let bookUrl = URL(string: url) else { return }
             let notYetSupported = { (message: String) in
@@ -28,7 +33,7 @@ struct ComposeView: UIViewControllerRepresentable {
                 // the server already converts MOBI/AZW3/FB2 to EPUB before either client
                 // requests bytes (see ReaderLaunch.kt's doc comment), so there's no
                 // format-specific branching needed here.
-                let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga)
+                let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue)
                 hostVC.present(reader, animated: true)
             case .comic:
                 // issue #106/#108/#107: CBZ and CBR both open through the same EPUB Navigator
@@ -39,7 +44,7 @@ struct ComposeView: UIViewControllerRepresentable {
                 // format sniffing is ZIP-only — but that happens inside
                 // EpubReaderViewController's own async open, transparently to this switch;
                 // there's nothing format-specific left to do here.
-                let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga)
+                let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue)
                 hostVC.present(reader, animated: true)
             case .pdf:
                 // issue #112: backed by Apple's own PDFKit via Readium's
