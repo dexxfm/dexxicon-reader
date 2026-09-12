@@ -10,8 +10,10 @@ import io.ktor.http.Url
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ProgressSeeder
+import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerProber
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.AuthHeaderProviderImpl
@@ -20,7 +22,12 @@ import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.data.catalog.BookOrbitCatalogSource
 import net.dexxicon.reader.core.data.catalog.GrimmoryCatalogSource
 import net.dexxicon.reader.core.data.catalog.OpdsCatalogSource
+import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.data.sync.KoSyncRepository
+import net.dexxicon.reader.core.data.sync.LibrarySeeder
+import net.dexxicon.reader.core.data.sync.NativeProgressSync
 import net.dexxicon.reader.core.database.DexxiconDatabase
+import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.createHttpClient
 import net.dexxicon.reader.core.security.CredentialStore
@@ -28,6 +35,7 @@ import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthClient
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
+import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcClient
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
@@ -64,12 +72,11 @@ import net.dexxicon.reader.shared.reader.AudiobookProgressSync
  * of the JVM's large-pool blocking-IO dispatcher; `Default`'s core-sized pool is the
  * standard KMP substitute here).
  *
- * [ProgressSeeder] gets a no-op stub here (Slice 2, issue #70) — its one real implementation,
- * `ReadingProgressRepository`, stays androidMain-only (blocked by `KoSyncRepository`'s real
- * Android dependencies, same as ever). `OidcAuthenticator` needs *some* `ProgressSeeder` to
- * construct, and Slice 2 doesn't need the "seed continue-reading rows right after sign-in"
- * behavior to work for SSO sign-in itself to work — just a real gap to close before shared UI
- * needs actual continue-reading data.
+ * [ProgressSeeder] is [progressRepository] itself (Phase 4 restructure, issue #126) —
+ * `ReadingProgressRepository` moved to commonMain once `KoSyncRepository`/`DownloadRepository`
+ * did, closing the gap the Slice 2 (issue #70) doc comment used to describe here (a
+ * `NoOpProgressSeeder` stub, since removed). `OidcAuthenticator` now gets the real thing, so
+ * signing in a new server actually seeds its "continue reading" rows on `:shared` too.
  *
  * [imageLoader] (issue #78) is Coil 3's [ImageLoader], built against this same [httpClient]
  * via [KtorNetworkFetcherFactory] rather than a second, unauthenticated client — cover images
@@ -89,6 +96,16 @@ import net.dexxicon.reader.shared.reader.AudiobookProgressSync
  * [readingStatusActions], and the same "deliberately narrower than the full native-app class"
  * shape; see [AudiobookProgressSync]'s own doc comment for exactly what it reuses vs.
  * reimplements.
+ *
+ * [downloadRepository] and [koSyncRawDeviceId]/[koSyncDeviceModel] (issue #126) are the three
+ * remaining genuinely platform-specific pieces `createAppContainer` supplies: the real
+ * `WorkManager`-backed implementation on Android vs. an honest "not supported yet" stub on
+ * iOS, and the one-time device id/model each platform resolves with its own native API
+ * (`Settings.Secure`/`Build.MODEL` vs. `UIDevice`) — see [DownloadRepository]'s and
+ * [KoSyncRepository]'s own doc comments. Everything else `:core:data`'s progress-sync stack
+ * needs ([SyncStateStore], [NativeProgressSync], [LibrarySeeder], [KoSyncRepository],
+ * [progressRepository], [bookActions]) is built here from those three plus what this class
+ * already has.
  */
 class AppContainer(
     engine: HttpClientEngine,
@@ -96,6 +113,10 @@ class AppContainer(
     database: DexxiconDatabase,
     io: CoroutineDispatcher,
     coilPlatformContext: CoilPlatformContext,
+    val downloadRepository: DownloadRepository,
+    syncStateStore: SyncStateStore,
+    koSyncRawDeviceId: String,
+    koSyncDeviceModel: String,
 ) {
     /** Process-lifetime scope for [AuthHeaderProviderImpl]'s server-list collector — mirrors
      * `:app`'s `@ApplicationScope` (`CoroutineScope(SupervisorJob() + Dispatchers.Default)`)
@@ -124,6 +145,7 @@ class AppContainer(
     private val bookOrbitBrowseApi = BookOrbitBrowseApi(httpClient)
     private val grimmoryBrowseApi = GrimmoryBrowseApi(httpClient)
     private val nativeProgressApi = NativeProgressApi(httpClient)
+    private val koSyncApi = KoSyncApi(httpClient)
 
     @OptIn(ExperimentalCoilApi::class)
     val imageLoader: ImageLoader = ImageLoader.Builder(coilPlatformContext)
@@ -139,10 +161,34 @@ class AppContainer(
         nativeUserApi = nativeUserApi,
         io = io,
     )
+
+    private val nativeProgressSync = NativeProgressSync(nativeProgressApi, syncStateStore, io)
+    private val librarySeeder = LibrarySeeder(grimmoryBrowseApi, bookOrbitBrowseApi, io)
+    private val koSyncRepository = KoSyncRepository(
+        api = koSyncApi,
+        credentialStore = credentialStore,
+        syncStateStore = syncStateStore,
+        httpClient = httpClient,
+        io = io,
+        rawDeviceId = koSyncRawDeviceId,
+        deviceModel = koSyncDeviceModel,
+    )
+    val progressRepository: ReadingProgressRepository = ReadingProgressRepository(
+        dao = database.readingProgressDao(),
+        koSync = koSyncRepository,
+        nativeSync = nativeProgressSync,
+        librarySeeder = librarySeeder,
+        serverRepository = serverRepository,
+        tokenManager = tokenManager,
+        downloadRepository = downloadRepository,
+        appScope = scope,
+        io = io,
+    )
+
     val oidcAuthenticator: OidcAuthenticator = OidcAuthenticator(
         oidcClient = oidcClient,
         serverRepository = serverRepository,
-        progressSeeder = NoOpProgressSeeder,
+        progressSeeder = progressRepository,
         tokenManager = tokenManager,
         io = io,
     )
@@ -152,6 +198,14 @@ class AppContainer(
         bookOrbitSource = BookOrbitCatalogSource(bookOrbitBrowseApi),
         opdsSource = OpdsCatalogSource(),
         io = io,
+    )
+    val bookActions: BookActions = BookActions(
+        catalogRepository = catalogRepository,
+        downloadRepository = downloadRepository,
+        progressRepository = progressRepository,
+        serverRepository = serverRepository,
+        nativeProgressSync = nativeProgressSync,
+        scope = scope,
     )
     val readingStatusActions: ReadingStatusActions = ReadingStatusActions(
         api = nativeProgressApi,
@@ -169,10 +223,6 @@ class AppContainer(
         realAuthHeaderProvider =
             AuthHeaderProviderImpl(database.serverDao(), credentialStore, tokenManager, scope)
     }
-}
-
-private object NoOpProgressSeeder : ProgressSeeder {
-    override fun seedFromServerAsync(serverId: String) = Unit
 }
 
 /** Opaque per-platform handle [createAppContainer] needs — an `android.content.Context` on

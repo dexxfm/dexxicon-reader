@@ -3,9 +3,13 @@ package net.dexxicon.reader.shared.di
 import coil3.PlatformContext as CoilPlatformContext
 import io.ktor.client.engine.darwin.Darwin
 import kotlinx.coroutines.Dispatchers
+import net.dexxicon.reader.core.data.download.IosDownloadRepository
 import net.dexxicon.reader.core.database.finish
 import net.dexxicon.reader.core.database.getDatabaseBuilder
+import net.dexxicon.reader.core.datastore.PlatformStorageContext
+import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.security.CredentialStore
+import platform.UIKit.UIDevice
 
 /** iOS [actual]: no platform handle is needed — [getDatabaseBuilder] resolves the app's own
  * Documents directory, and [CredentialStore]'s iOS actual takes no constructor args. */
@@ -29,5 +33,16 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
         // Coil's non-Android PlatformContext is a plain singleton — nothing to configure,
         // unlike Android's (which really is a Context).
         coilPlatformContext = CoilPlatformContext.INSTANCE,
+        // Honest "not supported yet" (issue #126) — no iOS equivalent of WorkManager-backed
+        // background downloads exists in this app today; see IosDownloadRepository's doc
+        // comment.
+        downloadRepository = IosDownloadRepository(),
+        syncStateStore = SyncStateStore(PlatformStorageContext()),
+        // identifierForVendor resets if every app from this vendor is uninstalled, unlike
+        // Android's ANDROID_ID — acceptable here: a fresh kosync device id just looks like a
+        // new device to KOReader's server, same as reinstalling on Android would after a
+        // factory reset.
+        koSyncRawDeviceId = UIDevice.currentDevice.identifierForVendor?.UUIDString ?: "dexxicon",
+        koSyncDeviceModel = UIDevice.currentDevice.model,
     )
 }
