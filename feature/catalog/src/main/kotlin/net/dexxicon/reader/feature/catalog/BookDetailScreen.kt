@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -67,7 +68,9 @@ import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,6 +81,7 @@ fun BookDetailScreen(
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val download by viewModel.download.collectAsStateWithLifecycle()
+    val progress by viewModel.progress.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -107,6 +111,7 @@ fun BookDetailScreen(
                     detail = detail,
                     copies = copies,
                     download = download,
+                    progress = progress,
                     onOpen = { copy -> onRead(copy.serverId, copy.bookId, detail.summary.format) },
                     onDownload = viewModel::onDownload,
                     onRemoveDownload = viewModel::onRemoveDownload,
@@ -123,6 +128,7 @@ private fun DetailContent(
     detail: BookDetail,
     copies: List<BookCopy>,
     download: Download?,
+    progress: ReadingProgress?,
     onOpen: (BookCopy) -> Unit,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
@@ -149,7 +155,7 @@ private fun DetailContent(
                 ) {
                     HeroBlock(detail, copies, onSetStatus, stacked = true)
                     Spacer(Modifier.height(16.dp))
-                    ActionButtons(detail, copies, download, onOpen, onDownload, onRemoveDownload)
+                    ActionButtons(detail, copies, download, progress, onOpen, onDownload, onRemoveDownload)
                 }
                 Column(
                     Modifier
@@ -173,7 +179,7 @@ private fun DetailContent(
                 ) {
                     HeroBlock(detail, copies, onSetStatus, stacked = false)
                     Spacer(Modifier.height(20.dp))
-                    ActionButtons(detail, copies, download, onOpen, onDownload, onRemoveDownload)
+                    ActionButtons(detail, copies, download, progress, onOpen, onDownload, onRemoveDownload)
                     Spacer(Modifier.height(20.dp))
                     AboutSection(detail)
                     Spacer(Modifier.height(20.dp))
@@ -320,6 +326,7 @@ private fun ActionButtons(
     detail: BookDetail,
     copies: List<BookCopy>,
     download: Download?,
+    progress: ReadingProgress?,
     onOpen: (BookCopy) -> Unit,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
@@ -348,6 +355,7 @@ private fun ActionButtons(
             },
         )
     }
+    ReadingProgressRow(progress)
     Spacer(Modifier.height(8.dp))
     DownloadButton(download, onDownload, onRemoveDownload)
 
@@ -379,6 +387,34 @@ private fun ActionButtons(
                 }
             }
         }
+    }
+}
+
+/**
+ * How far through the book the reader is, sitting between the play/read action and the
+ * offline button. Absent until the book has actually been started — an untouched book gets
+ * no empty bar.
+ */
+@Composable
+private fun ReadingProgressRow(progress: ReadingProgress?) {
+    val fraction = progress?.percent?.toFloat()?.coerceIn(0f, 1f)?.takeIf { it > 0f } ?: return
+    Row(
+        Modifier.fillMaxWidth().padding(top = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        LinearProgressIndicator(
+            progress = { fraction },
+            modifier = Modifier
+                .weight(1f)
+                .height(6.dp)
+                .clip(CircleShape),
+        )
+        Text(
+            "${(fraction * 100).roundToInt()}%",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

@@ -15,6 +15,7 @@ import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.CatalogRepository
+import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.model.Acquisition
@@ -24,6 +25,7 @@ import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.core.model.fileExtension
 import net.dexxicon.reader.feature.catalog.navigation.BookDetailRoute
@@ -41,6 +43,7 @@ data class BookDetailUiState(
 class BookDetailViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val downloadRepository: DownloadRepository,
+    private val progressRepository: ReadingProgressRepository,
     private val serverRepository: ServerRepository,
     private val bookActions: BookActions,
     savedStateHandle: SavedStateHandle,
@@ -53,6 +56,15 @@ class BookDetailViewModel @Inject constructor(
 
     val download: StateFlow<Download?> =
         downloadRepository.download(route.serverId, route.bookId)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /**
+     * How far through this book the reader is — the same source the Home shelves read, so a
+     * book can't show progress on Home and none here. Tracks the copy named by the route;
+     * when opened from merged Browse the other servers' copies aren't reflected.
+     */
+    val progress: StateFlow<ReadingProgress?> =
+        progressRepository.observe(route.serverId, route.bookId)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     init {
