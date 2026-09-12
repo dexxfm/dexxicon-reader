@@ -20,14 +20,6 @@ plugins {
 // them to resolve against, and nothing in this project ever built or consumed :shared's jvm
 // target.
 
-// Phase 4 (issue #115) — Compose Multiplatform resources (theme/Type.kt's bundled Archivo
-// font). Explicit package rather than relying on the plugin's auto-derived default, so the
-// generated Res.font.* accessor's import in Type.kt doesn't depend on a convention this repo
-// hasn't used before.
-compose.resources {
-    packageOfResClass = "net.dexxicon.reader.shared.generated.resources"
-}
-
 kotlin {
     androidLibrary {
         namespace = "net.dexxicon.reader.shared"
@@ -49,20 +41,20 @@ kotlin {
             implementation(project(":core:serverapi"))
             implementation(project(":core:database"))
             implementation(project(":core:data"))
+            // Phase 4 restructure (issue #126) — design tokens, the pill nav bar/rail, and the
+            // Book Detail-shared cover/format components now live in one place instead of two
+            // copies; see core/designsystem/build.gradle.kts's own doc comment.
+            implementation(project(":core:designsystem"))
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(compose.material3)
             // Phase 4 (issue #115) — the adaptive nav shell's Home/Library/Settings icons.
             // compose.material3 alone doesn't bundle these (only a handful of glyphs ship
-            // there); this is the same extended icon set core/designsystem's
-            // TopLevelDestination.kt already draws Icons.Filled.Home/Settings and
+            // there); this is the same extended icon set native's own
+            // navigation/TopLevelDestination.kt already draws Icons.Filled.Home/Settings and
             // Icons.AutoMirrored.Filled.LibraryBooks from, so both platforms render the
             // identical glyph.
             implementation(compose.materialIconsExtended)
-            // Archivo font files (theme/Type.kt) — loaded from src/commonMain/composeResources
-            // via the generated Res.font.* accessors, the multiplatform equivalent of
-            // core/designsystem's res/font/ + R.font.* on the native side.
-            implementation(compose.components.resources)
             implementation(libs.navigation.compose.multiplatform)
             implementation(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.coroutines.core)

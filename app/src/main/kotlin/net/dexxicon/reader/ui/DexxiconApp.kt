@@ -31,9 +31,12 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.dexxicon.reader.core.designsystem.nav.FloatingPillNavBar
+import net.dexxicon.reader.core.designsystem.nav.PillNavigationRail
 import net.dexxicon.reader.crash.CrashReportSheet
 import net.dexxicon.reader.crash.shareCrashReport
 import androidx.navigation.NavDestination
@@ -136,6 +139,8 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
                         FloatingPillNavBar(
                             destinations = TopLevelDestination.entries,
                             current = currentTopLevel,
+                            icon = { it.icon },
+                            label = { stringResource(it.labelRes) },
                             onSelect = { navController.switchTopLevel(it) },
                         )
                     }
@@ -147,6 +152,8 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
                     PillNavigationRail(
                         destinations = TopLevelDestination.entries,
                         current = currentTopLevel,
+                        icon = { it.icon },
+                        label = { stringResource(it.labelRes) },
                         onSelect = { navController.switchTopLevel(it) },
                     )
                 }

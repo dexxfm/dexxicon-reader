@@ -1,4 +1,4 @@
-package net.dexxicon.reader.shared.theme
+package net.dexxicon.reader.core.designsystem.theme
 
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
@@ -6,19 +6,26 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import net.dexxicon.reader.shared.generated.resources.Res
-import net.dexxicon.reader.shared.generated.resources.archivo_extrabold
-import net.dexxicon.reader.shared.generated.resources.archivo_regular
-import net.dexxicon.reader.shared.generated.resources.archivo_semibold
+import net.dexxicon.reader.core.designsystem.generated.resources.Res
+import net.dexxicon.reader.core.designsystem.generated.resources.archivo_extrabold
+import net.dexxicon.reader.core.designsystem.generated.resources.archivo_regular
+import net.dexxicon.reader.core.designsystem.generated.resources.archivo_semibold
 import org.jetbrains.compose.resources.Font
 
-// Phase 4 (issue #115) — Archivo, ported from core/designsystem/theme/Type.kt (same issue);
-// see that file's doc comment for why it's bundled rather than loaded via a downloadable-font
-// API. The Compose Multiplatform resource loader (`org.jetbrains.compose.resources.Font`) is
-// `@Composable`, unlike Android's plain resource-id `Font(R.font.*)` — that's the one real
-// difference from the native version, and why this file's `DexxiconTypography` had to become
-// a function instead of a top-level `val`; [Theme.kt] calls it from within `DexxiconTheme`'s
-// own composition.
+// Phase 4 (issue #115) — Archivo, the mockup's own display/body face (`--font-heading` /
+// `--font-body` in the "Modernist" base design system it's built on), bundled as static
+// weights rather than Android's Downloadable Fonts API: DLF needs Google Play Services and a
+// certificate-fingerprint provider config that doesn't otherwise exist in this project, and
+// iOS has no access to it at all — a bundled file works identically on both. Files + OFL
+// license text: docs/licenses/ARCHIVO_OFL.txt.
+//
+// Phase 4 restructure (issue #126) — this used to be two copies (this module's own
+// R.font.*-based version, and an identical one in shared/theme/Type.kt using Compose
+// Multiplatform resources). Now that this module is KMP, there's one copy, loaded via Compose
+// Multiplatform resources (`org.jetbrains.compose.resources.Font`) everywhere — that loader is
+// `@Composable`, unlike Android's plain resource-id `Font(R.font.*)`, so [dexxiconTypography]
+// is a function rather than a top-level `val`; [DexxiconTheme] calls it from within its own
+// composition.
 @Composable
 private fun archivo(): FontFamily = FontFamily(
     Font(Res.font.archivo_regular, FontWeight.Normal),
@@ -26,6 +33,10 @@ private fun archivo(): FontFamily = FontFamily(
     Font(Res.font.archivo_extrabold, FontWeight.ExtraBold),
 )
 
+/** Applies [family] to every M3 type-scale slot, keeping each slot's own weight/size/spacing —
+ * the mockup uses one face for both heading and body, so this is a blanket swap rather than
+ * per-slot cherry-picking. Weights this family doesn't declare (e.g. M3's default Medium on
+ * several slots) fall back to Compose's normal nearest-match font synthesis. */
 private fun Typography.withFontFamily(family: FontFamily): Typography = copy(
     displayLarge = displayLarge.copy(fontFamily = family),
     displayMedium = displayMedium.copy(fontFamily = family),
