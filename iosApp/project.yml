@@ -15,10 +15,23 @@ settings:
 # exists (Readium Kotlin has no iOS target at all — see the "iOS Reading Support" proposal),
 # so this is real, separate native Swift, pinned to the current stable release. Deployment
 # target above (iOS 16) already clears its minimum (iOS 15).
+#
+# issue #107: CBR (RAR) comics need the same two-step normalize-to-CBZ Android's
+# core/reader/ComicArchiveNormalizer.kt already does (Readium's format sniffing is ZIP-only on
+# both toolkits) — Unrar.swift (mtgto, MIT, wraps the same official RARLAB unrar source
+# UnrarKit uses) reads the RAR, ZIPFoundation (weichsel, MIT, explicit iOS 9+ platform
+# support) writes the resulting CBZ, since Foundation has no ZIP *writer* of its own (only
+# Readium's ZIP *reader*, already pulled in transitively).
 packages:
   ReadiumSwiftToolkit:
     url: https://github.com/readium/swift-toolkit.git
     exactVersion: 3.11.0
+  Unrar:
+    url: https://github.com/mtgto/Unrar.swift.git
+    exactVersion: 0.5.4
+  ZIPFoundation:
+    url: https://github.com/weichsel/ZIPFoundation.git
+    exactVersion: 0.9.20
 
 targets:
   iosApp:
@@ -45,6 +58,10 @@ targets:
         product: ReadiumStreamer
       - package: ReadiumSwiftToolkit
         product: ReadiumNavigator
+      - package: Unrar
+        product: Unrar
+      - package: ZIPFoundation
+        product: ZIPFoundation
     preBuildScripts:
       - name: Build the shared Kotlin framework
         basedOnDependencyAnalysis: false

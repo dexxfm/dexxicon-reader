@@ -5,10 +5,12 @@ import ReadiumNavigator
 
 /// Real Readium Swift Toolkit EPUB reader (issue #101, following #99's plumbing) — also the
 /// reader for MOBI/AZW3/FB2 (server-converted to EPUB before either client requests bytes,
-/// see `ReaderLaunch.kt`) and for CBZ comics (issue #106: Readium's own changelog, 3.8.0,
+/// see `ReaderLaunch.kt`) and for CBZ/CBR comics (issue #106: Readium's own changelog, 3.8.0,
 /// deprecated a separate `CBZNavigatorViewController` in favor of this exact reuse — kept
 /// this class's name regardless, matching Readium's own precedent of keeping
-/// `EPUBNavigatorViewController`'s name even once it also opens comics).
+/// `EPUBNavigatorViewController`'s name even once it also opens comics). CBR specifically
+/// (issue #107) is normalized to a real ZIP/CBZ by `ComicArchiveNormalizer` before it ever
+/// reaches Readium — see `openPublication()`.
 ///
 /// Opens `url` — already an absolute, resolved acquisition URL — with `authHeader` — already
 /// resolved by `:shared`'s `AppContainer.authHeaderProvider` — attached to every request.
@@ -66,19 +68,36 @@ final class EpubReaderViewController: UIViewController {
 
     @MainActor
     private func openPublication() async {
-        // AssetRetriever.retrieve(url:) takes Readium's own AbsoluteURL protocol, not
-        // Foundation's URL — HTTPURL(string:) is Readium's real, documented constructor for
-        // a remote http(s) URL (confirmed against ios-ci's actual compiler error, not
-        // guessed a second time: `argument type 'URL' does not conform to expected type
-        // 'AbsoluteURL'`).
-        guard let httpURL = HTTPURL(string: url.absoluteString) else {
-            showError("Couldn't open this book.")
-            return
+        // issue #107: a CBR needs unpacking + repacking as a real ZIP before Readium's format
+        // sniffing (ZIP-only, same as the Kotlin toolkit) can do anything with it at all — the
+        // normalizer downloads it in full (RAR can't be range-streamed) and hands back a local
+        // file:// URL to the resulting CBZ. Every other format (including CBZ itself) is
+        // untouched by this check and keeps streaming straight from the server.
+        let resolvedURL: any AbsoluteURL
+        if ComicArchiveNormalizer.looksLikeRar(url: url, mediaType: nil) {
+            guard let cbzURL = try? await ComicArchiveNormalizer.normalize(url: url, authHeader: authHeader),
+                  let fileURL = FileURL(url: cbzURL) else {
+                showError("Couldn't open this CBR comic.")
+                return
+            }
+            resolvedURL = fileURL
+        } else {
+            // AssetRetriever.retrieve(url:) takes Readium's own AbsoluteURL protocol, not
+            // Foundation's URL — HTTPURL(string:) is Readium's real, documented constructor
+            // for a remote http(s) URL (confirmed against ios-ci's actual compiler error, not
+            // guessed a second time: `argument type 'URL' does not conform to expected type
+            // 'AbsoluteURL'`).
+            guard let httpURL = HTTPURL(string: url.absoluteString) else {
+                showError("Couldn't open this book.")
+                return
+            }
+            resolvedURL = httpURL
         }
 
         // additionalHeaders applies to every request this client makes — the same one-time
         // attachment Android's authenticated OkHttp client does, just via Readium Swift's own
-        // HTTP client instead of Ktor.
+        // HTTP client instead of Ktor. A normalized CBR is read from a local file, so it never
+        // makes another authenticated request — the header was already spent downloading it.
         let httpClient = DefaultHTTPClient(
             additionalHeaders: authHeader.map { ["Authorization": $0] }
         )
@@ -91,7 +110,7 @@ final class EpubReaderViewController: UIViewController {
             )
         )
 
-        guard case let .success(asset) = await assetRetriever.retrieve(url: httpURL) else {
+        guard case let .success(asset) = await assetRetriever.retrieve(url: resolvedURL) else {
             showError("Couldn't open this book.")
             return
         }

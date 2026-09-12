@@ -31,20 +31,16 @@ struct ComposeView: UIViewControllerRepresentable {
                 let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga)
                 hostVC.present(reader, animated: true)
             case .comic:
-                // issue #106/#108: CBZ opens through the same EPUB Navigator too — Readium's
-                // own changelog (3.8.0) deprecated CBZNavigatorViewController in favor of this
-                // exact reuse — and it's the same reader that now also carries manga reading
-                // direction + edge-tap page turning. CBR isn't supported yet (issue #107 —
-                // the RAR-extraction library choice for iOS has a real wrinkle, tracked
-                // separately) — a quick extension check gives a clear message instead of a
-                // confusing generic failure from Readium trying and failing to open a raw
-                // RAR as a ZIP.
-                if bookUrl.pathExtension.lowercased() == "cbr" {
-                    notYetSupported("Reading .cbr comics on iOS isn't built yet.")
-                } else {
-                    let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga)
-                    hostVC.present(reader, animated: true)
-                }
+                // issue #106/#108/#107: CBZ and CBR both open through the same EPUB Navigator
+                // — Readium's own changelog (3.8.0) deprecated CBZNavigatorViewController in
+                // favor of this exact reuse, and it's the same reader that also carries manga
+                // reading direction + edge-tap page turning. CBR needs one extra step first —
+                // ComicArchiveNormalizer unpacks + repacks it as a real ZIP, since Readium's
+                // format sniffing is ZIP-only — but that happens inside
+                // EpubReaderViewController's own async open, transparently to this switch;
+                // there's nothing format-specific left to do here.
+                let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga)
+                hostVC.present(reader, animated: true)
             default:
                 // PDF/audiobooks aren't built yet (see the "iOS Reading Support" proposal's
                 // sequencing) — same placeholder #99 proved the plumbing with.
