@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -113,7 +114,15 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
                 // (bottom-bar) layout — at >=600dp the destinations move into
                 // [PillNavigationRail] on the side instead, and the mini-player becomes
                 // full-width per the mockup's turn 4/5 (fold and tablet), not a floating pill.
-                Column {
+                //
+                // navigationBarsPadding() here is load-bearing, not decorative: this
+                // Scaffold's contentWindowInsets is zeroed (each screen's own TopAppBar/
+                // Scaffold already consumes the status-bar inset itself — see the comment
+                // above), which also zeroes the bottom system-gesture inset the bottomBar
+                // would otherwise get automatically. Without this, the mini-player/nav pill
+                // sits flush against the very bottom edge, with the system's gesture swipe
+                // indicator drawn on top of it instead of below it (PR #120 feedback).
+                Column(Modifier.navigationBarsPadding()) {
                     if (miniPlayerVisible) {
                         MiniPlayer(
                             playback = playback,

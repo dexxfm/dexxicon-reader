@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.lazy.LazyColumn
@@ -112,11 +113,16 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
 
             Scaffold(
                 bottomBar = {
+                    // navigationBarsPadding() here is load-bearing — see the equivalent
+                    // comment in native's DexxiconApp.kt (issue #115 / PR #120 feedback):
+                    // without it the pill sits flush against the bottom edge, under the
+                    // system's gesture swipe indicator instead of clear of it.
                     if (showBottomBar) {
                         FloatingPillNavBar(
                             destinations = TopLevelDestination.entries,
                             current = currentTopLevel,
                             onSelect = { nav.switchTopLevel(it) },
+                            modifier = Modifier.navigationBarsPadding(),
                         )
                     }
                 },
