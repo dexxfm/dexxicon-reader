@@ -1,7 +1,10 @@
 package net.dexxicon.reader.shared
 
+import io.ktor.http.Url
+import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.Chapter
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.shared.di.AppContainer
 
 /**
  * Hand-off point from `:shared`'s Compose UI to a genuinely native, per-platform reading
@@ -58,3 +61,41 @@ data class AudiobookLaunchInfo(
     val durationMs: Long,
     val chapters: List<Chapter>,
 )
+
+/**
+ * Resolves [detail] into an [OnOpenReader] call — the acquisition URL, a fresh auth header
+ * (via [AppContainer.authHeaderProvider]), the manga-genre check, and (audiobooks only) the
+ * launch metadata [AudiobookLaunchInfo] needs. One implementation shared by every tap-to-read
+ * site (Stage B's Book Detail "Read"/"Play" button, Stage C's Home "Continue reading/listening"
+ * shelves) rather than each resolving the same three things inline — [serverId]/[bookId] are
+ * taken separately from [detail] since a merged-copies tap (Book Detail's multi-server picker)
+ * launches a specific copy while [detail]'s own acquisition/category/audio data is shared
+ * across every copy of the same title.
+ */
+fun AppContainer.openReader(
+    detail: BookDetail,
+    serverId: String,
+    bookId: String,
+    onOpenReader: OnOpenReader,
+) {
+    val acquisition = detail.acquisitions.firstOrNull { it.format == detail.summary.format }
+        ?: detail.primaryAcquisition
+        ?: return
+    val header = authHeaderProvider.authHeader(Url(acquisition.href))
+    // issue #108 — same genre-tag check as Android's ComicReaderViewModel.mangaGenre.
+    val isManga = detail.categories.any { it.contains("manga", ignoreCase = true) }
+    // issue #114 — same metadata Android's PlayerViewModel.load() resolves from this exact
+    // BookDetail/BookDetail.audio.
+    val audiobook = detail.audio
+        ?.takeIf { detail.summary.format == ContentFormat.AUDIOBOOK }
+        ?.let {
+            AudiobookLaunchInfo(
+                title = detail.summary.title,
+                author = detail.summary.authorLine.takeIf { it.isNotBlank() },
+                coverUrl = detail.summary.coverUrl,
+                durationMs = it.durationMs,
+                chapters = it.chapters,
+            )
+        }
+    onOpenReader(serverId, bookId, detail.summary.format, acquisition.href, header, isManga, audiobook)
+}

@@ -55,6 +55,7 @@ import net.dexxicon.reader.shared.catalog.BookDetailScreen
 import net.dexxicon.reader.shared.catalog.BooksScreen
 import net.dexxicon.reader.shared.catalog.BrowseScreen
 import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.home.HomeScreen
 import net.dexxicon.reader.shared.nav.TopLevelDestination
 import net.dexxicon.reader.shared.servers.AddServerState
 import net.dexxicon.reader.shared.servers.ServersState
@@ -75,6 +76,7 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 @Serializable private object AddServerRoute
 @Serializable private data class EditServerRoute(val serverId: String)
 @Serializable private object BrowseRoute
+@Serializable private object HomeRoute
 @Serializable private object SettingsRoute
 @Serializable private data class BooksRoute(val serverId: String)
 @Serializable private data class BookDetailRoute(val serverId: String, val bookId: String)
@@ -83,15 +85,16 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 private val RAIL_BREAKPOINT = 600.dp
 
 /**
- * Phase 4 (issue #115) — maps [TopLevelDestination] onto this NavHost's actual routes. Home
- * lands on [BrowseRoute] ([net.dexxicon.reader.shared.catalog.BrowseScreen]'s on-deck shelf +
- * merged grid — the closest existing `:shared` content to native's continue/on-deck shelves);
- * Library lands on [ServersRoute] (pick a server, then browse its shelves via [BooksScreen] —
- * also where server add/edit/remove already lives, see [SettingsScreen]'s doc comment for why
- * that isn't duplicated under Settings too); Settings is the new [SettingsRoute].
+ * Phase 4 Stage C (issue #130) — maps [TopLevelDestination] onto this NavHost's actual routes.
+ * Home lands on [HomeRoute] ([net.dexxicon.reader.shared.home.HomeScreen] — Continue reading/
+ * listening, On Deck, Downloaded, the same shelves as native's Home tab), replacing the
+ * [BrowseRoute] stand-in Stage C's predecessor used here; Library lands on [ServersRoute] (pick
+ * a server, then browse its shelves via [BooksScreen] — also where server add/edit/remove
+ * already lives, see [SettingsScreen]'s doc comment for why that isn't duplicated under
+ * Settings too); Settings is the new [SettingsRoute].
  */
 private fun TopLevelDestination.toRoute(): Any = when (this) {
-    TopLevelDestination.HOME -> BrowseRoute
+    TopLevelDestination.HOME -> HomeRoute
     TopLevelDestination.LIBRARY -> ServersRoute
     TopLevelDestination.SETTINGS -> SettingsRoute
 }
@@ -141,9 +144,16 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
                     }
                     NavHost(
                         navController = nav,
-                        startDestination = BrowseRoute,
+                        startDestination = HomeRoute,
                         modifier = Modifier.weight(1f).fillMaxSize(),
                     ) {
+                        composable<HomeRoute> {
+                            HomeScreen(
+                                container = container,
+                                onOpenBook = { serverId, bookId -> nav.navigate(BookDetailRoute(serverId, bookId)) },
+                                onOpenReader = onOpenReader,
+                            )
+                        }
                         composable<BrowseRoute> {
                             BrowseScreen(
                                 container = container,

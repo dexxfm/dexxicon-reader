@@ -72,7 +72,6 @@ import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
-import net.dexxicon.reader.shared.AudiobookLaunchInfo
 import net.dexxicon.reader.shared.OnOpenReader
 
 /**
@@ -84,11 +83,13 @@ import net.dexxicon.reader.shared.OnOpenReader
  * `ReadingProgressRepository`/`DownloadRepository` weren't commonMain yet, not by design.
  *
  * [onOpenReader] (issue #99) is the single hand-off point out of Compose into a genuinely
- * native reading screen on both platforms — see its own doc comment. This composable resolves
- * the acquisition's auth header, the manga-genre check, and (audiobooks) the launch metadata
- * itself via [state], so neither platform's thin wrapper needs its own path back into the
- * catalog/auth layer just to open a book; native's wrapper can ignore every field but
- * `serverId`/`bookId`/`format` if its own reader screens already resolve the rest themselves.
+ * native reading screen on both platforms — see its own doc comment. [state] resolves the
+ * acquisition's auth header, the manga-genre check, and (audiobooks) the launch metadata via
+ * [net.dexxicon.reader.shared.openReader] (issue #130 — the same helper Home's "Continue
+ * reading/listening" shelves use, rather than each resolving these independently), so neither
+ * platform's thin wrapper needs its own path back into the catalog/auth layer just to open a
+ * book; native's wrapper can ignore every field but `serverId`/`bookId`/`format` if its own
+ * reader screens already resolve the rest themselves.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -126,31 +127,7 @@ fun BookDetailContent(
                     supportsDownloads = state.supportsDownloads,
                     onBack = onBack,
                     onOpen = { copy ->
-                        val isAudio = detail.summary.format == ContentFormat.AUDIOBOOK
-                        val acquisition = detail.acquisitions.firstOrNull { it.format == detail.summary.format }
-                            ?: detail.primaryAcquisition
-                            ?: return@DetailContent
-                        val header = state.authHeaderFor(acquisition.href)
-                        // issue #108 — same genre-tag check as Android's
-                        // ComicReaderViewModel.mangaGenre.
-                        val isManga = detail.categories.any { it.contains("manga", ignoreCase = true) }
-                        // issue #114 — same metadata Android's PlayerViewModel.load() resolves
-                        // from this exact BookDetail/BookDetail.audio.
-                        val audiobook = detail.audio
-                            ?.takeIf { isAudio }
-                            ?.let {
-                                AudiobookLaunchInfo(
-                                    title = detail.summary.title,
-                                    author = detail.summary.authorLine.takeIf { it.isNotBlank() },
-                                    coverUrl = detail.summary.coverUrl,
-                                    durationMs = it.durationMs,
-                                    chapters = it.chapters,
-                                )
-                            }
-                        onOpenReader(
-                            copy.serverId, copy.bookId, detail.summary.format,
-                            acquisition.href, header, isManga, audiobook,
-                        )
+                        state.resolveReaderLaunch(detail, copy.serverId, copy.bookId, onOpenReader)
                     },
                     onDownload = state::onDownload,
                     onRemoveDownload = state::onRemoveDownload,

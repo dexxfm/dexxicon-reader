@@ -1,8 +1,6 @@
-package net.dexxicon.reader.feature.library
+package net.dexxicon.reader.shared.home
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -10,10 +8,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
-import net.dexxicon.reader.core.data.BookActions
-import net.dexxicon.reader.core.data.CatalogRepository
-import net.dexxicon.reader.core.data.ReadingProgressRepository
-import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.ServerSyncFailure
 import net.dexxicon.reader.core.data.sync.SyncReport
 import net.dexxicon.reader.core.model.BookSummary
@@ -22,7 +16,9 @@ import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
-import javax.inject.Inject
+import net.dexxicon.reader.shared.OnOpenReader
+import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.openReader
 
 data class ContinueItem(
     val serverId: String,
@@ -44,7 +40,7 @@ data class OnDeckItem(
     val format: ContentFormat,
 )
 
-data class LibraryUiState(
+data class HomeUiState(
     val onDeck: List<OnDeckItem> = emptyList(),
     val continueReading: List<ContinueItem> = emptyList(),
     val continueListening: List<ContinueItem> = emptyList(),
@@ -59,22 +55,34 @@ data class LibraryUiState(
     val syncFailures: List<ServerSyncFailure> = emptyList(),
 )
 
-@HiltViewModel
-class LibraryViewModel @Inject constructor(
-    private val downloadRepository: DownloadRepository,
-    private val progressRepository: ReadingProgressRepository,
-    private val catalogRepository: CatalogRepository,
-    private val bookActions: BookActions,
-) : ViewModel() {
-
+/**
+ * Phase 4 Stage C (issue #130) — the one Home state class, replacing native's Hilt
+ * `LibraryViewModel` (native's `feature/library` module — the route class is named
+ * `TopLevelRoute.Library` for historical reasons, but it's the screen titled "Home": Continue
+ * reading/listening, On Deck, Downloaded). Built from the whole [AppContainer], the same shape
+ * [net.dexxicon.reader.shared.catalog.BookDetailState] already uses — every dependency this
+ * class needs (`downloadRepository`, `progressRepository`, `catalogRepository`, `bookActions`)
+ * was already commonMain and already exposed on [AppContainer] before this class existed, from
+ * issue #126's Book Detail unification; no new container wiring was needed for this screen.
+ *
+ * The `combine(...).stateIn(...)` shape and every shelf-building rule below are ported as-is
+ * from `LibraryViewModel`: in-progress rows sorted by recency, split into
+ * [HomeUiState.continueReading]/[HomeUiState.continueListening] by format, On Deck de-duped
+ * against whatever's already in progress ("a book that's been started isn't 'on deck' any
+ * more, whatever the server says").
+ */
+class HomeState(
+    private val container: AppContainer,
+    private val scope: CoroutineScope,
+) {
     private val refreshing = MutableStateFlow(false)
     private val onDeck = MutableStateFlow<List<OnDeckItem>>(emptyList())
     private val lastReport = MutableStateFlow<SyncReport?>(null)
 
-    val uiState: StateFlow<LibraryUiState> =
+    val uiState: StateFlow<HomeUiState> =
         combine(
-            downloadRepository.downloads,
-            progressRepository.observeAll(),
+            container.downloadRepository.downloads,
+            container.progressRepository.observeAll(),
             onDeck,
             refreshing,
             lastReport,
@@ -84,7 +92,7 @@ class LibraryViewModel @Inject constructor(
                 .sortedByDescending { it.updatedAt }
             val items = inProgress.mapNotNull { it.toContinueItem() }
             val inProgressKeys = inProgress.map { "${it.serverId}::${it.bookId}" }.toSet()
-            LibraryUiState(
+            HomeUiState(
                 // A book that's been started isn't "on deck" any more, whatever the server says.
                 onDeck = onDeckItems.filter { "${it.serverId}::${it.bookId}" !in inProgressKeys },
                 continueReading = items.filter { it.format != ContentFormat.AUDIOBOOK },
@@ -98,7 +106,11 @@ class LibraryViewModel @Inject constructor(
                 lastSyncedAt = report?.at,
                 syncFailures = report?.failures.orEmpty(),
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), LibraryUiState())
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+
+    /** Whether the offline/download shelf should show at all — same platform-capability
+     * check [net.dexxicon.reader.shared.catalog.BookDetailState.supportsDownloads] uses. */
+    val supportsDownloads: Boolean get() = container.downloadRepository.supportsDownloads
 
     init {
         // Reconcile progress with KOReader / other devices (both directions).
@@ -108,16 +120,16 @@ class LibraryViewModel @Inject constructor(
     fun refresh() {
         loadOnDeck()
         if (refreshing.value) return
-        viewModelScope.launch {
+        scope.launch {
             refreshing.value = true
-            runCatching { progressRepository.syncProgress() }.getOrNull()?.let { lastReport.value = it }
+            runCatching { container.progressRepository.syncProgress() }.getOrNull()?.let { lastReport.value = it }
             refreshing.value = false
         }
     }
 
     private fun loadOnDeck() {
-        viewModelScope.launch {
-            when (val result = catalogRepository.onDeck()) {
+        scope.launch {
+            when (val result = container.catalogRepository.onDeck()) {
                 is Outcome.Success -> onDeck.value = result.value.map { it.toOnDeckItem() }
                 is Outcome.Failure -> Unit // keep whatever's already there
             }
@@ -133,15 +145,28 @@ class LibraryViewModel @Inject constructor(
         format = format,
     )
 
-    fun markRead(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, true)
-    fun markUnread(serverId: String, bookId: String) = bookActions.markFinished(serverId, bookId, false)
+    fun markRead(serverId: String, bookId: String) = container.bookActions.markFinished(serverId, bookId, true)
+    fun markUnread(serverId: String, bookId: String) = container.bookActions.markFinished(serverId, bookId, false)
     fun setReadingStatus(serverId: String, bookId: String, status: ReadingStatus) =
-        bookActions.setReadingStatus(serverId, bookId, status)
+        container.bookActions.setReadingStatus(serverId, bookId, status)
     fun downloadOrRemove(serverId: String, bookId: String, status: DownloadStatus?) =
-        bookActions.downloadOrRemove(serverId, bookId, status)
+        container.bookActions.downloadOrRemove(serverId, bookId, status)
 
     fun remove(download: Download) {
-        viewModelScope.launch { downloadRepository.remove(download.serverId, download.bookId) }
+        scope.launch { container.downloadRepository.remove(download.serverId, download.bookId) }
+    }
+
+    /** A tap on a Continue reading/listening card — unlike On Deck (which just opens Book
+     * Detail), this needs the full [net.dexxicon.reader.core.model.BookDetail] to resolve a
+     * reader launch (a [ContinueItem] only carries the lightweight metadata the shelf itself
+     * needs), so it fetches first, then hands off through the same
+     * [net.dexxicon.reader.shared.openReader] helper Book Detail's "Read"/"Play" button uses. */
+    fun continueReading(item: ContinueItem, onOpenReader: OnOpenReader) {
+        scope.launch {
+            val detail = (container.catalogRepository.detail(item.serverId, item.bookId) as? Outcome.Success)
+                ?.value ?: return@launch
+            container.openReader(detail, item.serverId, item.bookId, onOpenReader)
+        }
     }
 
     private fun ReadingProgress.toContinueItem(): ContinueItem? {

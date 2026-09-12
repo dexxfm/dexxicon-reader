@@ -19,7 +19,9 @@ import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.core.model.fileExtension
+import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.openReader
 
 /**
  * Phase 4 restructure (issue #126) — the one Book Detail state class, replacing *both*
@@ -146,8 +148,13 @@ class BookDetailState(
      * real implementation on Android). */
     val supportsDownloads: Boolean get() = container.downloadRepository.supportsDownloads
 
-    /** A fresh `Authorization` header for [url], resolved the same way every network call in
-     * this app does — see [AppContainer.authHeaderProvider]'s own doc comment. */
-    fun authHeaderFor(url: String): String? =
-        container.authHeaderProvider.authHeader(io.ktor.http.Url(url))
+    /** Resolves [detail] into an [OnOpenReader] call for [serverId]/[bookId] — see
+     * [net.dexxicon.reader.shared.openReader]'s own doc comment (shared with Home's
+     * "Continue reading/listening" shelves, issue #130). */
+    fun resolveReaderLaunch(
+        detail: BookDetail,
+        serverId: String,
+        bookId: String,
+        onOpenReader: OnOpenReader,
+    ) = container.openReader(detail, serverId, bookId, onOpenReader)
 }
