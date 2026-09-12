@@ -8,11 +8,12 @@ plugins {
 
 // KMP, following the pattern established for :core:network/:core:serverapi. commonMain holds
 // the sign-in path: TokenManager + ServerProber (issue #54), ServerRepository + OidcAuthenticator
-// + the ProgressSeeder interface (issue #60, completing Phase 1). Everything else in this
-// module (the other repositories, catalog sources, sync, downloads, media) stays Android-only
-// in androidMain, unchanged — those depend on other still-Android-only modules (KoSyncRepository
-// specifically needs Context/Settings.Secure/raw OkHttpClient); porting them is a separate,
-// larger decision.
+// + the ProgressSeeder interface (issue #60, completing Phase 1); Phase 4 restructure (issue
+// #126) added the reading-progress sync path — ReadingProgressRepository, NativeProgressSync,
+// LibrarySeeder, BookActions, KoSyncRepository/KoReaderDigest — Book Detail's progress row
+// needs on both platforms. Catalog sources, downloads (WorkManager), and media stay Android-only
+// in androidMain; DownloadRepository is the one exception with a real cross-platform shape —
+// see its own doc comment for the commonMain-interface/per-platform-actual split.
 //
 // No Hilt/KSP plugin here — same reason as :core:network/:core:serverapi: the Hilt Gradle
 // plugin refuses to apply to a KMP module. DataModule (the one @Module in this module) moved
@@ -42,10 +43,20 @@ kotlin {
             // AuthHeaderProviderImpl (issue #74) implements AuthHeaderProvider; io.ktor.http.Url
             // itself comes in transitively via :core:network's own api(libs.ktor.client.core).
             implementation(project(":core:network"))
+            // SyncStateStore (KoSyncRepository/NativeProgressSync's "last synced" timestamps) —
+            // now KMP itself (issue #126), see core/datastore/build.gradle.kts.
+            implementation(project(":core:datastore"))
             implementation(libs.kotlinx.coroutines.core)
+            // ReadingProgressRepository's locator JSON (issue #126) — replaces the Android-only
+            // org.json.JSONObject it used before this module went cross-platform.
+            implementation(libs.kotlinx.serialization.json)
+            // NativeProgressSync's server-timestamp parsing — replaces java.time.Instant.
+            implementation(libs.kotlinx.datetime)
+            // KoSyncRepository/KoReaderDigest's MD5 (kosync auth keys + partial-document
+            // digests) — replaces java.security.MessageDigest.
+            implementation(libs.kotlincrypto.hash.md)
         }
         androidMain.dependencies {
-            implementation(project(":core:datastore"))
             implementation(project(":core:opds"))
             implementation(project(":core:format"))
             implementation(project(":core:media"))
@@ -56,7 +67,6 @@ kotlin {
             implementation(libs.hilt.android)
             implementation(libs.hilt.work)
             implementation(libs.kotlinx.coroutines.android)
-            implementation(libs.kotlinx.serialization.json)
         }
         getByName("androidHostTest").dependencies {
             implementation(libs.junit)

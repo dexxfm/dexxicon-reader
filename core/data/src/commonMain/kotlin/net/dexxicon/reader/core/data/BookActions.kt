@@ -1,0 +1,95 @@
+package net.dexxicon.reader.core.data
+
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.common.Logger
+import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.data.sync.NativeProgressSync
+import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.ReadingProgress
+import net.dexxicon.reader.core.model.ReadingStatus
+
+/**
+ * The item-level actions offered by the long-press menu on a book: set reading status,
+ * mark read/unread and download/remove. Runs on the application scope so an action started
+ * from a card that the user then navigates away from still completes.
+ *
+ * Phase 4 restructure (issue #126) — moved to commonMain; see
+ * [net.dexxicon.reader.core.data.sync.NativeProgressSync]'s doc comment for the
+ * `@Inject`/`@Singleton` -> `:app`-hosted `@Provides` reasoning.
+ */
+class BookActions(
+    private val catalogRepository: CatalogRepository,
+    private val downloadRepository: DownloadRepository,
+    private val progressRepository: ReadingProgressRepository,
+    private val serverRepository: ServerRepository,
+    private val nativeProgressSync: NativeProgressSync,
+    private val scope: CoroutineScope,
+) {
+    /**
+     * Set the server's per-user reading status. **Read** / **Unread** also nudge the
+     * reading percentage to 100 % / 0 % so the position and the status attribute agree.
+     */
+    fun setReadingStatus(serverId: String, bookId: String, status: ReadingStatus) =
+        setReadingStatus(listOf(serverId to bookId), status)
+
+    /**
+     * Set the status on **every** copy of a book — for the merged Browse entry, where the
+     * same title lives on more than one server, so the servers don't disagree.
+     * [copies] is `(serverId, bookId)` pairs.
+     */
+    fun setReadingStatus(copies: List<Pair<String, String>>, status: ReadingStatus) {
+        scope.launch {
+            copies.distinct().forEach { (serverId, bookId) ->
+                val server = serverRepository.get(serverId) ?: return@forEach
+                runCatching { nativeProgressSync.pushStatus(server, bookId, status) }
+                    .onFailure { Logger.w("BookActions", "set status failed: ${it.message}") }
+                when (status) {
+                    ReadingStatus.READ -> pushProgress(serverId, bookId, 1.0)
+                    ReadingStatus.UNREAD -> pushProgress(serverId, bookId, 0.0)
+                    else -> {}
+                }
+            }
+        }
+    }
+
+    /** "Mark as read" / "Mark as unread" — the quick toggle; also sets the status. */
+    fun markFinished(serverId: String, bookId: String, finished: Boolean) =
+        markFinished(listOf(serverId to bookId), finished)
+
+    fun markFinished(copies: List<Pair<String, String>>, finished: Boolean) =
+        setReadingStatus(copies, if (finished) ReadingStatus.READ else ReadingStatus.UNREAD)
+
+    /** Queue an offline copy, or remove one — [currentStatus] `null` means not downloaded. */
+    fun downloadOrRemove(serverId: String, bookId: String, currentStatus: DownloadStatus?) {
+        scope.launch {
+            if (currentStatus == null) {
+                detailOf(serverId, bookId)?.let { downloadRepository.enqueue(it) }
+            } else {
+                downloadRepository.remove(serverId, bookId)
+            }
+        }
+    }
+
+    private suspend fun pushProgress(serverId: String, bookId: String, percent: Double) {
+        val detail = detailOf(serverId, bookId) ?: return
+        val s = detail.summary
+        progressRepository.save(
+            ReadingProgress(
+                serverId = serverId,
+                bookId = bookId,
+                percent = percent,
+                format = s.format,
+                title = s.title,
+                author = s.authorLine.takeIf { it.isNotBlank() },
+                coverUrl = s.coverUrl,
+                digestUrl = detail.primaryAcquisition?.href,
+            ),
+        )
+    }
+
+    private suspend fun detailOf(serverId: String, bookId: String): BookDetail? =
+        (catalogRepository.detail(serverId, bookId) as? Outcome.Success)?.value
+}

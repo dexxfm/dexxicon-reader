@@ -22,6 +22,7 @@ import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ServerType
 import org.json.JSONObject
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -167,7 +168,9 @@ class MediaLibraryContentSourceImpl @Inject constructor(
         val (serverId, bookId) = mediaId.split("::", limit = 2)
             .takeIf { it.size == 2 } ?: return null
 
-        val localFile = downloadRepository.localFile(serverId, bookId)
+        // DownloadRepository.localFile returns a plain path (issue #126 — java.io.File isn't
+        // portable), so this Android-only caller wraps it back into a File itself.
+        val localFile = downloadRepository.localFile(serverId, bookId)?.let(::File)
 
         val detail = (catalogRepository.detail(serverId, bookId) as? Outcome.Success)?.value
         // Offline / expired session: a downloaded book is still playable from its local file

@@ -1,10 +1,17 @@
 package net.dexxicon.reader.shared.di
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.os.Build
+import android.provider.Settings
 import io.ktor.client.engine.okhttp.OkHttp
 import kotlinx.coroutines.Dispatchers
+import net.dexxicon.reader.core.data.download.AndroidDownloadRepository
 import net.dexxicon.reader.core.database.finish
 import net.dexxicon.reader.core.database.getDatabaseBuilder
+import net.dexxicon.reader.core.datastore.AppPreferencesStore
+import net.dexxicon.reader.core.datastore.PlatformStorageContext
+import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.security.CredentialStore
 import net.dexxicon.reader.core.security.CryptoStore
 
@@ -31,11 +38,26 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
     val appContext = context.context.applicationContext
     val database = getDatabaseBuilder(appContext).finish(Dispatchers.IO)
     val credentialStore = CredentialStore(appContext, CryptoStore())
+    val downloadRepository = AndroidDownloadRepository(
+        context = appContext,
+        dao = database.downloadDao(),
+        appPreferences = AppPreferencesStore(appContext),
+        io = Dispatchers.IO,
+    )
+    val syncStateStore = SyncStateStore(PlatformStorageContext(appContext))
     return AppContainer(
         engine = OkHttp.create(),
         credentialStore = credentialStore,
         database = database,
         io = Dispatchers.IO,
         coilPlatformContext = appContext,
+        downloadRepository = downloadRepository,
+        syncStateStore = syncStateStore,
+        koSyncRawDeviceId = deviceId(appContext),
+        koSyncDeviceModel = Build.MODEL ?: "Android",
     )
 }
+
+@SuppressLint("HardwareIds")
+private fun deviceId(context: Context): String =
+    Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "dexxicon"

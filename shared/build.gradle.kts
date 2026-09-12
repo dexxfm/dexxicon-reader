@@ -41,6 +41,11 @@ kotlin {
             implementation(project(":core:serverapi"))
             implementation(project(":core:database"))
             implementation(project(":core:data"))
+            // SyncStateStore (AppContainer's KoSyncRepository/NativeProgressSync, issue #126) —
+            // also brings AppPreferencesStore/AndroidDownloadRepository into scope for the
+            // androidMain actual below (KMP dependency resolution exposes a dependency's own
+            // androidMain declarations to this module's androidMain automatically).
+            implementation(project(":core:datastore"))
             // Phase 4 restructure (issue #126) — design tokens, the pill nav bar/rail, and the
             // Book Detail-shared cover/format components now live in one place instead of two
             // copies; see core/designsystem/build.gradle.kts's own doc comment.
