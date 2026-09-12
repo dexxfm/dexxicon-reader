@@ -138,7 +138,12 @@ final class AudiobookPlaybackController: NSObject {
             serverId: book.serverId,
             bookId: book.bookId,
             durationMs: book.durationMs,
-            onResolved: { [weak self] resumeMs in
+            // Same interop quirk as `isManga` in ContentView.swift: a primitive Kotlin `Long`
+            // crossing as a closure parameter Swift implements (Kotlin invokes this later)
+            // arrives boxed as `KotlinLong`, not a native `Int64` — real ios-ci error, not
+            // guessed. `.int64Value` unwraps it once, up front, rather than at every use below.
+            onResolved: { [weak self] resumeMsBoxed in
+                let resumeMs = resumeMsBoxed.int64Value
                 guard let self, self.state.book?.bookId == book.bookId else { return }
                 if resumeMs > 0 {
                     self.player?.seek(to: self.cmTime(resumeMs)) { _ in
