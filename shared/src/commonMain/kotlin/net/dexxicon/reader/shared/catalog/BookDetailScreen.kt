@@ -140,7 +140,11 @@ fun BookDetailScreen(
                 currentDetail.primaryAcquisition?.let { acquisition ->
                     Button(onClick = {
                         val header = container.authHeaderProvider.authHeader(Url(acquisition.href))
-                        onOpenReader(serverId, bookId, currentDetail.summary.format, acquisition.href, header)
+                        // issue #108 — same genre-tag check as Android's
+                        // ComicReaderViewModel.mangaGenre, resolved here so the platform
+                        // reader never needs its own path back into catalog data for it.
+                        val isManga = currentDetail.categories.any { it.contains("manga", ignoreCase = true) }
+                        onOpenReader(serverId, bookId, currentDetail.summary.format, acquisition.href, header, isManga)
                     }) { Text("Read") }
                 }
 
