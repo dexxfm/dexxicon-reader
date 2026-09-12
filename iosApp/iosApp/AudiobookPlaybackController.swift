@@ -1,5 +1,6 @@
 import AVFoundation
 import MediaPlayer
+import SharedKit
 import UIKit
 
 /// The audiobook engine itself (issue #114) — a process-lifetime singleton, deliberately
@@ -26,22 +27,22 @@ final class AudiobookPlaybackController: NSObject {
         let title: String
         let author: String?
         let coverUrl: String?
-        let durationMs: Long
+        let durationMs: Int64
         let chapters: [ChapterInfo]
         let digestUrl: String
     }
 
     struct ChapterInfo {
         let title: String
-        let startMs: Long
+        let startMs: Int64
     }
 
     struct State {
         var book: Book?
         var isPlaying = false
         var isBuffering = false
-        var positionMs: Long = 0
-        var durationMs: Long = 0
+        var positionMs: Int64 = 0
+        var durationMs: Int64 = 0
         var speed: Float = 1.0
         var sleepTimerEndsAt: Date?
         var sleepAtChapterEnd = false
@@ -71,7 +72,7 @@ final class AudiobookPlaybackController: NSObject {
     private var loader: AudiobookStreamLoader?
     private var timeObserverToken: Any?
     private var sleepWorkItem: DispatchWorkItem?
-    private var lastPushedPositionMs: Long = -1
+    private var lastPushedPositionMs: Int64 = -1
     private var coverImage: UIImage?
 
     /// The `:shared` Kotlin object this whole feature is built around (issue #114) — held
@@ -83,12 +84,12 @@ final class AudiobookPlaybackController: NSObject {
     /// `AudiobookPlayer.playPause`'s `smartRewindSeconds`. Fixed here rather than a user
     /// preference (Android's own `PlayerPreferencesStore` setting) — this pass doesn't build
     /// a settings screen for it; 5s matches a common, unobtrusive default.
-    private let smartRewindMs: Long = 5_000
+    private let smartRewindMs: Int64 = 5_000
 
     /// How often the current position is saved locally + pushed to the server — same cadence
     /// class as Android's `ServicePositionWriter`, which itself ticks every second but only
     /// actually needs to survive an app kill, not update the server every second.
-    private let progressPushIntervalMs: Long = 15_000
+    private let progressPushIntervalMs: Int64 = 15_000
 
     private override init() {
         super.init()
@@ -175,7 +176,7 @@ final class AudiobookPlaybackController: NSObject {
         updateNowPlayingInfo()
     }
 
-    func seek(toMs ms: Long) {
+    func seek(toMs ms: Int64) {
         guard let player else { return }
         let clamped = max(0, ms)
         player.seek(to: cmTime(clamped))
@@ -258,7 +259,7 @@ final class AudiobookPlaybackController: NSObject {
         // timeline is known) — `Int64(Double)` traps on NaN, so this has to be checked before
         // converting, not just clamped to 0 afterward.
         guard currentTime.seconds.isFinite else { return }
-        let positionMs = Long(currentTime.seconds * 1000)
+        let positionMs = Int64(currentTime.seconds * 1000)
         state.positionMs = max(0, positionMs)
         state.isBuffering = player?.currentItem?.isPlaybackLikelyToKeepUp == false
 
@@ -344,7 +345,7 @@ final class AudiobookPlaybackController: NSObject {
         }
         center.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
-            self?.seek(toMs: Long(event.positionTime * 1000))
+            self?.seek(toMs: Int64(event.positionTime * 1000))
             return .success
         }
         center.nextTrackCommand.isEnabled = false
@@ -381,9 +382,7 @@ final class AudiobookPlaybackController: NSObject {
         }.resume()
     }
 
-    private func cmTime(_ ms: Long) -> CMTime {
+    private func cmTime(_ ms: Int64) -> CMTime {
         CMTime(seconds: Double(ms) / 1000.0, preferredTimescale: 1_000)
     }
 }
-
-private typealias Long = Int64
