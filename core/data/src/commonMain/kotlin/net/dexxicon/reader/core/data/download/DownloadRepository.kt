@@ -21,6 +21,12 @@ import net.dexxicon.reader.core.model.Download
  * [net.dexxicon.reader.core.data.sync.DigestSource.LocalFile].
  */
 interface DownloadRepository {
+    /** False only on iOS today — lets shared UI (`BookDetailContent`) hide/disable the
+     * offline button by platform capability rather than by "which app launched this
+     * screen," since native `:app` and `:shared` both resolve to the same real
+     * `AndroidDownloadRepository` on Android. */
+    val supportsDownloads: Boolean
+
     val downloads: Flow<List<Download>>
 
     /** Approximate bytes held by downloads (done + in flight). */

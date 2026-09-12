@@ -12,6 +12,8 @@ import net.dexxicon.reader.core.model.Download
  * background downloads exists in this app today; see that interface's doc comment. Every read
  * reports "nothing downloaded", and [enqueue] reports why instead of silently doing nothing. */
 class IosDownloadRepository : DownloadRepository {
+    override val supportsDownloads: Boolean = false
+
     override val downloads: Flow<List<Download>> = flowOf(emptyList())
     override val usedBytes: Flow<Long> = flowOf(0L)
 

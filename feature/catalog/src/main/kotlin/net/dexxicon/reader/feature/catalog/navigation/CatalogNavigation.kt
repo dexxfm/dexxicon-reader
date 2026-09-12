@@ -3,6 +3,7 @@ package net.dexxicon.reader.feature.catalog.navigation
 import androidx.navigation.NavController
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
 import kotlinx.serialization.Serializable
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.ContentFormat
@@ -52,8 +53,12 @@ fun NavGraphBuilder.catalogSection(
             onOpenReader = onOpenReader,
         )
     }
-    composable<BookDetailRoute> {
+    composable<BookDetailRoute> { entry ->
+        val route = entry.toRoute<BookDetailRoute>()
         BookDetailScreen(
+            serverId = route.serverId,
+            bookId = route.bookId,
+            copies = route.copies,
             onBack = { navController.popBackStack() },
             onRead = onOpenReader,
         )

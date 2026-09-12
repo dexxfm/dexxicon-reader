@@ -19,6 +19,9 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:data"))
     implementation(project(":core:datastore"))
+    // Book Detail (issue #126) — BookDetailState/BookDetailContent + the AppContainer
+    // singleton holder now live here instead of a Hilt ViewModel; see BookDetailScreen.kt.
+    implementation(project(":shared"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.runtime)

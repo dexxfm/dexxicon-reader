@@ -40,7 +40,6 @@ import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcClient
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import net.dexxicon.reader.core.serverapi.user.NativeUserApi
-import net.dexxicon.reader.shared.catalog.ReadingStatusActions
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
 
 /**
@@ -86,16 +85,15 @@ import net.dexxicon.reader.shared.reader.AudiobookProgressSync
  * [PlatformContext]): Android's is `android.content.Context` itself (a typealias), iOS's is
  * `coil3.PlatformContext.INSTANCE`, a singleton with nothing to configure.
  *
- * [readingStatusActions] (issue #84) is deliberately narrower than the native app's
- * `BookActions` — see [ReadingStatusActions]'s own doc comment for why. Built with [scope],
- * not a screen's own `rememberCoroutineScope()`, so a status push outlives the screen that
- * started it.
+ * [bookActions] (issue #84, superseding the narrower `ReadingStatusActions` this class used to
+ * expose before issue #126 made the real `BookActions` commonMain) is built with [scope], not
+ * a screen's own `rememberCoroutineScope()`, so a status push outlives the screen that started
+ * it.
  *
  * [audiobookProgressSync] (issue #114) is iOS's native audiobook player's path to resume
  * position + local/remote progress sync — same [scope]-outlives-the-screen reasoning as
- * [readingStatusActions], and the same "deliberately narrower than the full native-app class"
- * shape; see [AudiobookProgressSync]'s own doc comment for exactly what it reuses vs.
- * reimplements.
+ * [bookActions], and the same "deliberately narrower than the full native-app class" shape;
+ * see [AudiobookProgressSync]'s own doc comment for exactly what it reuses vs. reimplements.
  *
  * [downloadRepository] and [koSyncRawDeviceId]/[koSyncDeviceModel] (issue #126) are the three
  * remaining genuinely platform-specific pieces `createAppContainer` supplies: the real
@@ -205,11 +203,6 @@ class AppContainer(
         progressRepository = progressRepository,
         serverRepository = serverRepository,
         nativeProgressSync = nativeProgressSync,
-        scope = scope,
-    )
-    val readingStatusActions: ReadingStatusActions = ReadingStatusActions(
-        api = nativeProgressApi,
-        serverRepository = serverRepository,
         scope = scope,
     )
     val audiobookProgressSync: AudiobookProgressSync = AudiobookProgressSync(

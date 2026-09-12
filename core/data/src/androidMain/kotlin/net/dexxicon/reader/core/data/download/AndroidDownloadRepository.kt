@@ -40,6 +40,8 @@ class AndroidDownloadRepository @Inject constructor(
     private val appPreferences: AppPreferencesStore,
     @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
 ) : DownloadRepository {
+    override val supportsDownloads: Boolean = true
+
     private val workManager get() = WorkManager.getInstance(context)
 
     override val downloads: Flow<List<Download>> =
