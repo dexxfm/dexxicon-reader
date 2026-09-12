@@ -2,6 +2,7 @@ package net.dexxicon.reader.shared
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -32,8 +33,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavDestination
+import androidx.navigation.NavDestination.Companion.hasRoute
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlinx.coroutines.launch
@@ -44,6 +51,9 @@ import net.dexxicon.reader.shared.catalog.BookDetailScreen
 import net.dexxicon.reader.shared.catalog.BooksScreen
 import net.dexxicon.reader.shared.catalog.BrowseScreen
 import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.nav.FloatingPillNavBar
+import net.dexxicon.reader.shared.nav.PillNavigationRail
+import net.dexxicon.reader.shared.nav.TopLevelDestination
 import net.dexxicon.reader.shared.servers.AddServerState
 import net.dexxicon.reader.shared.servers.ServersState
 import net.dexxicon.reader.shared.servers.SsoState
@@ -64,68 +74,137 @@ import net.dexxicon.reader.shared.theme.DexxiconTheme
 @Serializable private object AddServerRoute
 @Serializable private data class EditServerRoute(val serverId: String)
 @Serializable private object BrowseRoute
+@Serializable private object SettingsRoute
 @Serializable private data class BooksRoute(val serverId: String)
 @Serializable private data class BookDetailRoute(val serverId: String, val bookId: String)
+
+/** Same breakpoint as native's `DexxiconApp.kt` — Material's "medium" window-width class. */
+private val RAIL_BREAKPOINT = 600.dp
+
+/**
+ * Phase 4 (issue #115) — maps [TopLevelDestination] onto this NavHost's actual routes. Home
+ * lands on [BrowseRoute] ([net.dexxicon.reader.shared.catalog.BrowseScreen]'s on-deck shelf +
+ * merged grid — the closest existing `:shared` content to native's continue/on-deck shelves);
+ * Library lands on [ServersRoute] (pick a server, then browse its shelves via [BooksScreen] —
+ * also where server add/edit/remove already lives, see [SettingsScreen]'s doc comment for why
+ * that isn't duplicated under Settings too); Settings is the new [SettingsRoute].
+ */
+private fun TopLevelDestination.toRoute(): Any = when (this) {
+    TopLevelDestination.HOME -> BrowseRoute
+    TopLevelDestination.LIBRARY -> ServersRoute
+    TopLevelDestination.SETTINGS -> SettingsRoute
+}
 
 @Composable
 fun App(container: AppContainer, onOpenReader: OnOpenReader) {
     DexxiconTheme {
         val nav = rememberNavController()
-        NavHost(navController = nav, startDestination = ServersRoute) {
-            composable<ServersRoute> {
-                ServersScreen(
-                    container = container,
-                    onAddServer = { nav.navigate(AddServerRoute) },
-                    onEditServer = { serverId -> nav.navigate(EditServerRoute(serverId)) },
-                    onOpenServer = { serverId -> nav.navigate(BooksRoute(serverId)) },
-                    onBrowseAll = { nav.navigate(BrowseRoute) },
-                )
-            }
-            composable<AddServerRoute> {
-                AddServerScreen(
-                    container = container,
-                    editingId = null,
-                    onBack = { nav.popBackStack() },
-                    onSaved = { nav.popBackStack() },
-                )
-            }
-            composable<EditServerRoute> { entry ->
-                val route = entry.toRoute<EditServerRoute>()
-                AddServerScreen(
-                    container = container,
-                    editingId = route.serverId,
-                    onBack = { nav.popBackStack() },
-                    onSaved = { nav.popBackStack() },
-                )
-            }
-            composable<BrowseRoute> {
-                BrowseScreen(
-                    container = container,
-                    onBack = { nav.popBackStack() },
-                    onOpenBook = { serverId, bookId -> nav.navigate(BookDetailRoute(serverId, bookId)) },
-                )
-            }
-            composable<BooksRoute> { entry ->
-                val route = entry.toRoute<BooksRoute>()
-                BooksScreen(
-                    container = container,
-                    serverId = route.serverId,
-                    onBack = { nav.popBackStack() },
-                    onOpenBook = { bookId -> nav.navigate(BookDetailRoute(route.serverId, bookId)) },
-                )
-            }
-            composable<BookDetailRoute> { entry ->
-                val route = entry.toRoute<BookDetailRoute>()
-                BookDetailScreen(
-                    container = container,
-                    serverId = route.serverId,
-                    bookId = route.bookId,
-                    onBack = { nav.popBackStack() },
-                    onOpenReader = onOpenReader,
-                )
+        val backStackEntry by nav.currentBackStackEntryAsState()
+        val currentDestination: NavDestination? = backStackEntry?.destination
+        val currentTopLevel = TopLevelDestination.entries.firstOrNull { destination ->
+            currentDestination.isOnTopLevel(destination)
+        }
+
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val wide = maxWidth >= RAIL_BREAKPOINT
+            val showRail = wide && currentTopLevel != null
+            val showBottomBar = !wide && currentTopLevel != null
+
+            Scaffold(
+                bottomBar = {
+                    if (showBottomBar) {
+                        FloatingPillNavBar(
+                            destinations = TopLevelDestination.entries,
+                            current = currentTopLevel,
+                            onSelect = { nav.switchTopLevel(it) },
+                        )
+                    }
+                },
+            ) { innerPadding ->
+                Row(Modifier.fillMaxSize().padding(innerPadding)) {
+                    if (showRail) {
+                        PillNavigationRail(
+                            destinations = TopLevelDestination.entries,
+                            current = currentTopLevel,
+                            onSelect = { nav.switchTopLevel(it) },
+                        )
+                    }
+                    NavHost(
+                        navController = nav,
+                        startDestination = BrowseRoute,
+                        modifier = Modifier.weight(1f).fillMaxSize(),
+                    ) {
+                        composable<BrowseRoute> {
+                            BrowseScreen(
+                                container = container,
+                                onBack = { nav.popBackStack() },
+                                onOpenBook = { serverId, bookId -> nav.navigate(BookDetailRoute(serverId, bookId)) },
+                            )
+                        }
+                        composable<ServersRoute> {
+                            ServersScreen(
+                                container = container,
+                                onAddServer = { nav.navigate(AddServerRoute) },
+                                onEditServer = { serverId -> nav.navigate(EditServerRoute(serverId)) },
+                                onOpenServer = { serverId -> nav.navigate(BooksRoute(serverId)) },
+                                onBrowseAll = { nav.switchTopLevel(TopLevelDestination.HOME) },
+                            )
+                        }
+                        composable<SettingsRoute> { SettingsScreen() }
+                        composable<AddServerRoute> {
+                            AddServerScreen(
+                                container = container,
+                                editingId = null,
+                                onBack = { nav.popBackStack() },
+                                onSaved = { nav.popBackStack() },
+                            )
+                        }
+                        composable<EditServerRoute> { entry ->
+                            val route = entry.toRoute<EditServerRoute>()
+                            AddServerScreen(
+                                container = container,
+                                editingId = route.serverId,
+                                onBack = { nav.popBackStack() },
+                                onSaved = { nav.popBackStack() },
+                            )
+                        }
+                        composable<BooksRoute> { entry ->
+                            val route = entry.toRoute<BooksRoute>()
+                            BooksScreen(
+                                container = container,
+                                serverId = route.serverId,
+                                onBack = { nav.popBackStack() },
+                                onOpenBook = { bookId -> nav.navigate(BookDetailRoute(route.serverId, bookId)) },
+                            )
+                        }
+                        composable<BookDetailRoute> { entry ->
+                            val route = entry.toRoute<BookDetailRoute>()
+                            BookDetailScreen(
+                                container = container,
+                                serverId = route.serverId,
+                                bookId = route.bookId,
+                                onBack = { nav.popBackStack() },
+                                onOpenReader = onOpenReader,
+                            )
+                        }
+                    }
+                }
             }
         }
     }
+}
+
+private fun NavHostController.switchTopLevel(destination: TopLevelDestination) {
+    navigate(destination.toRoute()) {
+        popUpTo(graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+    }
+}
+
+private fun NavDestination?.isOnTopLevel(destination: TopLevelDestination): Boolean {
+    val route = destination.toRoute()
+    return this?.hierarchy?.any { it.hasRoute(route::class) } == true
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

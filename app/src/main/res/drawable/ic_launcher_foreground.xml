@@ -25,9 +25,13 @@
                           L80,32 L76,60
                           C 74,71 66,80 54,80 Z" />
 
-    <!-- muzzle / lower-face fill to seat the ribbon -->
+    <!-- muzzle / lower-face fill to seat the ribbon — Phase 4 (issue #115): the app's accent
+         color, previously the old Blue400 (#3D5A8A), now Aqua (the mockup's confirmed pick).
+         This is drawn on the fixed navy launcher background regardless of in-app theme, so it
+         uses the dark-ground Aqua step (AquaAccentDark in theme/Color.kt), same reasoning as
+         DarkColors using it against Navy900. -->
     <path
-        android:fillColor="#3D5A8A"
+        android:fillColor="#57C9B4"
         android:pathData="M33,61 C 35,71 43,79 54,79 C 65,79 73,71 75,61
                           C 67,67 61,70 54,70 C 47,70 41,67 33,61 Z" />
 

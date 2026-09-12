@@ -6,16 +6,19 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
+// Phase 4 (issue #115): primary/tertiary now carry the Aqua accent — ported verbatim from
+// core/designsystem/theme/Theme.kt (same issue); see that file's doc comment for why
+// background/surface/secondary are untouched.
 private val LightColors = lightColorScheme(
-    primary = Navy600,
+    primary = AquaAccentLight,
     onPrimary = Slate50,
     primaryContainer = Blue200,
-    onPrimaryContainer = Navy900,
+    onPrimaryContainer = AquaAccentLightHi,
     secondary = Slate500,
     onSecondary = Slate50,
     secondaryContainer = Slate200,
     onSecondaryContainer = Slate900,
-    tertiary = Blue400,
+    tertiary = AquaAccentLightHi,
     onTertiary = Slate50,
     background = Slate50,
     onBackground = Slate900,
@@ -29,15 +32,15 @@ private val LightColors = lightColorScheme(
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Blue300,
+    primary = AquaAccentDark,
     onPrimary = Navy900,
     primaryContainer = Navy700,
-    onPrimaryContainer = Slate100,
+    onPrimaryContainer = AquaAccentDarkHi,
     secondary = Slate300,
     onSecondary = Slate900,
     secondaryContainer = Slate700,
     onSecondaryContainer = Slate100,
-    tertiary = Blue200,
+    tertiary = AquaAccentDarkHi,
     onTertiary = Navy900,
     background = Navy900,
     onBackground = Slate100,
@@ -72,7 +75,8 @@ fun DexxiconTheme(
 ) {
     MaterialTheme(
         colorScheme = if (darkTheme) DarkColors else LightColors,
-        typography = DexxiconTypography,
+        typography = dexxiconTypography(),
+        shapes = DexxiconShapes,
         content = content,
     )
 }

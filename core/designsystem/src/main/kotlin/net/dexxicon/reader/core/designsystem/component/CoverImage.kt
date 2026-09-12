@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.DownloadDone
@@ -23,6 +22,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import net.dexxicon.reader.core.designsystem.theme.CoverShapeSmall
 import net.dexxicon.reader.core.model.ContentFormat
 
 /**
@@ -45,7 +45,9 @@ fun CoverImage(
         modifier
             .fillMaxWidth()
             .aspectRatio(COVER_ASPECT)
-            .clip(RoundedCornerShape(8.dp))
+            // Phase 4 (issue #115): the mockup's grid-tile cover radius (10px), not M3's
+            // default small-shape square-ish corner.
+            .clip(CoverShapeSmall)
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {

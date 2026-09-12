@@ -16,10 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
@@ -34,7 +30,6 @@ import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -114,42 +109,37 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
+                // Phase 4 (issue #115): the floating pill nav only shows in the compact
+                // (bottom-bar) layout — at >=600dp the destinations move into
+                // [PillNavigationRail] on the side instead, and the mini-player becomes
+                // full-width per the mockup's turn 4/5 (fold and tablet), not a floating pill.
                 Column {
                     if (miniPlayerVisible) {
                         MiniPlayer(
                             playback = playback,
+                            floating = !wide,
                             onOpen = { serverId, bookId -> navController.navigateToPlayer(serverId, bookId) },
                             onPlayPause = shellViewModel::playPause,
                             onDismiss = shellViewModel::dismiss,
                         )
                     }
                     if (showBottomBar) {
-                        NavigationBar {
-                            TopLevelDestination.entries.forEach { destination ->
-                                NavigationBarItem(
-                                    selected = destination == currentTopLevel,
-                                    onClick = { navController.switchTopLevel(destination) },
-                                    icon = { Icon(destination.icon, contentDescription = null) },
-                                    label = { Text(stringResource(destination.labelRes)) },
-                                )
-                            }
-                        }
+                        FloatingPillNavBar(
+                            destinations = TopLevelDestination.entries,
+                            current = currentTopLevel,
+                            onSelect = { navController.switchTopLevel(it) },
+                        )
                     }
                 }
             },
         ) { innerPadding ->
             Row(Modifier.fillMaxSize().padding(innerPadding)) {
                 if (showRail) {
-                    NavigationRail {
-                        TopLevelDestination.entries.forEach { destination ->
-                            NavigationRailItem(
-                                selected = destination == currentTopLevel,
-                                onClick = { navController.switchTopLevel(destination) },
-                                icon = { Icon(destination.icon, contentDescription = null) },
-                                label = { Text(stringResource(destination.labelRes)) },
-                            )
-                        }
-                    }
+                    PillNavigationRail(
+                        destinations = TopLevelDestination.entries,
+                        current = currentTopLevel,
+                        onSelect = { navController.switchTopLevel(it) },
+                    )
                 }
                 Column(Modifier.weight(1f).fillMaxSize()) {
                     signInPrompts.forEach { prompt ->
