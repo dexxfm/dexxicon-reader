@@ -46,7 +46,7 @@ The prototype's own `accent` prop defaults to **Aqua**, confirming PR #120's pic
 | Screen | Mockup artboard | Implementation | Phone | Fold | Tablet |
 |---|---|---|---|---|---|
 | Home | `Prototype` / `…light` | `feature/library/.../LibraryScreen.kt` | done — findings not captured | not started | not started |
-| Book detail | `Prototype` / `…light` | `feature/catalog/.../BookDetailScreen.kt` | **audited, see below** | not started | not started |
+| Book detail | `Prototype` / `…light` | `feature/catalog/.../BookDetailScreen.kt` | **audited — #121, #122** | not started | not started |
 | Library tab | `Prototype` / `…light` | `feature/catalog/.../BrowseScreen.kt`, `core/designsystem/.../BrowseControls.kt` | not started | not started | not started |
 | Settings | `Prototype` / `…light` | `feature/settings/.../SettingsScreen.kt` | not started | not started | not started |
 | Server browsing | — (check coverage) | — | not started | not started | not started |
@@ -65,6 +65,10 @@ The prototype's own `accent` prop defaults to **Aqua**, confirming PR #120's pic
 
 Compared the mockup's `isDetail` block against `feature/catalog/.../BookDetailScreen.kt`.
 PR #120 does **not** touch this file, so all of it is pre-Phase-4.
+
+Filed as [#121](https://github.com/dexxfm/dexxicon-reader/issues/121) (the reskin, findings 1 and
+3–8) and [#122](https://github.com/dexxfm/dexxicon-reader/issues/122) (finding 2, a functional
+gap rather than a reskin).
 
 **Structural**
 
@@ -120,7 +124,8 @@ PR #120 does **not** touch this file, so all of it is pre-Phase-4.
 
 **Also spotted, unrelated to the screen**
 
-12. `docs/styles.md` (added by PR #120) contradicts PR #120. Its Typography section says "the
+12. [#123](https://github.com/dexxfm/dexxicon-reader/issues/123) — `docs/styles.md` (added by
+    PR #120) contradicts PR #120. Its Typography section says "the
     mockup's Archivo display face was not adopted" and Known gaps repeats "Archivo … isn't
     bundled or wired in" — but that same PR bundles `archivo_{regular,semibold,extrabold}.ttf`
     on both platforms and rewrites `Type.kt`. The doc is stale as merged; fix it before it
