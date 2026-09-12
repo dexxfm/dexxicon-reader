@@ -38,10 +38,11 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
     val appContext = context.context.applicationContext
     val database = getDatabaseBuilder(appContext).finish(Dispatchers.IO)
     val credentialStore = CredentialStore(appContext, CryptoStore())
+    val appPreferences = AppPreferencesStore(PlatformStorageContext(appContext))
     val downloadRepository = AndroidDownloadRepository(
         context = appContext,
         dao = database.downloadDao(),
-        appPreferences = AppPreferencesStore(appContext),
+        appPreferences = appPreferences,
         io = Dispatchers.IO,
     )
     val syncStateStore = SyncStateStore(PlatformStorageContext(appContext))
@@ -55,6 +56,7 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
         syncStateStore = syncStateStore,
         koSyncRawDeviceId = deviceId(appContext),
         koSyncDeviceModel = Build.MODEL ?: "Android",
+        appPreferences = appPreferences,
     )
 }
 

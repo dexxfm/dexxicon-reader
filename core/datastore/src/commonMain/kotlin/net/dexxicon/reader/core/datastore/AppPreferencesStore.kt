@@ -1,19 +1,16 @@
 package net.dexxicon.reader.core.datastore
 
-import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import net.dexxicon.reader.core.model.BookViewMode
-import javax.inject.Inject
-import javax.inject.Singleton
+import okio.Path.Companion.toPath
 
 enum class AppTheme { SYSTEM, LIGHT, DARK }
 
@@ -40,12 +37,31 @@ data class AppPreferences(
     val coverTapAction: CoverTapAction = CoverTapAction.OPEN_DETAILS,
 )
 
-private val Context.appPrefsDataStore: DataStore<Preferences> by preferencesDataStore("app_prefs")
+/**
+ * Phase 4 Stage D (issue #133) — moved to commonMain so `shared/library/LibraryState` can
+ * read `browseView`/`coverTapAction` directly (and `AppContainer` can build it for
+ * `AndroidDownloadRepository`, which already took one). `@Inject`/`@Singleton` dropped, same
+ * as every other Stage B1/C conversion; the previous Android-only `Context.preferencesDataStore`
+ * delegate is replaced with [appPreferencesFilePath] (expect, one `actual` per platform) plus
+ * the same [dataStoreFor] memoization [SyncStateStore] uses.
+ *
+ * That memoization matters more here than it first looks: the old `Context.preferencesDataStore`
+ * delegate had its *own* built-in per-`Context` instance cache, so constructing this class
+ * twice (once from `:app`'s Hilt graph, once from `:shared`'s `AppContainer`) was accidentally
+ * safe. `PreferenceDataStoreFactory.createWithPath` has no such cache — without memoizing by
+ * resolved path here, this class would hit the exact crash Stage C's `SyncStateStore` did
+ * (`IllegalStateException`: two `DataStore<Preferences>` instances open on the same file).
+ *
+ * [appPreferencesFilePath]'s Android `actual` deliberately reproduces
+ * `Context.preferencesDataStore("app_prefs")`'s original file location
+ * (`filesDir/datastore/app_prefs.preferences_pb`) rather than [SyncStateStore]'s flatter
+ * `filesDir/sync_state.preferences_pb` convention — this file holds real, already-populated
+ * user preferences (theme, download limits, view mode), and getting the path wrong would
+ * silently reset them all to defaults on upgrade.
+ */
+class AppPreferencesStore(context: PlatformStorageContext) {
+    private val dataStore: DataStore<Preferences> = dataStoreFor(appPreferencesFilePath(context))
 
-@Singleton
-class AppPreferencesStore @Inject constructor(
-    @ApplicationContext private val context: Context,
-) {
     private object Keys {
         val THEME = stringPreferencesKey("theme")
         val WIFI_ONLY = booleanPreferencesKey("downloads_wifi_only")
@@ -56,7 +72,7 @@ class AppPreferencesStore @Inject constructor(
         val COVER_TAP_ACTION = stringPreferencesKey("cover_tap_action")
     }
 
-    val preferences: Flow<AppPreferences> = context.appPrefsDataStore.data.map { p ->
+    val preferences: Flow<AppPreferences> = dataStore.data.map { p ->
         val default = p.mode(Keys.BOOK_VIEW_DEFAULT) ?: BookViewMode.GRID
         AppPreferences(
             theme = p[Keys.THEME]?.let { runCatching { AppTheme.valueOf(it) }.getOrNull() }
@@ -81,21 +97,21 @@ class AppPreferencesStore @Inject constructor(
         this[key]?.let { runCatching { BookViewMode.valueOf(it) }.getOrNull() }
 
     suspend fun setTheme(theme: AppTheme) {
-        context.appPrefsDataStore.edit { it[Keys.THEME] = theme.name }
+        dataStore.edit { it[Keys.THEME] = theme.name }
     }
 
     suspend fun setDownloadsWifiOnly(enabled: Boolean) {
-        context.appPrefsDataStore.edit { it[Keys.WIFI_ONLY] = enabled }
+        dataStore.edit { it[Keys.WIFI_ONLY] = enabled }
     }
 
     /** [bytes] null or <= 0 removes the cap. */
     suspend fun setDownloadLimit(bytes: Long?) {
-        context.appPrefsDataStore.edit { it[Keys.DOWNLOAD_LIMIT] = bytes?.coerceAtLeast(0L) ?: 0L }
+        dataStore.edit { it[Keys.DOWNLOAD_LIMIT] = bytes?.coerceAtLeast(0L) ?: 0L }
     }
 
     /** Change the Settings default and snap every screen's current layout back to it. */
     suspend fun setBookViewDefault(mode: BookViewMode) {
-        context.appPrefsDataStore.edit {
+        dataStore.edit {
             it[Keys.BOOK_VIEW_DEFAULT] = mode.name
             it.remove(Keys.BROWSE_VIEW)
             it.remove(Keys.CATALOG_VIEW)
@@ -104,15 +120,30 @@ class AppPreferencesStore @Inject constructor(
 
     /** Browse's own layout toggle — leaves the Settings default alone. */
     suspend fun setBrowseView(mode: BookViewMode) {
-        context.appPrefsDataStore.edit { it[Keys.BROWSE_VIEW] = mode.name }
+        dataStore.edit { it[Keys.BROWSE_VIEW] = mode.name }
     }
 
     /** A server catalog's own layout toggle — leaves the Settings default alone. */
     suspend fun setCatalogView(mode: BookViewMode) {
-        context.appPrefsDataStore.edit { it[Keys.CATALOG_VIEW] = mode.name }
+        dataStore.edit { it[Keys.CATALOG_VIEW] = mode.name }
     }
 
     suspend fun setCoverTapAction(action: CoverTapAction) {
-        context.appPrefsDataStore.edit { it[Keys.COVER_TAP_ACTION] = action.name }
+        dataStore.edit { it[Keys.COVER_TAP_ACTION] = action.name }
+    }
+
+    private companion object {
+        /** Same reasoning as [SyncStateStore]'s own `dataStores` cache — duplicated rather
+         * than shared, since two call sites don't justify a shared abstraction. */
+        private val dataStores = mutableMapOf<String, DataStore<Preferences>>()
+
+        private fun dataStoreFor(path: String): DataStore<Preferences> =
+            dataStores.getOrPut(path) {
+                PreferenceDataStoreFactory.createWithPath(produceFile = { path.toPath() })
+            }
     }
 }
+
+/** Opaque per-platform handle [appPreferencesFilePath] needs to locate the preferences file —
+ * see [PlatformStorageContext] (shared with [SyncStateStore]). */
+expect fun appPreferencesFilePath(context: PlatformStorageContext): String
