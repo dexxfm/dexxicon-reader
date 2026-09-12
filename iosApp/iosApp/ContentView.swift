@@ -41,8 +41,14 @@ struct ComposeView: UIViewControllerRepresentable {
                 // there's nothing format-specific left to do here.
                 let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga)
                 hostVC.present(reader, animated: true)
+            case .pdf:
+                // issue #112: backed by Apple's own PDFKit via Readium's
+                // PDFNavigatorViewController — no bundled native PDF library needed, unlike
+                // Android's PDFium-based reader.
+                let reader = PdfReaderViewController.presentable(url: bookUrl, authHeader: authHeader)
+                hostVC.present(reader, animated: true)
             default:
-                // PDF/audiobooks aren't built yet (see the "iOS Reading Support" proposal's
+                // Audiobooks aren't built yet (see the "iOS Reading Support" proposal's
                 // sequencing) — same placeholder #99 proved the plumbing with.
                 notYetSupported("Reading \(format.name) books on iOS isn't built yet.")
             }
