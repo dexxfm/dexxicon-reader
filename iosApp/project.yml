@@ -19,9 +19,14 @@ settings:
 # issue #107: CBR (RAR) comics need the same two-step normalize-to-CBZ Android's
 # core/reader/ComicArchiveNormalizer.kt already does (Readium's format sniffing is ZIP-only on
 # both toolkits) — Unrar.swift (mtgto, MIT, wraps the same official RARLAB unrar source
-# UnrarKit uses) reads the RAR, ZIPFoundation (weichsel, MIT, explicit iOS 9+ platform
-# support) writes the resulting CBZ, since Foundation has no ZIP *writer* of its own (only
-# Readium's ZIP *reader*, already pulled in transitively).
+# UnrarKit uses) reads the RAR; writing the resulting CBZ reuses readium/ZIPFoundation (the
+# exact fork ReadiumSwiftToolkit above already depends on for its own ZIP *reading*, product
+# ReadiumZIPFoundation) rather than the upstream weichsel/ZIPFoundation project it forked
+# from. A real ios-ci run caught this the hard way: depending on weichsel/ZIPFoundation
+# directly fails SPM resolution outright — SwiftPM identifies packages by the git URL's last
+# path component, not the org, so weichsel/ZIPFoundation.git and readium/ZIPFoundation.git
+# collide as the same package identity with incompatible version constraints. Depending on
+# Readium's own fork (same URL/version it already resolves transitively) is the fix.
 packages:
   ReadiumSwiftToolkit:
     url: https://github.com/readium/swift-toolkit.git
@@ -30,8 +35,8 @@ packages:
     url: https://github.com/mtgto/Unrar.swift.git
     exactVersion: 0.5.4
   ZIPFoundation:
-    url: https://github.com/weichsel/ZIPFoundation.git
-    exactVersion: 0.9.20
+    url: https://github.com/readium/ZIPFoundation.git
+    exactVersion: 3.0.1
 
 targets:
   iosApp:
@@ -61,7 +66,7 @@ targets:
       - package: Unrar
         product: Unrar
       - package: ZIPFoundation
-        product: ZIPFoundation
+        product: ReadiumZIPFoundation
     preBuildScripts:
       - name: Build the shared Kotlin framework
         basedOnDependencyAnalysis: false
