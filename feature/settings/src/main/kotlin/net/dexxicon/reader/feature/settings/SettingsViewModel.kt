@@ -14,6 +14,7 @@ import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.datastore.AppPreferences
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.AppTheme
+import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.datastore.PlayerPreferences
 import net.dexxicon.reader.core.datastore.PlayerPreferencesStore
 import net.dexxicon.reader.core.model.BookViewMode
@@ -87,6 +88,10 @@ class SettingsViewModel @Inject constructor(
 
     fun setBookViewDefault(mode: BookViewMode) {
         viewModelScope.launch { store.setBookViewDefault(mode) }
+    }
+
+    fun setCoverTapAction(action: CoverTapAction) {
+        viewModelScope.launch { store.setCoverTapAction(action) }
     }
 
     /** [bytes] null = no limit. */

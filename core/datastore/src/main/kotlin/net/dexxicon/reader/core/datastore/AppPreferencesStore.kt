@@ -17,6 +17,11 @@ import javax.inject.Singleton
 
 enum class AppTheme { SYSTEM, LIGHT, DARK }
 
+/** What tapping a book cover does in the per-server catalog and the merged Browse screen.
+ * Home's Continue/On Deck shelves always jump straight to the reader regardless of this —
+ * they're a separate, deliberate shortcut, not a generic "cover tap." */
+enum class CoverTapAction { OPEN_DETAILS, OPEN_BOOK }
+
 /** 10 GB — the out-of-the-box cap on downloaded media. */
 const val DEFAULT_DOWNLOAD_LIMIT_BYTES: Long = 10L * 1024 * 1024 * 1024
 
@@ -31,6 +36,8 @@ data class AppPreferences(
     val browseView: BookViewMode = BookViewMode.GRID,
     /** A server catalog's current layout — its own toggle, falls back to [bookViewDefault]. */
     val catalogView: BookViewMode = BookViewMode.GRID,
+    /** What tapping a cover does in the catalog / Browse screens. */
+    val coverTapAction: CoverTapAction = CoverTapAction.OPEN_DETAILS,
 )
 
 private val Context.appPrefsDataStore: DataStore<Preferences> by preferencesDataStore("app_prefs")
@@ -46,6 +53,7 @@ class AppPreferencesStore @Inject constructor(
         val BOOK_VIEW_DEFAULT = stringPreferencesKey("book_view")
         val BROWSE_VIEW = stringPreferencesKey("book_view_browse")
         val CATALOG_VIEW = stringPreferencesKey("book_view_catalog")
+        val COVER_TAP_ACTION = stringPreferencesKey("cover_tap_action")
     }
 
     val preferences: Flow<AppPreferences> = context.appPrefsDataStore.data.map { p ->
@@ -63,6 +71,9 @@ class AppPreferencesStore @Inject constructor(
             bookViewDefault = default,
             browseView = p.mode(Keys.BROWSE_VIEW) ?: default,
             catalogView = p.mode(Keys.CATALOG_VIEW) ?: default,
+            coverTapAction = p[Keys.COVER_TAP_ACTION]
+                ?.let { runCatching { CoverTapAction.valueOf(it) }.getOrNull() }
+                ?: CoverTapAction.OPEN_DETAILS,
         )
     }
 
@@ -99,5 +110,9 @@ class AppPreferencesStore @Inject constructor(
     /** A server catalog's own layout toggle — leaves the Settings default alone. */
     suspend fun setCatalogView(mode: BookViewMode) {
         context.appPrefsDataStore.edit { it[Keys.CATALOG_VIEW] = mode.name }
+    }
+
+    suspend fun setCoverTapAction(action: CoverTapAction) {
+        context.appPrefsDataStore.edit { it[Keys.COVER_TAP_ACTION] = action.name }
     }
 }

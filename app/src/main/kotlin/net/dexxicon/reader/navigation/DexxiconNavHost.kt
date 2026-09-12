@@ -79,6 +79,14 @@ fun DexxiconNavHost(
         composable<TopLevelRoute.Browse> {
             BrowseScreen(
                 onOpenBook = { book -> navController.navigateToBookDetail(book) },
+                onOpenReader = { serverId, bookId, format ->
+                    when (format) {
+                        ContentFormat.COMIC -> navController.navigateToComicReader(serverId, bookId)
+                        ContentFormat.PDF -> navController.navigateToPdfReader(serverId, bookId)
+                        ContentFormat.AUDIOBOOK -> navController.navigateToPlayer(serverId, bookId)
+                        else -> navController.navigateToEpubReader(serverId, bookId)
+                    }
+                },
             )
         }
 

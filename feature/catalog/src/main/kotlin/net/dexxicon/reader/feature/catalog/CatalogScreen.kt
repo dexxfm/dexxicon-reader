@@ -57,9 +57,11 @@ import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.ContentFilterChips
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.component.ViewModeToggle
+import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.BookViewMode
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingStatus
 
@@ -78,12 +80,23 @@ private data class CatalogItemActions(
 fun CatalogScreen(
     onBack: () -> Unit,
     onOpenBook: (serverId: String, bookId: String) -> Unit,
+    onOpenReader: (serverId: String, bookId: String, format: ContentFormat) -> Unit = { _, _, _ -> },
     viewModel: CatalogViewModel = hiltViewModel(),
 ) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val overlays by viewModel.overlays.collectAsStateWithLifecycle()
     val gridState = rememberLazyGridState()
     val listState = rememberLazyListState()
+
+    // Issue #124 — a cover's tap target either opens Book Detail (today's default) or jumps
+    // straight into the reader, per the Settings > "Tapping a cover" preference. Reader-format
+    // routing itself stays centralized in the nav graph (onOpenReader), same shape
+    // BookDetailScreen's own onRead already uses — this screen just decides which callback a
+    // tap invokes.
+    fun onTapCover(book: BookSummary) = when (state.coverTapAction) {
+        CoverTapAction.OPEN_DETAILS -> onOpenBook(book.serverId, book.id)
+        CoverTapAction.OPEN_BOOK -> onOpenReader(book.serverId, book.id, book.format)
+    }
 
     val shouldLoadMore by remember {
         derivedStateOf {
@@ -169,7 +182,7 @@ fun CatalogScreen(
                                 book = book,
                                 progress = overlays.progress[book.id],
                                 downloaded = book.id in overlays.downloaded,
-                                onClick = { onOpenBook(book.serverId, book.id) },
+                                onClick = { onTapCover(book) },
                                 actions = actionsFor(book),
                             )
                         }
@@ -184,7 +197,7 @@ fun CatalogScreen(
                                 book = book,
                                 progress = overlays.progress[book.id],
                                 downloaded = book.id in overlays.downloaded,
-                                onClick = { onOpenBook(book.serverId, book.id) },
+                                onClick = { onTapCover(book) },
                                 actions = actionsFor(book),
                             )
                             HorizontalDivider()
