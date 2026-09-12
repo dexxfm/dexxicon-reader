@@ -31,15 +31,14 @@ import net.dexxicon.reader.core.designsystem.theme.Pill
 import net.dexxicon.reader.core.media.PlayerUiState
 
 /**
- * Phase 4 (issue #115). [floating] mirrors the mockup's own split: a floating translucent
- * pill above the compact bottom nav (`<600dp`), or a full-width bar flush with the rail at
- * `>=600dp` (turns 4/5) — same content and controls either way, just the outer [Surface]'s
- * shape, color and margin change.
+ * Phase 4 (issue #115) — always the floating translucent pill, at every width. The mockup's
+ * own turn 4/5 (fold/tablet) shows a full-width bar instead once the rail replaces the
+ * bottom nav; overridden on request to keep the pill treatment everywhere rather than
+ * matching that split.
  */
 @Composable
 fun MiniPlayer(
     playback: PlayerUiState,
-    floating: Boolean,
     onOpen: (serverId: String, bookId: String) -> Unit,
     onPlayPause: () -> Unit,
     onDismiss: () -> Unit,
@@ -48,73 +47,62 @@ fun MiniPlayer(
     val fraction = playback.durationMs.takeIf { it > 0 }
         ?.let { (playback.positionMs.toFloat() / it).coerceIn(0f, 1f) }
 
-    val content: @Composable () -> Unit = {
-        Column {
-            // The mockup's floating pill mini-player (phone) actually omits this bar, but
-            // the user asked to keep it on both the floating and full-width variants.
-            if (fraction != null) {
-                LinearProgressIndicator(
-                    progress = { fraction },
-                    modifier = Modifier.fillMaxWidth().height(2.dp),
-                )
-            }
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable { onOpen(book.serverId, book.bookId) }
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.size(36.dp).clip(CoverShapeSmall)) {
-                    book.coverUrl?.let {
-                        AsyncImage(model = it, contentDescription = null, modifier = Modifier.size(36.dp))
-                    }
-                }
-                Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
-                    Text(
-                        book.title,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+    Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Surface(
+            shape = Pill,
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
+            shadowElevation = 6.dp,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+            modifier = Modifier.clip(Pill),
+        ) {
+            Column {
+                if (fraction != null) {
+                    LinearProgressIndicator(
+                        progress = { fraction },
+                        modifier = Modifier.fillMaxWidth().height(2.dp),
                     )
-                    playback.currentChapterTitle?.let {
+                }
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable { onOpen(book.serverId, book.bookId) }
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box(Modifier.size(36.dp).clip(CoverShapeSmall)) {
+                        book.coverUrl?.let {
+                            AsyncImage(model = it, contentDescription = null, modifier = Modifier.size(36.dp))
+                        }
+                    }
+                    Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                         Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            book.title,
+                            style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                        playback.currentChapterTitle?.let {
+                            Text(
+                                it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
-                }
-                IconButton(onClick = onPlayPause) {
-                    Icon(
-                        if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                        contentDescription = if (playback.isPlaying) "Pause" else "Play",
-                        tint = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                IconButton(onClick = onDismiss) {
-                    Icon(Icons.Filled.Close, contentDescription = "Close player")
+                    IconButton(onClick = onPlayPause) {
+                        Icon(
+                            if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (playback.isPlaying) "Pause" else "Play",
+                            tint = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Filled.Close, contentDescription = "Close player")
+                    }
                 }
             }
         }
-    }
-
-    if (floating) {
-        Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-            Surface(
-                shape = Pill,
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.9f),
-                shadowElevation = 6.dp,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-                modifier = Modifier.clip(Pill),
-            ) { content() }
-        }
-    } else {
-        Surface(
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.fillMaxWidth(),
-        ) { content() }
     }
 }

@@ -112,8 +112,9 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
             bottomBar = {
                 // Phase 4 (issue #115): the floating pill nav only shows in the compact
                 // (bottom-bar) layout — at >=600dp the destinations move into
-                // [PillNavigationRail] on the side instead, and the mini-player becomes
-                // full-width per the mockup's turn 4/5 (fold and tablet), not a floating pill.
+                // [PillNavigationRail] on the side instead. The mini-player stays the
+                // floating pill at every width (see MiniPlayer's own doc comment for why
+                // that's an override of the mockup's own full-width-at-wide behavior).
                 //
                 // navigationBarsPadding() here is load-bearing, not decorative: this
                 // Scaffold's contentWindowInsets is zeroed (each screen's own TopAppBar/
@@ -126,7 +127,6 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
                     if (miniPlayerVisible) {
                         MiniPlayer(
                             playback = playback,
-                            floating = !wide,
                             onOpen = { serverId, bookId -> navController.navigateToPlayer(serverId, bookId) },
                             onPlayPause = shellViewModel::playPause,
                             onDismiss = shellViewModel::dismiss,
