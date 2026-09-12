@@ -53,9 +53,9 @@ import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.shared.catalog.BookDetailScreen
 import net.dexxicon.reader.shared.catalog.BooksScreen
-import net.dexxicon.reader.shared.catalog.BrowseScreen
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.HomeScreen
+import net.dexxicon.reader.shared.library.LibraryScreen
 import net.dexxicon.reader.shared.nav.TopLevelDestination
 import net.dexxicon.reader.shared.servers.AddServerState
 import net.dexxicon.reader.shared.servers.ServersState
@@ -63,19 +63,19 @@ import net.dexxicon.reader.shared.servers.SsoState
 import net.dexxicon.reader.shared.servers.TestState
 import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 
-// Phase 2: the real app shell — a servers list (with a "no servers yet" empty state) behind a
-// NavHost, an add-server form (native login, Slice 1 issue #62; SSO WebView, Slice 2 issue
-// #70), and read-only catalog browsing (issue #78) — wired to the Phase 1/2 data layer via
-// [AppContainer]. Renders identically on Android ([SharedPreviewActivity], debug-only) and
-// iOS ([MainViewController]).
+// Phase 2: the real app shell — a servers list (with a "no servers yet" empty state, now
+// reached from Settings — issue #133) behind a NavHost, an add-server form (native login,
+// Slice 1 issue #62; SSO WebView, Slice 2 issue #70), and read-only catalog browsing (issue
+// #78) — wired to the Phase 1/2 data layer via [AppContainer]. Renders identically on Android
+// ([SharedPreviewActivity], debug-only) and iOS ([MainViewController]).
 //
 // Phase 3 (issue #99): actually reading a book hands off to [onOpenReader] — see
 // [net.dexxicon.reader.shared.OnOpenReader]'s doc comment for why this is a plain callback
 // the platform host supplies, not a screen this NavHost owns itself.
-@Serializable private object ServersRoute
+@Serializable private object ManageServersRoute
 @Serializable private object AddServerRoute
 @Serializable private data class EditServerRoute(val serverId: String)
-@Serializable private object BrowseRoute
+@Serializable private object LibraryRoute
 @Serializable private object HomeRoute
 @Serializable private object SettingsRoute
 @Serializable private data class BooksRoute(val serverId: String)
@@ -85,17 +85,16 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 private val RAIL_BREAKPOINT = 600.dp
 
 /**
- * Phase 4 Stage C (issue #130) — maps [TopLevelDestination] onto this NavHost's actual routes.
- * Home lands on [HomeRoute] ([net.dexxicon.reader.shared.home.HomeScreen] — Continue reading/
- * listening, On Deck, Downloaded, the same shelves as native's Home tab), replacing the
- * [BrowseRoute] stand-in Stage C's predecessor used here; Library lands on [ServersRoute] (pick
- * a server, then browse its shelves via [BooksScreen] — also where server add/edit/remove
- * already lives, see [SettingsScreen]'s doc comment for why that isn't duplicated under
- * Settings too); Settings is the new [SettingsRoute].
+ * Phase 4 Stage D (issue #133) — maps [TopLevelDestination] onto this NavHost's actual routes.
+ * Home lands on [HomeRoute] (Continue reading/listening, On Deck, Downloaded); Library lands
+ * on [LibraryRoute] ([net.dexxicon.reader.shared.library.LibraryScreen] — the merged,
+ * de-duplicated grid across every server, matching native's Library tab), replacing the
+ * server-list-first [ManageServersRoute] Stage D's predecessor used here — server management
+ * moved to Settings instead (see [SettingsScreen]'s doc comment); Settings is [SettingsRoute].
  */
 private fun TopLevelDestination.toRoute(): Any = when (this) {
     TopLevelDestination.HOME -> HomeRoute
-    TopLevelDestination.LIBRARY -> ServersRoute
+    TopLevelDestination.LIBRARY -> LibraryRoute
     TopLevelDestination.SETTINGS -> SettingsRoute
 }
 
@@ -154,23 +153,25 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
                                 onOpenReader = onOpenReader,
                             )
                         }
-                        composable<BrowseRoute> {
-                            BrowseScreen(
+                        composable<LibraryRoute> {
+                            LibraryScreen(
                                 container = container,
-                                onBack = { nav.popBackStack() },
-                                onOpenBook = { serverId, bookId -> nav.navigate(BookDetailRoute(serverId, bookId)) },
+                                onOpenBook = { book -> nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId)) },
+                                onOpenReader = onOpenReader,
                             )
                         }
-                        composable<ServersRoute> {
+                        composable<ManageServersRoute> {
                             ServersScreen(
                                 container = container,
+                                onBack = { nav.popBackStack() },
                                 onAddServer = { nav.navigate(AddServerRoute) },
                                 onEditServer = { serverId -> nav.navigate(EditServerRoute(serverId)) },
                                 onOpenServer = { serverId -> nav.navigate(BooksRoute(serverId)) },
-                                onBrowseAll = { nav.switchTopLevel(TopLevelDestination.HOME) },
                             )
                         }
-                        composable<SettingsRoute> { SettingsScreen() }
+                        composable<SettingsRoute> {
+                            SettingsScreen(onManageServers = { nav.navigate(ManageServersRoute) })
+                        }
                         composable<AddServerRoute> {
                             AddServerScreen(
                                 container = container,
@@ -231,10 +232,10 @@ private fun NavDestination?.isOnTopLevel(destination: TopLevelDestination): Bool
 @Composable
 private fun ServersScreen(
     container: AppContainer,
+    onBack: () -> Unit,
     onAddServer: () -> Unit,
     onEditServer: (serverId: String) -> Unit,
     onOpenServer: (serverId: String) -> Unit,
-    onBrowseAll: () -> Unit,
 ) {
     val servers by container.serverRepository.servers.collectAsState(initial = null)
     val scope = rememberCoroutineScope()
@@ -244,8 +245,8 @@ private fun ServersScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Dexxicon") },
-                actions = { TextButton(onClick = onBrowseAll) { Text("Browse all") } },
+                title = { Text("Servers") },
+                navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
             )
         },
     ) { padding ->

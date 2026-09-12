@@ -6,6 +6,7 @@ import kotlinx.coroutines.Dispatchers
 import net.dexxicon.reader.core.data.download.IosDownloadRepository
 import net.dexxicon.reader.core.database.finish
 import net.dexxicon.reader.core.database.getDatabaseBuilder
+import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.PlatformStorageContext
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.security.CredentialStore
@@ -38,6 +39,7 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
         // comment.
         downloadRepository = IosDownloadRepository(),
         syncStateStore = SyncStateStore(PlatformStorageContext()),
+        appPreferences = AppPreferencesStore(PlatformStorageContext()),
         // identifierForVendor resets if every app from this vendor is uninstalled, unlike
         // Android's ANDROID_ID — acceptable here: a fresh kosync device id just looks like a
         // new device to KOReader's server, same as reinstalling on Android would after a

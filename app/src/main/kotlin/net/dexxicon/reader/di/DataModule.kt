@@ -1,9 +1,11 @@
 package net.dexxicon.reader.di
 
+import android.content.Context
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import net.dexxicon.reader.core.common.di.ApplicationScope
@@ -16,6 +18,8 @@ import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.media.MediaLibraryContentSourceImpl
 import net.dexxicon.reader.core.data.media.PlaybackProgressSinkImpl
 import net.dexxicon.reader.core.database.dao.ServerDao
+import net.dexxicon.reader.core.datastore.AppPreferencesStore
+import net.dexxicon.reader.core.datastore.PlatformStorageContext
 import net.dexxicon.reader.core.media.MediaLibraryContentSource
 import net.dexxicon.reader.core.media.PlaybackProgressSink
 import net.dexxicon.reader.core.network.AuthHeaderProvider
@@ -75,5 +79,12 @@ abstract class DataModule {
             @ApplicationScope scope: CoroutineScope,
         ): AuthHeaderProviderImpl =
             AuthHeaderProviderImpl(serverDao, credentialStore, tokenManager, scope)
+
+        // AppPreferencesStore (issue #133) moved to commonMain the same way SyncStateStore
+        // did in Stage B1 — @Inject/@Singleton dropped, so it needs an explicit @Provides here.
+        @Provides
+        @Singleton
+        fun provideAppPreferencesStore(@ApplicationContext context: Context): AppPreferencesStore =
+            AppPreferencesStore(PlatformStorageContext(context))
     }
 }

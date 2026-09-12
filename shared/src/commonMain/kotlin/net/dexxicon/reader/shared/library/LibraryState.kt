@@ -1,8 +1,6 @@
-package net.dexxicon.reader.feature.catalog
+package net.dexxicon.reader.shared.library
 
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,11 +17,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
-import net.dexxicon.reader.core.data.BookActions
-import net.dexxicon.reader.core.data.CatalogRepository
-import net.dexxicon.reader.core.data.ReadingProgressRepository
-import net.dexxicon.reader.core.data.download.DownloadRepository
-import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.BookSort
@@ -31,9 +24,11 @@ import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.ContentFilter
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingStatus
-import javax.inject.Inject
+import net.dexxicon.reader.shared.OnOpenReader
+import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.openReader
 
-data class BrowseUiState(
+data class LibraryUiState(
     val query: String = "",
     val sort: BookSort = BookSort.RECENT,
     val filter: ContentFilter = ContentFilter.ALL,
@@ -47,24 +42,37 @@ data class BrowseUiState(
     val error: String? = null,
 )
 
+/** Per-book overlays keyed by "serverId::bookId" — a row matches on any of its copies. */
+data class BookOverlays(
+    val progress: Map<String, Float> = emptyMap(),
+    val downloaded: Set<String> = emptySet(),
+)
+
+/**
+ * Phase 4 Stage D (issue #133) — the one Library state class, replacing native's Hilt
+ * `BrowseViewModel` (`feature/catalog/BrowseViewModel.kt`). Ports its logic verbatim: the
+ * merged, de-duplicated grid across every configured server — debounced search, sort,
+ * content-format filter, a persisted grid/list toggle, capped auto-paging past
+ * filter-empty pages, and the same per-book progress/download overlays. Built from
+ * [AppContainer] + a [CoroutineScope], constructed once (same shape as
+ * [net.dexxicon.reader.shared.home.HomeState] — no per-item key).
+ *
+ * Replaces `:shared`'s previous thin `catalog/BrowseState.kt` (issue #82 MVP — no filter
+ * chips, no infinite scroll, no context menu, and a since-superseded "Continue reading"
+ * on-deck shelf duplicating what Stage C's Home shelves already do properly).
+ */
 @OptIn(FlowPreview::class)
-@HiltViewModel
-class BrowseViewModel @Inject constructor(
-    private val catalogRepository: CatalogRepository,
-    private val bookActions: BookActions,
-    private val appPreferences: AppPreferencesStore,
-    progressRepository: ReadingProgressRepository,
-    downloadRepository: DownloadRepository,
-) : ViewModel() {
+class LibraryState(
+    private val container: AppContainer,
+    private val scope: CoroutineScope,
+) {
+    private val _uiState = MutableStateFlow(LibraryUiState())
+    val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
 
-    private val _uiState = MutableStateFlow(BrowseUiState())
-    val uiState: StateFlow<BrowseUiState> = _uiState.asStateFlow()
-
-    /** Per-book overlays keyed by "serverId::bookId" — a row matches on any of its copies. */
     val overlays: StateFlow<BookOverlays> =
         combine(
-            progressRepository.observeAll(),
-            downloadRepository.downloads,
+            container.progressRepository.observeAll(),
+            container.downloadRepository.downloads,
         ) { progress, downloads ->
             BookOverlays(
                 progress = progress
@@ -75,7 +83,7 @@ class BrowseViewModel @Inject constructor(
                     .map { "${it.serverId}::${it.bookId}" }
                     .toSet(),
             )
-        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), BookOverlays())
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), BookOverlays())
 
     private var nextPage = 0
 
@@ -85,17 +93,17 @@ class BrowseViewModel @Inject constructor(
 
     init {
         reload()
-        viewModelScope.launch {
-            appPreferences.preferences.map { it.browseView }.distinctUntilChanged().collect { mode ->
+        scope.launch {
+            container.appPreferences.preferences.map { it.browseView }.distinctUntilChanged().collect { mode ->
                 _uiState.update { it.copy(viewMode = mode) }
             }
         }
-        viewModelScope.launch {
-            appPreferences.preferences.map { it.coverTapAction }.distinctUntilChanged().collect { action ->
+        scope.launch {
+            container.appPreferences.preferences.map { it.coverTapAction }.distinctUntilChanged().collect { action ->
                 _uiState.update { it.copy(coverTapAction = action) }
             }
         }
-        viewModelScope.launch {
+        scope.launch {
             _uiState.map { it.query }
                 .distinctUntilChanged()
                 .drop(1)
@@ -103,8 +111,8 @@ class BrowseViewModel @Inject constructor(
                 .collect { reload() }
         }
         // A server added (or removed) in Settings must show up here without a manual refresh.
-        viewModelScope.launch {
-            catalogRepository.serverIds
+        scope.launch {
+            container.catalogRepository.serverIds
                 .distinctUntilChanged()
                 .drop(1)
                 .collect { reload() }
@@ -125,18 +133,32 @@ class BrowseViewModel @Inject constructor(
         reload()
     }
 
-    /** Flips Browse's own layout — the Settings default is untouched. */
+    /** Flips Library's own layout — the Settings default is untouched. */
     fun toggleViewMode() {
         val next = if (_uiState.value.viewMode == BookViewMode.LIST) BookViewMode.GRID else BookViewMode.LIST
-        viewModelScope.launch { appPreferences.setBrowseView(next) }
+        scope.launch { container.appPreferences.setBrowseView(next) }
     }
 
-    fun markRead(copies: List<Pair<String, String>>) = bookActions.markFinished(copies, true)
-    fun markUnread(copies: List<Pair<String, String>>) = bookActions.markFinished(copies, false)
+    fun markRead(copies: List<Pair<String, String>>) = container.bookActions.markFinished(copies, true)
+    fun markUnread(copies: List<Pair<String, String>>) = container.bookActions.markFinished(copies, false)
     fun setReadingStatus(copies: List<Pair<String, String>>, status: ReadingStatus) =
-        bookActions.setReadingStatus(copies, status)
+        container.bookActions.setReadingStatus(copies, status)
     fun downloadOrRemove(serverId: String, bookId: String, status: DownloadStatus?) =
-        bookActions.downloadOrRemove(serverId, bookId, status)
+        container.bookActions.downloadOrRemove(serverId, bookId, status)
+
+    /** A cover tap when [LibraryUiState.coverTapAction] is `OPEN_BOOK` — unlike Book
+     * Detail's "Read" button, a grid card only has [AggregatedBook]'s lightweight metadata,
+     * so this fetches the full detail first, then hands off through the same
+     * [net.dexxicon.reader.shared.openReader] helper every other tap-to-read site uses. */
+    fun openBook(book: AggregatedBook, onOpenReader: OnOpenReader) {
+        val serverId = book.primary.serverId
+        val bookId = book.primary.bookId
+        scope.launch {
+            val detail = (container.catalogRepository.detail(serverId, bookId) as? Outcome.Success)
+                ?.value ?: return@launch
+            container.openReader(detail, serverId, bookId, onOpenReader)
+        }
+    }
 
     /** Auto-paging past filter-empty pages is capped so a filter with no matches can't
      *  crawl an entire catalogue. */
@@ -168,10 +190,10 @@ class BrowseViewModel @Inject constructor(
         fetchPage(replace = false)
     }
 
-    private fun fetchPage(replace: Boolean): Job = viewModelScope.launch {
+    private fun fetchPage(replace: Boolean): Job = scope.launch {
         val state = _uiState.value
         when (
-            val result = catalogRepository.allBooks(
+            val result = container.catalogRepository.allBooks(
                 query = state.query.takeIf { it.isNotBlank() },
                 sort = state.sort,
                 page = nextPage,

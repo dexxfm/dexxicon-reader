@@ -27,6 +27,7 @@ import net.dexxicon.reader.core.data.sync.KoSyncRepository
 import net.dexxicon.reader.core.data.sync.LibrarySeeder
 import net.dexxicon.reader.core.data.sync.NativeProgressSync
 import net.dexxicon.reader.core.database.DexxiconDatabase
+import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.createHttpClient
@@ -104,6 +105,10 @@ import net.dexxicon.reader.shared.reader.AudiobookProgressSync
  * needs ([SyncStateStore], [NativeProgressSync], [LibrarySeeder], [KoSyncRepository],
  * [progressRepository], [bookActions]) is built here from those three plus what this class
  * already has.
+ *
+ * [appPreferences] (issue #133) is likewise platform-supplied — Android's `createAppContainer`
+ * reuses the same instance [downloadRepository] already needed one of; iOS builds a fresh one.
+ * See [AppPreferencesStore]'s own doc comment for why constructing more than once is safe.
  */
 class AppContainer(
     engine: HttpClientEngine,
@@ -115,6 +120,9 @@ class AppContainer(
     syncStateStore: SyncStateStore,
     koSyncRawDeviceId: String,
     koSyncDeviceModel: String,
+    /** Phase 4 Stage D (issue #133) — Library's view-mode toggle and cover-tap-action need
+     * this directly, the same way [progressRepository]/[bookActions] are exposed publicly. */
+    val appPreferences: AppPreferencesStore,
 ) {
     /** Process-lifetime scope for [AuthHeaderProviderImpl]'s server-list collector — mirrors
      * `:app`'s `@ApplicationScope` (`CoroutineScope(SupervisorJob() + Dispatchers.Default)`)
