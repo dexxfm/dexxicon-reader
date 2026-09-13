@@ -10,6 +10,21 @@ APIs — the same ones their web readers use — rather than generic OPDS.
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/licence-MIT-green"></a>
 </p>
 
+## Screenshots
+
+<table>
+  <tr>
+    <td align="center"><img src="docs/screenshots/home.png" width="200" alt="Home screen"><br><sub>Home</sub></td>
+    <td align="center"><img src="docs/screenshots/library.png" width="200" alt="Library screen"><br><sub>Library</sub></td>
+    <td align="center"><img src="docs/screenshots/book-detail.png" width="200" alt="Book detail screen"><br><sub>Book Detail</sub></td>
+  </tr>
+  <tr>
+    <td align="center"><img src="docs/screenshots/player.png" width="200" alt="Audiobook player screen"><br><sub>Audiobook Player</sub></td>
+    <td align="center"><img src="docs/screenshots/settings.png" width="200" alt="Settings screen"><br><sub>Settings</sub></td>
+    <td></td>
+  </tr>
+</table>
+
 ## Features
 
 ### Browse & open
@@ -91,7 +106,7 @@ MOBI / AZW3 / FB2 are recognised but not yet openable (converters are a work in 
 
 ## Status
 
-Usable daily‑driver for BookOrbit and Grimmory. Current version **0.11.9** — see
+Usable daily‑driver for BookOrbit and Grimmory. Current version **0.13.1** — see
 [Releases](https://github.com/dexxfm/dexxicon-reader/releases) for APKs and Play‑ready
 App Bundles, and [CHANGELOG.md](CHANGELOG.md) for what each one brought.
 
