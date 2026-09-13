@@ -9,6 +9,7 @@ data class Audiobook(
     val coverUrl: String?,
     val streamUrl: String,
     val durationMs: Long,
+    val narrator: String? = null,
     val chapters: List<Chapter> = emptyList(),
 ) {
     val key: String get() = "$serverId::$bookId"
