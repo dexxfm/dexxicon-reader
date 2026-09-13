@@ -39,6 +39,10 @@ class DexxiconApplication :
     @Inject
     lateinit var workerFactory: CoreDataWorkerFactory
 
+    /** issue #161 — also handed to [AndroidAppContainer.get] (via `okHttpClient.get()`,
+     * forcing this [Lazy] early rather than waiting for Coil's first image load) so this
+     * container's `TokenManager`/HTTP engine share `:app`'s cookie jar instead of running on a
+     * bare, cookie-less client; see that accessor's doc comment for the full story. */
     @Inject
     @DexxiconHttpClient
     lateinit var okHttpClient: Lazy<OkHttpClient>
@@ -91,7 +95,7 @@ class DexxiconApplication :
      * it more than once is still safe regardless).
      */
     private fun wireMiniPlayer() {
-        val container = AndroidAppContainer.get(this, database)
+        val container = AndroidAppContainer.get(this, database, okHttpClient.get())
         container.onMiniPlayerPlayPause = audiobookPlayer::playPause
         container.onMiniPlayerDismiss = audiobookPlayer::stop
         container.onMiniPlayerReopen = {
