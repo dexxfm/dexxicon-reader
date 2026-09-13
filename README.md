@@ -10,8 +10,6 @@ APIs — the same ones their web readers use — rather than generic OPDS.
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/licence-MIT-green"></a>
 </p>
 
-## Screenshots
-
 <table>
   <tr>
     <td align="center"><img src="docs/screenshots/home.png" width="200" alt="Home screen"><br><sub>Home</sub></td>
@@ -24,6 +22,19 @@ APIs — the same ones their web readers use — rather than generic OPDS.
     <td></td>
   </tr>
 </table>
+
+## Install
+
+1. Download the latest APK from [Releases](https://github.com/dexxfm/dexxicon-reader/releases)
+   (or grab the AAB there if you're sideloading through Play).
+2. Install it — Android will prompt to allow installs from your browser/file manager the first
+   time; no other setup is required.
+3. Open the app, add your server (URL + your normal account, or **Sign in with SSO** if your
+   server has an identity provider configured), and your library shows up. See
+   [docs/SETUP.md](docs/SETUP.md) if you're setting up SSO for the first time — it needs a
+   one-time redirect-URI addition on the identity provider's side.
+
+Building from source instead? See [BUILD.md](BUILD.md).
 
 ## Features
 
@@ -114,38 +125,6 @@ Adaptive tablet/foldable layouts, Android Auto, and a Play Console upload are do
 [baseline profile](PERF.md) ships with release builds.
 
 **Not done yet:** MOBI/AZW3/FB2 conversion, OPDS‑PSE comic page streaming. Kobo sync was cut.
-
-## Tech
-
-Kotlin 2.4 (AGP 9.4's built‑in compiler) · Gradle 9.6 · KSP 2 · Jetpack Compose / Material 3
-· Hilt · Room (schema v9) · Media3 (incl. `MediaLibraryService` for Android Auto) · Readium
-Kotlin toolkit 3.3 (+ PDFium adapter) · Coil 3 · WorkManager · junrar · DataStore ·
-kotlinx‑serialization + Retrofit + OkHttp.
-
-`applicationId` `com.dexxfm.dexxicon_reader` · namespace `net.dexxicon.reader` · `minSdk 29`
-· `compileSdk 37` · JDK 17.
-
-Multi‑module (24 modules under `core/*` and `feature/*`). Build files are intentionally flat
-— no `build-logic` / `buildSrc` convention plugins: under Gradle 9.6 + AGP 9.4 an included
-build's precompiled plugins break the type‑safe `libs` version‑catalog accessor in the
-first Android module. Shared Android config lives in `gradle/android-common.gradle`.
-
-## Build
-
-Requires JDK 17+ (the Android Studio JBR works) and the Android SDK (platform 37,
-build‑tools 36).
-
-```bash
-./gradlew :app:assembleDebug
-```
-
-Release signing reads an untracked `keystore.properties` + `app/release.keystore`; without
-them the release build falls back to the debug key.
-
-```bash
-./gradlew :app:assembleRelease   # signed APK
-./gradlew :app:bundleRelease     # AAB for Play Console
-```
 
 ## Licence
 
