@@ -29,9 +29,14 @@ enum FullScreenReaderPresentation {
 private final class FullScreenReaderNavigationController: UINavigationController {
     private var interactor: EdgeSwipeDismissInteractor?
     private let hidesNavigationBar: Bool
+    // `viewControllers` reads back empty inside `viewDidLoad()` below despite being handed to
+    // `super.init(rootViewController:)` — confirmed live via NSLog, not guessed — so the root is
+    // captured directly here instead of relying on that property.
+    private let rootContentViewController: UIViewController
 
     init(rootViewController: UIViewController, hidesNavigationBar: Bool) {
         self.hidesNavigationBar = hidesNavigationBar
+        self.rootContentViewController = rootViewController
         super.init(rootViewController: rootViewController)
     }
 
@@ -43,19 +48,15 @@ private final class FullScreenReaderNavigationController: UINavigationController
     override func viewDidLoad() {
         super.viewDidLoad()
         modalPresentationStyle = .fullScreen
-        NSLog("[FullScreenReader] viewDidLoad: hidesNavigationBar=\(hidesNavigationBar) viewControllers=\(viewControllers)")
         if hidesNavigationBar {
             setNavigationBarHidden(true, animated: false)
-        } else if let root = viewControllers.first {
-            root.navigationItem.leftBarButtonItem = UIBarButtonItem(
+        } else {
+            rootContentViewController.navigationItem.leftBarButtonItem = UIBarButtonItem(
                 image: UIImage(systemName: "chevron.backward"),
                 style: .plain,
                 target: self,
                 action: #selector(closeTapped)
             )
-            NSLog("[FullScreenReader] back button installed on \(root)")
-        } else {
-            NSLog("[FullScreenReader] no root view controller to install a back button on!")
         }
 
         let interactor = EdgeSwipeDismissInteractor(presentedViewController: self)
