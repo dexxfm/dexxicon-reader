@@ -43,6 +43,7 @@ private final class FullScreenReaderNavigationController: UINavigationController
     override func viewDidLoad() {
         super.viewDidLoad()
         modalPresentationStyle = .fullScreen
+        NSLog("[FullScreenReader] viewDidLoad: hidesNavigationBar=\(hidesNavigationBar) viewControllers=\(viewControllers)")
         if hidesNavigationBar {
             setNavigationBarHidden(true, animated: false)
         } else if let root = viewControllers.first {
@@ -52,6 +53,9 @@ private final class FullScreenReaderNavigationController: UINavigationController
                 target: self,
                 action: #selector(closeTapped)
             )
+            NSLog("[FullScreenReader] back button installed on \(root)")
+        } else {
+            NSLog("[FullScreenReader] no root view controller to install a back button on!")
         }
 
         let interactor = EdgeSwipeDismissInteractor(presentedViewController: self)
@@ -65,25 +69,36 @@ private final class FullScreenReaderNavigationController: UINavigationController
 }
 
 /// Recognizes a left-edge pan and interactively dismisses the presented reader.
+///
+/// A plain `UIPanGestureRecognizer` restricted to starting near the left edge, not
+/// `UIScreenEdgePanGestureRecognizer` — two real, confirmed problems with the specialized
+/// recognizer in a row (never reaching `.began` at all, even after explicitly allowing
+/// simultaneous recognition with whatever's underneath it) point at its own internal,
+/// undocumented edge hot-zone being too narrow/fussy to trigger reliably here, not just a
+/// gesture-conflict issue. A regular pan recognizer gated by `shouldReceive touch:` (checking
+/// the touch's own starting point, not relying on the recognizer's built-in edge detection)
+/// gives full control over how wide that hot-zone actually is.
 private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransitioningDelegate, UIGestureRecognizerDelegate {
     private weak var presentedViewController: UIViewController?
     private var interactionInProgress = false
     private let percentDriven = UIPercentDrivenInteractiveTransition()
+    private let edgeWidth: CGFloat = 56
 
     init(presentedViewController: UIViewController) {
         self.presentedViewController = presentedViewController
         super.init()
 
-        let edgePan = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        edgePan.edges = .left
-        // Without this, the presented content's own touch handling — Compose Multiplatform's
-        // root view runs its own low-level pointer-input dispatch for the player screen; the
-        // comic pager's UIPageViewController/zoom UIScrollView do the same via their own pan
-        // recognizers — can claim the touch first and this edge-pan never even reaches
-        // `.began`, since UIKit's default conflict resolution only lets one recognizer win a
-        // touch sequence. Explicitly allowing simultaneous recognition is the standard fix.
-        edgePan.delegate = self
-        presentedViewController.view.addGestureRecognizer(edgePan)
+        let pan = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        pan.delegate = self
+        presentedViewController.view.addGestureRecognizer(pan)
+    }
+
+    /// Only let the gesture start tracking at all if the touch itself began within [edgeWidth]
+    /// of the left edge — this is what makes it an "edge" gesture despite using a plain pan
+    /// recognizer, which otherwise has no edge concept.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        guard let view = presentedViewController?.view else { return false }
+        return touch.location(in: view).x <= edgeWidth
     }
 
     func gestureRecognizer(
@@ -93,10 +108,11 @@ private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransi
         true
     }
 
-    @objc private func handlePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard let view = presentedViewController?.view else { return }
         let translation = gesture.translation(in: view)
         let progress = min(max(translation.x / view.bounds.width, 0), 1)
+        NSLog("[EdgeSwipe] state=\(gesture.state.rawValue) translationX=\(translation.x) progress=\(progress)")
 
         switch gesture.state {
         case .began:
@@ -106,8 +122,8 @@ private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransi
             percentDriven.update(progress)
         case .ended, .cancelled, .failed:
             interactionInProgress = false
-            let isQuickFlick = gesture.velocity(in: view).x > 800
-            if progress > 0.4 || isQuickFlick {
+            let isQuickFlick = gesture.velocity(in: view).x > 500
+            if progress > 0.35 || isQuickFlick {
                 percentDriven.finish()
             } else {
                 percentDriven.cancel()
