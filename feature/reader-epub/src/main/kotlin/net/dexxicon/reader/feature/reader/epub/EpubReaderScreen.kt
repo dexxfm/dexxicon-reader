@@ -147,6 +147,10 @@ private fun ReaderContent(
     val scope = rememberCoroutineScope()
     val darkTheme = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
         Configuration.UI_MODE_NIGHT_YES
+    // issue #117: same 720dp breakpoint used elsewhere (App.kt's two-pane split, the
+    // audiobook player's side-by-side layout) — the reader is always a full-screen route, so
+    // the configuration's width is the viewport width, no BoxWithConstraints needed.
+    val wideViewport = LocalConfiguration.current.screenWidthDp.dp >= 720.dp
 
     if (activity == null) {
         Center { Text("The reader needs a FragmentActivity host") }
@@ -168,7 +172,7 @@ private fun ReaderContent(
 
     // Build the navigator fragment once per opened publication and set it as the factory
     // the FragmentManager will use to instantiate EpubNavigatorFragment by class.
-    val initialPrefs = remember(state.publication) { preferences.toEpubPreferences(darkTheme) }
+    val initialPrefs = remember(state.publication) { preferences.toEpubPreferences(darkTheme, wideViewport) }
     DisposableEffect(state.publication) {
         fragmentManager.fragmentFactory = EpubNavigatorFactory(state.publication)
             .createFragmentFactory(
@@ -277,15 +281,17 @@ private fun ReaderContent(
         onDispose { if (nav != null && listener != null) nav.removeInputListener(listener) }
     }
 
-    LaunchedEffect(preferences, darkTheme, navigator) {
-        navigator?.submitPreferences(preferences.toEpubPreferences(darkTheme))
+    LaunchedEffect(preferences, darkTheme, wideViewport, navigator) {
+        navigator?.submitPreferences(preferences.toEpubPreferences(darkTheme, wideViewport))
     }
 
     Scaffold(
         topBar = {
             if (chromeVisible) {
                 TopAppBar(
-                    title = { Text(state.title, maxLines = 1) },
+                    // No title here — five action icons plus the BackPill already crowd this
+                    // row with no room left for a title to render legibly (issue #117).
+                    title = {},
                     navigationIcon = { BackPill(onBack) },
                     actions = {
                         val locatorNow = currentLocator
@@ -672,6 +678,7 @@ private fun DisplaySettings(
             selected = preferences.theme,
             label = ::readerThemeLabel,
             onSelect = { theme -> onChange { it.copy(theme = theme) } },
+            leadingIcon = { theme -> ThemeSwatch(theme) },
         )
 
         SettingChips(
@@ -724,6 +731,7 @@ private fun <T> SettingChips(
     selected: T,
     label: (T) -> String,
     onSelect: (T) -> Unit,
+    leadingIcon: (@Composable (T) -> Unit)? = null,
 ) {
     Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
     FlowRow(
@@ -735,8 +743,34 @@ private fun <T> SettingChips(
                 selected = selected == entry,
                 onClick = { onSelect(entry) },
                 label = { Text(label(entry)) },
+                leadingIcon = leadingIcon?.let { icon -> { icon(entry) } },
+                shape = net.dexxicon.reader.core.designsystem.theme.Pill,
             )
         }
+    }
+}
+
+/**
+ * issue #117 (from the Claude Design mockup): a small preview dot on each Background chip
+ * showing the actual page colour that choice renders, rather than a bare text label. System
+ * has no single colour to show — a half-white/half-black dot signals "follows the device"
+ * instead of guessing the current system theme.
+ */
+@Composable
+private fun ThemeSwatch(theme: ReaderTheme) {
+    val borderColor = MaterialTheme.colorScheme.outlineVariant
+    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+        when (theme) {
+            ReaderTheme.SYSTEM -> {
+                drawArc(androidx.compose.ui.graphics.Color.White, -90f, 180f, useCenter = true)
+                drawArc(androidx.compose.ui.graphics.Color.Black, 90f, 180f, useCenter = true)
+            }
+            ReaderTheme.LIGHT -> drawCircle(androidx.compose.ui.graphics.Color(0xFFFFFFFF.toInt()))
+            ReaderTheme.SEPIA -> drawCircle(androidx.compose.ui.graphics.Color(SEPIA_BACKGROUND))
+            ReaderTheme.GREY -> drawCircle(androidx.compose.ui.graphics.Color(GREY_BACKGROUND))
+            ReaderTheme.DARK -> drawCircle(androidx.compose.ui.graphics.Color(DARK_BACKGROUND))
+        }
+        drawCircle(borderColor, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
     }
 }
 
