@@ -44,6 +44,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -71,6 +72,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import net.dexxicon.reader.core.designsystem.nav.FloatingPillNavBar
@@ -87,6 +90,7 @@ import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.HomeScreen
 import net.dexxicon.reader.shared.library.LibraryScreen
 import net.dexxicon.reader.shared.nav.TopLevelDestination
+import net.dexxicon.reader.shared.player.MiniPlayer
 import net.dexxicon.reader.shared.settings.AudiobookDefaultsScreen
 import net.dexxicon.reader.shared.settings.BookDefaultsScreen
 import net.dexxicon.reader.shared.settings.SettingsScreen
@@ -107,7 +111,7 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 // the platform host supplies, not a screen this NavHost owns itself.
 @Serializable private object ManageServersRoute
 @Serializable private object AddServerRoute
-@Serializable private data class EditServerRoute(val serverId: String)
+@Serializable private data class EditServerRoute(val serverId: String, val reauth: Boolean = false)
 @Serializable private object LibraryRoute
 @Serializable private object HomeRoute
 @Serializable private object SettingsRoute
@@ -134,7 +138,16 @@ private fun TopLevelDestination.toRoute(): Any = when (this) {
 }
 
 @Composable
-fun App(container: AppContainer, onOpenReader: OnOpenReader) {
+fun App(
+    container: AppContainer,
+    onOpenReader: OnOpenReader,
+    /** Phase 4 Stage I (issue #146) — native's session-expiry re-auth deep link
+     * (`ReauthCoordinator`/`SignInNotifier`, both Android-only — see [ServersScreen]'s doc
+     * comment on why detection stays native) needs a way to reach [EditServerRoute] without
+     * this NavHost's [nav] leaking outside this composable. iOS never has anything to emit
+     * here, hence the no-op default. */
+    reauthRequests: Flow<String> = emptyFlow(),
+) {
     // Phase 4 Stage E1 (issue #136) — Settings' theme chips need this to actually do
     // something; a control that doesn't visibly change anything is worse than no control.
     val theme by container.appPreferences.preferences.collectAsState(initial = AppPreferences())
@@ -143,6 +156,7 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
         AppTheme.DARK -> true
         AppTheme.SYSTEM -> isSystemInDarkTheme()
     }
+    val nowPlaying by container.nowPlaying.collectAsState()
     DexxiconTheme(darkTheme = darkTheme) {
         val nav = rememberNavController()
         val backStackEntry by nav.currentBackStackEntryAsState()
@@ -151,44 +165,36 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
             currentDestination.isOnTopLevel(destination)
         }
 
+        LaunchedEffect(Unit) {
+            reauthRequests.collect { serverId -> nav.navigate(EditServerRoute(serverId, reauth = true)) }
+        }
+
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= RAIL_BREAKPOINT
             val showRail = wide && currentTopLevel != null
             val showBottomBar = !wide && currentTopLevel != null
 
-            Scaffold(
-                bottomBar = {
-                    // navigationBarsPadding() here is load-bearing — see the equivalent
-                    // comment in native's DexxiconApp.kt (issue #115 / PR #120 feedback):
-                    // without it the pill sits flush against the bottom edge, under the
-                    // system's gesture swipe indicator instead of clear of it.
-                    if (showBottomBar) {
-                        FloatingPillNavBar(
-                            destinations = TopLevelDestination.entries,
-                            current = currentTopLevel,
-                            icon = { it.icon },
-                            label = { it.label },
-                            onSelect = { nav.switchTopLevel(it) },
-                            modifier = Modifier.navigationBarsPadding(),
-                        )
-                    }
-                },
-            ) { innerPadding ->
+            Scaffold { innerPadding ->
                 // issue #140 — without this, a screen further down the tree (Home/Library's
                 // own Scaffold+TopAppBar) that also asks for WindowInsets.statusBars sees it
                 // as still unconsumed and pads for it a second time, doubling the headroom
-                // above the title. This marks innerPadding's region as already spent.
-                Row(Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)) {
-                    if (showRail) {
-                        PillNavigationRail(
-                            destinations = TopLevelDestination.entries,
-                            current = currentTopLevel,
-                            icon = { it.icon },
-                            label = { it.label },
-                            onSelect = { nav.switchTopLevel(it) },
-                        )
-                    }
-                    NavHost(
+                // above the title. This marks innerPadding's region as already spent. With no
+                // `bottomBar` slot any more (issue #132 — the pill nav floats over content
+                // below instead of reserving Scaffold space), `innerPadding` now only carries
+                // the raw top/side system-bar insets; the floating group re-adds its own
+                // `navigationBarsPadding()` directly, same as native's did before it too.
+                Box(Modifier.fillMaxSize()) {
+                    Row(Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)) {
+                        if (showRail) {
+                            PillNavigationRail(
+                                destinations = TopLevelDestination.entries,
+                                current = currentTopLevel,
+                                icon = { it.icon },
+                                label = { it.label },
+                                onSelect = { nav.switchTopLevel(it) },
+                            )
+                        }
+                        NavHost(
                         navController = nav,
                         startDestination = HomeRoute,
                         modifier = Modifier.weight(1f).fillMaxSize(),
@@ -245,6 +251,7 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
                                 editingId = route.serverId,
                                 onBack = { nav.popBackStack() },
                                 onSaved = { nav.popBackStack() },
+                                reauth = route.reauth,
                             )
                         }
                         composable<BooksRoute> { entry ->
@@ -265,6 +272,33 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
                                 bookId = route.bookId,
                                 onBack = { nav.popBackStack() },
                                 onOpenReader = onOpenReader,
+                            )
+                        }
+                    }
+                    }
+                    // issue #132 — floats over the content above rather than sitting in a
+                    // Scaffold `bottomBar` slot that reserves its own layout space; each
+                    // screen's own bottom-most content (e.g. Home's grid) adds its own
+                    // clearance so the floating group never permanently covers it — see
+                    // FloatingNavClearance's own doc comment.
+                    Column(
+                        Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+                    ) {
+                        nowPlaying?.let { playback ->
+                            MiniPlayer(
+                                playback = playback,
+                                onOpen = container.onMiniPlayerReopen,
+                                onPlayPause = container.onMiniPlayerPlayPause,
+                                onDismiss = container.onMiniPlayerDismiss,
+                            )
+                        }
+                        if (showBottomBar) {
+                            FloatingPillNavBar(
+                                destinations = TopLevelDestination.entries,
+                                current = currentTopLevel,
+                                icon = { it.icon },
+                                label = { it.label },
+                                onSelect = { nav.switchTopLevel(it) },
                             )
                         }
                     }

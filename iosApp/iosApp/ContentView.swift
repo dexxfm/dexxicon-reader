@@ -81,6 +81,34 @@ struct ComposeView: UIViewControllerRepresentable {
                 notYetSupported("Reading \(format.name) books on iOS isn't built yet.")
             }
         })
+
+        // issue #146: points :shared's MiniPlayer (docked in App.kt, rendered by the very
+        // Compose tree `hostVC` above hosts) at the real native player singleton — same
+        // "wire the container's actions to the real engine" step Android's
+        // `DexxiconApplication.wireMiniPlayer()` does at app startup.
+        MainViewControllerKt.setMiniPlayerActions(
+            playPause: { AudiobookPlaybackController.shared.playPause() },
+            dismiss: { AudiobookPlaybackController.shared.stop() },
+            reopen: {
+                guard
+                    let book = AudiobookPlaybackController.shared.state.book,
+                    let url = URL(string: book.digestUrl)
+                else { return }
+                let reader = AudiobookPlayerViewController.presentable(
+                    serverId: book.serverId,
+                    bookId: book.bookId,
+                    url: url,
+                    authHeader: nil,
+                    title: book.title,
+                    author: book.author,
+                    coverUrl: book.coverUrl,
+                    durationMs: book.durationMs,
+                    chapters: book.chapters
+                )
+                hostVC.present(reader, animated: true)
+            }
+        )
+
         return hostVC
     }
 

@@ -4,6 +4,7 @@ import androidx.compose.ui.window.ComposeUIViewController
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.di.PlatformContext
 import net.dexxicon.reader.shared.di.createAppContainer
+import net.dexxicon.reader.shared.player.NowPlaying
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
 
 /**
@@ -39,3 +40,27 @@ fun MainViewController(onOpenReader: OnOpenReader) = ComposeUIViewController {
  * result for as long as it needs it.
  */
 fun audiobookProgressSync(): AudiobookProgressSync = appContainer.audiobookProgressSync
+
+/**
+ * Phase 4 Stage I (issue #146) — the iOS half of the same bridge Android's
+ * `DexxiconApplication.wireMiniPlayer()` builds: `AudiobookPlaybackController`'s own `didSet`
+ * observer calls this on every playback state change (see that file's `pushNowPlaying()`), the
+ * same top-level-function convention as [audiobookProgressSync]. `null` means nothing is
+ * playing, which hides `:shared`'s `MiniPlayer` entirely — see [NowPlaying]'s own doc comment.
+ */
+fun updateNowPlaying(nowPlaying: NowPlaying?) {
+    appContainer.updateNowPlaying(nowPlaying)
+}
+
+/**
+ * Wires the mini-player's play/pause/dismiss/reopen taps back to the real
+ * `AudiobookPlaybackController.shared` — called once from `ContentView.swift`, the same "point
+ * this container's actions at the real native player" step Android's `wireMiniPlayer()` does
+ * at app startup. See [AppContainer.onMiniPlayerPlayPause]'s own doc comment for why these are
+ * plain mutable properties rather than constructor params.
+ */
+fun setMiniPlayerActions(playPause: () -> Unit, dismiss: () -> Unit, reopen: () -> Unit) {
+    appContainer.onMiniPlayerPlayPause = playPause
+    appContainer.onMiniPlayerDismiss = dismiss
+    appContainer.onMiniPlayerReopen = reopen
+}

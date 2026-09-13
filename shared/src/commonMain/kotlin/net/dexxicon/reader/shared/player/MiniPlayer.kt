@@ -1,4 +1,4 @@
-package net.dexxicon.reader.ui
+package net.dexxicon.reader.shared.player
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -28,22 +28,21 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import net.dexxicon.reader.core.designsystem.theme.CoverShapeSmall
 import net.dexxicon.reader.core.designsystem.theme.Pill
-import net.dexxicon.reader.core.media.PlayerUiState
 
 /**
- * Phase 4 (issue #115) — always the floating translucent pill, at every width. The mockup's
- * own turn 4/5 (fold/tablet) shows a full-width bar instead once the rail replaces the
- * bottom nav; overridden on request to keep the pill treatment everywhere rather than
- * matching that split.
+ * Phase 4 Stage I (issue #146) — ported from native's `app/ui/MiniPlayer.kt`, backed by
+ * [NowPlaying] instead of the Android-only `PlayerUiState` so it renders identically on both
+ * platforms. Always the floating translucent pill, at every width (the mockup's own fold/tablet
+ * turn shows a full-width bar once the rail replaces the bottom nav; overridden on request to
+ * keep the pill treatment everywhere, same call native's version made).
  */
 @Composable
 fun MiniPlayer(
-    playback: PlayerUiState,
-    onOpen: (serverId: String, bookId: String) -> Unit,
+    playback: NowPlaying,
+    onOpen: () -> Unit,
     onPlayPause: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val book = playback.audiobook ?: return
     val fraction = playback.durationMs.takeIf { it > 0 }
         ?.let { (playback.positionMs.toFloat() / it).coerceIn(0f, 1f) }
 
@@ -65,18 +64,18 @@ fun MiniPlayer(
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .clickable { onOpen(book.serverId, book.bookId) }
+                        .clickable(onClick = onOpen)
                         .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(Modifier.size(36.dp).clip(CoverShapeSmall)) {
-                        book.coverUrl?.let {
+                        playback.coverUrl?.let {
                             AsyncImage(model = it, contentDescription = null, modifier = Modifier.size(36.dp))
                         }
                     }
                     Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                         Text(
-                            book.title,
+                            playback.title,
                             style = MaterialTheme.typography.bodyMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,

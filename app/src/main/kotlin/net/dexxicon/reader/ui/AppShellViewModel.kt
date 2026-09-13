@@ -17,26 +17,32 @@ import net.dexxicon.reader.core.common.crash.DiagnosticsArchive
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.data.download.DownloadRepository
-import net.dexxicon.reader.core.media.AudiobookPlayer
-import net.dexxicon.reader.core.media.PlayerUiState
 import java.io.File
 import javax.inject.Inject
 
 /** A server whose session expired and needs the user to sign in again. */
 data class SignInPrompt(val serverId: String, val displayName: String)
 
+/**
+ * Phase 4 Stage I (issue #146) — trimmed down once native's own Scaffold/NavHost/bottom-nav/
+ * mini-player (`DexxiconApp.kt`) were deleted in favor of hosting `:shared`'s `App()` directly
+ * (see [MainActivity]): `playback`/`playPause`/`dismiss` moved to
+ * `DexxiconApplication.wireMiniPlayer()`, which bridges the real [net.dexxicon.reader.core.media.AudiobookPlayer]
+ * into `:shared`'s `AppContainer` directly rather than through this ViewModel — `:shared`'s own
+ * `MiniPlayer` composable reads that, not this class. What's left here is genuinely
+ * Android-only chrome with nowhere sensible to live inside `:shared`'s commonMain UI: crash
+ * reporting, the session-expiry sign-in banner, and one-off snackbar notices — all still
+ * rendered as a thin overlay around `:shared`'s `App()` in [MainActivity], not inside it.
+ */
 @HiltViewModel
 class AppShellViewModel @Inject constructor(
-    private val player: AudiobookPlayer,
     private val crashReporter: CrashReporter,
     private val diagnosticsArchive: DiagnosticsArchive,
     tokenManager: TokenManager,
     serverRepository: ServerRepository,
-    reauthCoordinator: ReauthCoordinator,
+    private val reauthCoordinator: ReauthCoordinator,
     downloadRepository: DownloadRepository,
 ) : ViewModel() {
-
-    val playback: StateFlow<PlayerUiState> = player.state
 
     /** A crash report saved on a previous run, waiting for the user to send or discard it. */
     private val _pendingCrash = MutableStateFlow(crashReporter.pending().firstOrNull())
@@ -61,6 +67,8 @@ class AppShellViewModel @Inject constructor(
     /** Notification taps asking to re-authenticate a specific server. */
     val reauthRequests: SharedFlow<String> = reauthCoordinator.requests
 
-    fun playPause() = player.playPause()
-    fun dismiss() = player.stop()
+    /** The in-app [SignInBanner]'s own tap target — same coordinator a notification tap uses,
+     * so both funnel through the one [reauthRequests] flow [MainActivity] forwards into
+     * `:shared`'s `App()`. */
+    fun requestReauth(serverId: String) = reauthCoordinator.request(serverId)
 }
