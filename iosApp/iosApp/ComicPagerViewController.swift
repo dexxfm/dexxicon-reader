@@ -166,22 +166,12 @@ extension ComicPagerViewController: UIPageViewControllerDataSource {
 }
 
 extension ComicPagerViewController {
-    /// Wraps the pager in its own `UINavigationController` with a "Done" button — same shape as
-    /// `EpubReaderViewController.presentable`, ready to present modally from any view
-    /// controller.
+    /// Presents the pager full-screen, dismissed by the standard edge-swipe gesture (issue
+    /// #176) — same shape as `EpubReaderViewController.presentable`.
     static func presentable(url: URL, authHeader: String?, isManga: Bool) -> UIViewController {
         let pager = ComicPagerViewController(url: url, authHeader: authHeader, isManga: isManga)
         pager.title = "Reading"
-        pager.navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .done,
-            target: pager,
-            action: #selector(ComicPagerViewController.close)
-        )
-        return UINavigationController(rootViewController: pager)
-    }
-
-    @objc private func close() {
-        dismiss(animated: true)
+        return FullScreenReaderPresentation.wrap(pager)
     }
 }
 
@@ -197,6 +187,7 @@ private final class ComicPageViewController: UIViewController, UIScrollViewDeleg
     private let scrollView = UIScrollView()
     private let imageView = UIImageView()
     private let loadingIndicator = UIActivityIndicatorView(style: .medium)
+    private var hasSetInitialZoom = false
 
     init(index: Int, pager: ComicPagerViewController, loadImage: @escaping () async -> UIImage?) {
         self.index = index
@@ -259,13 +250,28 @@ private final class ComicPageViewController: UIViewController, UIScrollViewDeleg
 
     private func layoutImage() {
         guard let image = imageView.image, image.size.width > 0, image.size.height > 0 else { return }
-        let scale = min(scrollView.bounds.width / image.size.width, scrollView.bounds.height / image.size.height)
-        scrollView.minimumZoomScale = scale
-        if scrollView.zoomScale < scale {
-            scrollView.zoomScale = scale
-        }
+        // A page can be laid out before it has a real, non-zero frame (e.g. `UIPageViewController`
+        // preparing an off-screen neighbor) — bail out rather than compute a bogus zero/NaN
+        // scale and latch `hasSetInitialZoom` on it; `viewDidLayoutSubviews` runs again once
+        // this page gets a real frame.
+        guard scrollView.bounds.width > 0, scrollView.bounds.height > 0 else { return }
+
         imageView.frame = CGRect(origin: .zero, size: image.size)
         scrollView.contentSize = image.size
+
+        let scale = min(scrollView.bounds.width / image.size.width, scrollView.bounds.height / image.size.height)
+        scrollView.minimumZoomScale = scale
+        scrollView.maximumZoomScale = max(scale * 4, 1)
+        // Only force-fit on the very first layout — `zoomScale` starts at UIScrollView's own
+        // default of 1.0, which is *larger* than a typical fit-to-screen `scale` (well under 1
+        // for any page bigger than the screen), so a naive "raise zoomScale up to scale" check
+        // never fires and the page renders at native pixel size instead of fit-to-screen. Once
+        // set, later layout passes (e.g. from `viewDidLayoutSubviews`) must leave zoomScale
+        // alone or they'd keep resetting the user's own pinch-zoom back to fit.
+        if !hasSetInitialZoom {
+            scrollView.zoomScale = scale
+            hasSetInitialZoom = true
+        }
         centerImage()
     }
 

@@ -137,20 +137,11 @@ final class PdfReaderViewController: UIViewController {
 }
 
 extension PdfReaderViewController {
-    /// Wraps the reader in its own `UINavigationController` with a "Done" button, ready to
-    /// present modally — same pattern as `EpubReaderViewController.presentable`.
+    /// Presents the reader full-screen, dismissed by the standard edge-swipe gesture (issue
+    /// #176) — same pattern as `EpubReaderViewController.presentable`.
     static func presentable(url: URL, authHeader: String?) -> UIViewController {
         let reader = PdfReaderViewController(url: url, authHeader: authHeader)
         reader.title = "Reading"
-        reader.navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .done,
-            target: reader,
-            action: #selector(PdfReaderViewController.close)
-        )
-        return UINavigationController(rootViewController: reader)
-    }
-
-    @objc private func close() {
-        dismiss(animated: true)
+        return FullScreenReaderPresentation.wrap(reader)
     }
 }

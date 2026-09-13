@@ -290,9 +290,10 @@ final class AudiobookPlayerViewController: UIViewController {
 }
 
 extension AudiobookPlayerViewController {
-    /// Wraps the player in its own `UINavigationController` with a "Done" button — same
-    /// pattern as `EpubReaderViewController.presentable`/`PdfReaderViewController.presentable`.
-    /// Dismissing this does **not** stop playback — see this class's own doc comment.
+    /// Presents the player full-screen, dismissed by the standard edge-swipe gesture (issue
+    /// #176) — same pattern as `EpubReaderViewController.presentable`/
+    /// `PdfReaderViewController.presentable`. Dismissing this does **not** stop playback — see
+    /// this class's own doc comment.
     static func presentable(
         serverId: String,
         bookId: String,
@@ -309,15 +310,6 @@ extension AudiobookPlayerViewController {
             title: title, author: author, coverUrl: coverUrl, durationMs: durationMs, chapters: chapters
         )
         player.title = "Now Playing"
-        player.navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .done,
-            target: player,
-            action: #selector(AudiobookPlayerViewController.close)
-        )
-        return UINavigationController(rootViewController: player)
-    }
-
-    @objc private func close() {
-        dismiss(animated: true)
+        return FullScreenReaderPresentation.wrap(player)
     }
 }

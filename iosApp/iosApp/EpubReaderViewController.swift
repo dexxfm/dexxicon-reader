@@ -168,25 +168,13 @@ final class EpubReaderViewController: UIViewController {
 }
 
 extension EpubReaderViewController {
-    /// Wraps the reader in its own `UINavigationController` with a "Done" button, ready to
-    /// present modally from any view controller — no dependency on the app having its own
-    /// root navigation controller (it doesn't, today).
+    /// Presents the reader full-screen, dismissed by the standard edge-swipe gesture (issue
+    /// #176) — no dependency on the app having its own root navigation controller (it doesn't,
+    /// today).
     static func presentable(url: URL, authHeader: String?, isManga: Bool) -> UIViewController {
         let reader = EpubReaderViewController(url: url, authHeader: authHeader, isManga: isManga)
         reader.title = "Reading"
-        reader.navigationItem.rightBarButtonItem = UIBarButtonItem(
-            barButtonSystemItem: .done,
-            target: reader,
-            action: #selector(EpubReaderViewController.close)
-        )
-        return UINavigationController(rootViewController: reader)
-    }
-
-    @objc private func close() {
-        // Calling dismiss on any view controller in a presented stack forwards to whichever
-        // ancestor actually did the presenting — standard UIKit behavior, not specific to
-        // this being wrapped in its own UINavigationController.
-        dismiss(animated: true)
+        return FullScreenReaderPresentation.wrap(reader)
     }
 }
 
