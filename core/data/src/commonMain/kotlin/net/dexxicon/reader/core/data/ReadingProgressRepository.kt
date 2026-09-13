@@ -2,6 +2,9 @@ package net.dexxicon.reader.core.data
 
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -32,6 +35,12 @@ import net.dexxicon.reader.core.database.entity.ReadingProgressEntity
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.Server
+
+/** issue #154 — [ReadingProgressRepository.syncProgress] reconciles every locally-tracked row
+ * against its server; a library with hundreds of read/finished books used to do that one row
+ * at a time. This bounds how many rows sync concurrently, so a large row count still finishes
+ * quickly without opening hundreds of simultaneous connections to (often) the same server. */
+private const val PROGRESS_SYNC_CONCURRENCY = 8
 
 /**
  * Stores where each book was left off, and keeps that position **two-way** with the server.
@@ -265,55 +274,69 @@ class ReadingProgressRepository(
             .mapNotNull { id -> serverRepository.get(id)?.let { id to it } }
             .toMap()
 
-        for (row in rows) {
-            val server = servers[row.serverId] ?: continue
-            if (server.id in failedIds) continue
-            val localPercent = row.percent ?: continue
-            val format = row.format?.let { runCatching { ContentFormat.valueOf(it) }.getOrNull() }
-                ?: ContentFormat.EPUB
-            val domain = row.toDomain()
-
-            if (usesNative(server)) {
-                val native = nativeSync.pull(server, row.bookId, format, row.digestUrl)
-                when {
-                    native == null || localPercent - native.percent > 0.005 -> runCatching {
-                        nativeSync.push(server, row.bookId, format, row.digestUrl, localPercent, positionMsOf(domain), pageOf(domain))
-                    }
-                    shouldAdoptNative(native, row) -> {
-                        // Adopt the server's %, and — for comics/PDF where it also sent an
-                        // exact page — move the local position so reopening resumes there.
-                        val locator = native.page
-                            ?.takeIf { format == ContentFormat.COMIC || format == ContentFormat.PDF }
-                            ?.let { locatorAtPage(it, native.percent, format) }
-                            ?: row.locator
-                        dao.upsert(
-                            row.copy(
-                                percent = native.percent,
-                                locator = locator,
-                                updatedAt = native.updatedAtMillis ?: row.updatedAt,
-                            ),
-                        )
-                    }
-                }
-            } else if (usesKoSync(server)) {
-                val source = digestSourceFor(row.serverId, row.bookId, row.digestUrl) ?: continue
-                val remote = runCatching { koSync.pull(server, row.key, source) }.getOrNull()
-                if (remote == null) {
-                    runCatching { koSync.push(server, row.key, source, localPercent.coerceIn(0.0, 1.0)) }
-                } else {
-                    val remoteMillis = remote.timestamp.let { if (it in 1..9_999_999_999L) it * 1000 else it }
-                    val remoteAhead = remote.percentage - localPercent > 0.001
-                    when {
-                        remoteMillis > row.updatedAt && remoteAhead && remote.percentage in 0.0..1.0 ->
-                            dao.upsert(row.copy(percent = remote.percentage, updatedAt = remoteMillis))
-                        localPercent - remote.percentage > 0.001 ->
-                            runCatching { koSync.push(server, row.key, source, localPercent.coerceIn(0.0, 1.0)) }
-                    }
-                }
+        // issue #154 — reconcile rows PROGRESS_SYNC_CONCURRENCY at a time rather than one at a
+        // time; each row is an independent network round-trip (or two), so a library with
+        // hundreds of tracked rows no longer syncs them fully serially.
+        rows.chunked(PROGRESS_SYNC_CONCURRENCY).forEach { chunk ->
+            coroutineScope {
+                chunk.map { row -> async { reconcileRow(row, servers[row.serverId], failedIds) } }.awaitAll()
             }
         }
 
         SyncReport(at = at, failures = failures)
+    }
+
+    /** One [row]'s share of [syncProgress]'s reconciliation pass — pulled out so it can run
+     * concurrently with other rows' instead of blocking the whole sync on each one in turn. */
+    private suspend fun reconcileRow(
+        row: ReadingProgressEntity,
+        server: Server?,
+        failedIds: Set<String>,
+    ) {
+        if (server == null || server.id in failedIds) return
+        val localPercent = row.percent ?: return
+        val format = row.format?.let { runCatching { ContentFormat.valueOf(it) }.getOrNull() }
+            ?: ContentFormat.EPUB
+        val domain = row.toDomain()
+
+        if (usesNative(server)) {
+            val native = nativeSync.pull(server, row.bookId, format, row.digestUrl)
+            when {
+                native == null || localPercent - native.percent > 0.005 -> runCatching {
+                    nativeSync.push(server, row.bookId, format, row.digestUrl, localPercent, positionMsOf(domain), pageOf(domain))
+                }
+                shouldAdoptNative(native, row) -> {
+                    // Adopt the server's %, and — for comics/PDF where it also sent an
+                    // exact page — move the local position so reopening resumes there.
+                    val locator = native.page
+                        ?.takeIf { format == ContentFormat.COMIC || format == ContentFormat.PDF }
+                        ?.let { locatorAtPage(it, native.percent, format) }
+                        ?: row.locator
+                    dao.upsert(
+                        row.copy(
+                            percent = native.percent,
+                            locator = locator,
+                            updatedAt = native.updatedAtMillis ?: row.updatedAt,
+                        ),
+                    )
+                }
+            }
+        } else if (usesKoSync(server)) {
+            val source = digestSourceFor(row.serverId, row.bookId, row.digestUrl) ?: return
+            val remote = runCatching { koSync.pull(server, row.key, source) }.getOrNull()
+            if (remote == null) {
+                runCatching { koSync.push(server, row.key, source, localPercent.coerceIn(0.0, 1.0)) }
+            } else {
+                val remoteMillis = remote.timestamp.let { if (it in 1..9_999_999_999L) it * 1000 else it }
+                val remoteAhead = remote.percentage - localPercent > 0.001
+                when {
+                    remoteMillis > row.updatedAt && remoteAhead && remote.percentage in 0.0..1.0 ->
+                        dao.upsert(row.copy(percent = remote.percentage, updatedAt = remoteMillis))
+                    localPercent - remote.percentage > 0.001 ->
+                        runCatching { koSync.push(server, row.key, source, localPercent.coerceIn(0.0, 1.0)) }
+                }
+            }
+        }
     }
 
     @Deprecated("Renamed", ReplaceWith("syncProgress()"))
