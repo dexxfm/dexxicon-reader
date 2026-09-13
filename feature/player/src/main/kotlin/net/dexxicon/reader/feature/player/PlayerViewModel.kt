@@ -75,6 +75,7 @@ class PlayerViewModel @Inject constructor(
                     coverUrl = detail.summary.coverUrl,
                     streamUrl = acquisition.href,
                     durationMs = durationMs,
+                    narrator = detail.narratorLine.takeIf { it.isNotBlank() },
                     chapters = detail.audio?.chapters.orEmpty(),
                 )
                 progressRepository.save(

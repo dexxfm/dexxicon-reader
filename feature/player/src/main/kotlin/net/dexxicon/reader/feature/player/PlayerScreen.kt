@@ -25,7 +25,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Bedtime
@@ -59,6 +58,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import net.dexxicon.reader.core.designsystem.component.BackPill
+import net.dexxicon.reader.core.designsystem.component.PillButton
+import net.dexxicon.reader.core.designsystem.theme.CoverShapeLarge
+import net.dexxicon.reader.core.designsystem.theme.Pill
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -108,7 +110,9 @@ fun PlayerScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(playback.audiobook?.title.orEmpty(), maxLines = 1) },
+                // No title here — it's already on the cover art and repeated again in
+                // TrackInfo below it, so a third copy in the app bar is just noise (#116).
+                title = {},
                 navigationIcon = { BackPill(onBack) },
                 actions = {
                     val outputs = rememberAudioOutputs()
@@ -585,7 +589,7 @@ private fun NowPlaying(
 private fun CoverArt(coverUrl: String?, modifier: Modifier) {
     Box(
         modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(CoverShapeLarge)
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
@@ -617,6 +621,13 @@ private fun TrackInfo(playback: net.dexxicon.reader.core.media.PlayerUiState, ce
             Text(
                 book.author,
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (!book?.narrator.isNullOrBlank()) {
+            Text(
+                "Narrated by ${book.narrator}",
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
@@ -681,7 +692,7 @@ private fun TransportControls(
         IconButton(onClick = onSkipBack) {
             Icon(Icons.Filled.Replay, contentDescription = "Back 15 seconds")
         }
-        FilledIconButton(onClick = onPlayPause, modifier = Modifier.size(72.dp)) {
+        FilledIconButton(onClick = onPlayPause, modifier = Modifier.size(72.dp), shape = Pill) {
             Icon(
                 if (playback.isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
                 contentDescription = if (playback.isPlaying) "Pause" else "Play",
@@ -703,16 +714,18 @@ private fun SecondaryControls(
     onSpeed: () -> Unit,
     onSleep: () -> Unit,
 ) {
-    Row(Modifier.fillMaxWidth(), Arrangement.SpaceEvenly, Alignment.CenterVertically) {
-        TextButton(onClick = onSpeed) {
-            Icon(Icons.Filled.Speed, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text("  ${playback.speed}×", maxLines = 1, softWrap = false)
-        }
+    Row(
+        Modifier.fillMaxWidth(),
+        Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        Alignment.CenterVertically,
+    ) {
+        PillButton(icon = Icons.Filled.Speed, label = "${playback.speed}×", onClick = onSpeed)
         val sleepOn = playback.sleepTimerEndsAt != null || playback.sleepAtChapterEnd
-        TextButton(onClick = onSleep) {
-            Icon(Icons.Filled.Bedtime, contentDescription = null, modifier = Modifier.size(18.dp))
-            Text(if (sleepOn) "  Sleep on" else "  Sleep timer", maxLines = 1, softWrap = false)
-        }
+        PillButton(
+            icon = Icons.Filled.Bedtime,
+            label = if (sleepOn) "Sleep on" else "Sleep timer",
+            onClick = onSleep,
+        )
     }
 }
 
