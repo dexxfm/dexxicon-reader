@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.3 — 2026-09-13
+
+- **Fixed: SSO sessions sometimes requiring you to sign in again after the app sat
+  minimized for a while**, and Grimmory servers in particular occasionally losing their
+  SSO login altogether. Both traced back to the app keeping two separate copies of your
+  session in memory that could disagree with each other — now there's only one.
+- Fixed a related issue where a BookOrbit session's refresh cookie could be silently
+  dropped, which could also lead to an unexpected sign-out.
+
 ## 0.13.2 — 2026-09-13
 
 - **Fixed: the download progress indicator got stuck on "Queued"** the whole time a download
