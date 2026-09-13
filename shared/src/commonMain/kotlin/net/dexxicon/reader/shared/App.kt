@@ -123,6 +123,15 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 /** Same breakpoint as native's `DexxiconApp.kt` — Material's "medium" window-width class. */
 private val RAIL_BREAKPOINT = 600.dp
 
+/** Phase 5 (issue #115) — same breakpoint [BookDetailContent][net.dexxicon.reader.shared.catalog.BookDetailContent]
+ * already uses for its own cover/text split, reused here so Library's two-pane switch lines
+ * up with Book Detail's. */
+private val TWO_PANE_BREAKPOINT = 720.dp
+
+/** Width of the pinned Library pane in two-pane mode — wide enough for a comfortable grid,
+ * narrow enough to leave Book Detail the majority of the screen. */
+private val LIBRARY_PANE_WIDTH = 360.dp
+
 /**
  * Phase 4 Stage D (issue #133) — maps [TopLevelDestination] onto this NavHost's actual routes.
  * Home lands on [HomeRoute] (Continue reading/listening, On Deck, Downloaded); Library lands
@@ -174,6 +183,15 @@ fun App(
             val showRail = wide && currentTopLevel != null
             val showBottomBar = !wide && currentTopLevel != null
 
+            // Phase 5 (issue #115) — Library + Book Detail side by side once the screen is
+            // wide enough: only when Detail is what's actually on top of the back stack *and*
+            // Library is what pushed it, so plain Library browsing (nothing selected yet)
+            // still uses the full width, and Detail reached from Home/a server's own catalog
+            // (no Library pane to pin) stays single-pane too.
+            val showTwoPane = maxWidth >= TWO_PANE_BREAKPOINT &&
+                currentDestination?.hasRoute(BookDetailRoute::class) == true &&
+                nav.previousBackStackEntry?.destination?.hasRoute(LibraryRoute::class) == true
+
             Scaffold { innerPadding ->
                 // issue #140 — without this, a screen further down the tree (Home/Library's
                 // own Scaffold+TopAppBar) that also asks for WindowInsets.statusBars sees it
@@ -193,6 +211,23 @@ fun App(
                                 label = { it.label },
                                 onSelect = { nav.switchTopLevel(it) },
                             )
+                        }
+                        if (showTwoPane) {
+                            // A separate LibraryScreen call (own LibraryState, own remember
+                            // scope) rather than reusing the NavHost's composable<LibraryRoute>
+                            // block below — that block only composes when LibraryRoute is
+                            // literally the back stack's top entry, which it isn't once
+                            // BookDetailRoute is pushed on top of it. This call site stays in
+                            // composition for as long as showTwoPane is true, so its state
+                            // survives navigating between different books' Detail screens.
+                            Box(Modifier.width(LIBRARY_PANE_WIDTH).fillMaxSize()) {
+                                LibraryScreen(
+                                    container = container,
+                                    onOpenBook = { book -> nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId)) },
+                                    onOpenReader = onOpenReader,
+                                )
+                            }
+                            Spacer(Modifier.width(16.dp))
                         }
                         NavHost(
                         navController = nav,

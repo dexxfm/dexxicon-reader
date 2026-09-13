@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import net.dexxicon.reader.core.data.sync.ServerSyncFailure
 import net.dexxicon.reader.core.data.sync.SyncFailureReason
 import net.dexxicon.reader.core.designsystem.component.BookContextMenu
+import net.dexxicon.reader.core.designsystem.component.EdgeFadeRow
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.ContentFormat
@@ -249,13 +251,16 @@ private fun LazyGridScope.onDeckShelf(
     if (items.isEmpty()) return
     fullWidthItem { SectionHeader("On Deck") }
     fullWidthItem {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(items, key = { "${it.serverId}:${it.bookId}" }) { entry ->
-                OnDeckCard(
-                    entry = entry,
-                    onClick = { onOpenBook(entry.serverId, entry.bookId) },
-                    actions = actionsFor(entry),
-                )
+        val listState = rememberLazyListState()
+        EdgeFadeRow(listState) {
+            LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(items, key = { "${it.serverId}:${it.bookId}" }) { entry ->
+                    OnDeckCard(
+                        entry = entry,
+                        onClick = { onOpenBook(entry.serverId, entry.bookId) },
+                        actions = actionsFor(entry),
+                    )
+                }
             }
         }
     }
@@ -271,13 +276,16 @@ private fun LazyGridScope.continueShelf(
     if (items.isEmpty()) return
     fullWidthItem { SectionHeader(title) }
     fullWidthItem {
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(items, key = { "${it.serverId}:${it.bookId}" }) { entry ->
-                ContinueCard(
-                    entry = entry,
-                    onClick = { state.continueReading(entry, onOpenReader) },
-                    actions = actionsFor(entry),
-                )
+        val listState = rememberLazyListState()
+        EdgeFadeRow(listState) {
+            LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(items, key = { "${it.serverId}:${it.bookId}" }) { entry ->
+                    ContinueCard(
+                        entry = entry,
+                        onClick = { state.continueReading(entry, onOpenReader) },
+                        actions = actionsFor(entry),
+                    )
+                }
             }
         }
     }
