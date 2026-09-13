@@ -145,5 +145,7 @@ private func presentPlayer(from hostVC: UIViewController, book: AudiobookPlaybac
     let player = MainViewControllerKt.PlayerViewController(onBack: {
         hostVC.dismiss(animated: true)
     })
-    hostVC.present(FullScreenReaderPresentation.wrap(player), animated: true)
+    // hidesNavigationBar: true — PlayerScreen draws its own BackPill as part of its Compose
+    // content, so the native bar's back button here would just be a redundant second one.
+    hostVC.present(FullScreenReaderPresentation.wrap(player, hidesNavigationBar: true), animated: true)
 }

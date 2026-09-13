@@ -12,24 +12,55 @@ import UIKit
 /// controller of its own. This reimplements that same edge-swipe feel for a modal
 /// `present()`/`dismiss()` pair instead.
 enum FullScreenReaderPresentation {
-    /// Wraps `content` in a `UINavigationController` presented full-screen, with no visible
-    /// navigation bar and no Done button — dismissed by swiping in from the left edge.
-    static func wrap(_ content: UIViewController) -> UIViewController {
-        FullScreenReaderNavigationController(rootViewController: content)
+    /// Wraps `content` in a `UINavigationController` presented full-screen — dismissed by
+    /// swiping in from the left edge, plus a real native back button as a guaranteed fallback
+    /// (issue #176 follow-up: on a real device the swipe works, but it's unreliable enough in
+    /// the Simulator specifically — mouse-driven touches don't reproduce a true off-screen-edge
+    /// touch the way a finger does — that a screen with *no* tap-to-exit control is a genuine
+    /// dead end, confirmed live). Pass `hidesNavigationBar: true` only when `content` already
+    /// draws its own back control as part of its actual content (the shared Compose
+    /// `PlayerScreen`'s `BackPill`, currently the only such case) — every purely native reader
+    /// needs this bar's back button since it has no equivalent of its own.
+    static func wrap(_ content: UIViewController, hidesNavigationBar: Bool = false) -> UIViewController {
+        FullScreenReaderNavigationController(rootViewController: content, hidesNavigationBar: hidesNavigationBar)
     }
 }
 
 private final class FullScreenReaderNavigationController: UINavigationController {
     private var interactor: EdgeSwipeDismissInteractor?
+    private let hidesNavigationBar: Bool
+
+    init(rootViewController: UIViewController, hidesNavigationBar: Bool) {
+        self.hidesNavigationBar = hidesNavigationBar
+        super.init(rootViewController: rootViewController)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
 
     override func viewDidLoad() {
         super.viewDidLoad()
         modalPresentationStyle = .fullScreen
-        setNavigationBarHidden(true, animated: false)
+        if hidesNavigationBar {
+            setNavigationBarHidden(true, animated: false)
+        } else if let root = viewControllers.first {
+            root.navigationItem.leftBarButtonItem = UIBarButtonItem(
+                image: UIImage(systemName: "chevron.backward"),
+                style: .plain,
+                target: self,
+                action: #selector(closeTapped)
+            )
+        }
 
         let interactor = EdgeSwipeDismissInteractor(presentedViewController: self)
         self.interactor = interactor
         transitioningDelegate = interactor
+    }
+
+    @objc private func closeTapped() {
+        dismiss(animated: true)
     }
 }
 
