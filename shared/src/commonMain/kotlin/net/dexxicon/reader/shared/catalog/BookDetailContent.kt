@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
@@ -62,6 +61,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.core.designsystem.theme.CoverShapeMedium
 import net.dexxicon.reader.core.designsystem.theme.Pill
 import net.dexxicon.reader.core.model.BookCopy
@@ -213,34 +213,6 @@ private fun DetailContent(
                     DetailsSection(detail)
                 }
             }
-        }
-    }
-}
-
-/** Phase 4 (issue #115) — replaces the standard TopAppBar's back arrow: a surface-colored
- * pill with an arrow icon *and* the word "Back", matching the mockup exactly (it has no top
- * app bar on this screen at all). */
-@Composable
-private fun BackPill(onBack: () -> Unit) {
-    Surface(
-        onClick = onBack,
-        shape = Pill,
-        color = MaterialTheme.colorScheme.surfaceVariant,
-    ) {
-        Row(
-            Modifier.padding(start = 12.dp, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Box(Modifier.height(44.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
-            }
-            Text(
-                "BACK",
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 1.sp,
-            )
         }
     }
 }
