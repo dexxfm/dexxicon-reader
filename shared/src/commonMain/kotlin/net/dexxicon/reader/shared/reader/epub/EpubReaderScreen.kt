@@ -104,24 +104,30 @@ private const val DARK_BACKGROUND = 0xFF121212.toInt()
 @Composable
 fun EpubReaderScreen(
     state: EpubReaderUiState,
-    preferences: ReaderDisplayPreferences,
-    bookmarks: List<Bookmark>,
-    highlights: List<Highlight>,
-    currentBookmark: Bookmark?,
-    chromeVisible: Boolean,
     onBack: () -> Unit,
-    onAddBookmark: () -> Unit,
-    onDeleteBookmark: (String) -> Unit,
-    onGoToBookmark: (Bookmark) -> Unit,
-    onGoToToc: (TocEntry) -> Unit,
-    onGoToHighlight: (Highlight) -> Unit,
-    onSetNote: (String, String?) -> Unit,
-    onSetColor: (String, HighlightColor) -> Unit,
-    onDeleteHighlight: (String) -> Unit,
-    onJumpToRemoteResume: () -> Unit,
-    onDismissRemoteResume: () -> Unit,
-    onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
-    readerContent: @Composable () -> Unit,
+    preferences: ReaderDisplayPreferences = ReaderDisplayPreferences(),
+    bookmarks: List<Bookmark> = emptyList(),
+    highlights: List<Highlight> = emptyList(),
+    currentBookmark: Bookmark? = null,
+    chromeVisible: Boolean = true,
+    /** The highlight (if any) whose editor sheet is open — hoisted rather than owned
+     * internally so a native decoration-tap listener (only it hears about a tap on a
+     * rendered highlight) can open the editor too, the same way [chromeVisible] is hoisted
+     * for the native edge-tap navigator to flip. */
+    activeHighlightId: String? = null,
+    onActiveHighlightChange: (String?) -> Unit = {},
+    onAddBookmark: () -> Unit = {},
+    onDeleteBookmark: (String) -> Unit = {},
+    onGoToBookmark: (Bookmark) -> Unit = {},
+    onGoToToc: (TocEntry) -> Unit = {},
+    onGoToHighlight: (Highlight) -> Unit = {},
+    onSetNote: (String, String?) -> Unit = { _, _ -> },
+    onSetColor: (String, HighlightColor) -> Unit = { _, _ -> },
+    onDeleteHighlight: (String) -> Unit = {},
+    onJumpToRemoteResume: () -> Unit = {},
+    onDismissRemoteResume: () -> Unit = {},
+    onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit = {},
+    readerContent: @Composable () -> Unit = {},
 ) {
     when (state) {
         is EpubReaderUiState.Loading -> Center { CircularProgressIndicator() }
@@ -140,6 +146,8 @@ fun EpubReaderScreen(
             highlights = highlights,
             currentBookmark = currentBookmark,
             chromeVisible = chromeVisible,
+            activeHighlightId = activeHighlightId,
+            onActiveHighlightChange = onActiveHighlightChange,
             onBack = onBack,
             onAddBookmark = onAddBookmark,
             onDeleteBookmark = onDeleteBookmark,
@@ -166,6 +174,8 @@ private fun ReaderContent(
     highlights: List<Highlight>,
     currentBookmark: Bookmark?,
     chromeVisible: Boolean,
+    activeHighlightId: String?,
+    onActiveHighlightChange: (String?) -> Unit,
     onBack: () -> Unit,
     onAddBookmark: () -> Unit,
     onDeleteBookmark: (String) -> Unit,
@@ -185,7 +195,6 @@ private fun ReaderContent(
     var showSettings by remember { mutableStateOf(false) }
     var showHighlights by remember { mutableStateOf(false) }
     var showBookmarks by remember { mutableStateOf(false) }
-    var activeHighlightId by remember { mutableStateOf<String?>(null) }
     var resumeDismissed by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -315,19 +324,19 @@ private fun ReaderContent(
             HighlightList(
                 highlights = highlights,
                 onSelect = { h -> onGoToHighlight(h); showHighlights = false },
-                onEdit = { activeHighlightId = it.id; showHighlights = false },
+                onEdit = { onActiveHighlightChange(it.id); showHighlights = false },
             )
         }
     }
 
     val active = highlights.firstOrNull { it.id == activeHighlightId }
     if (active != null) {
-        ModalBottomSheet(onDismissRequest = { activeHighlightId = null }) {
+        ModalBottomSheet(onDismissRequest = { onActiveHighlightChange(null) }) {
             HighlightEditor(
                 highlight = active,
                 onNote = { onSetNote(active.id, it) },
                 onColor = { onSetColor(active.id, it) },
-                onDelete = { onDeleteHighlight(active.id); activeHighlightId = null },
+                onDelete = { onDeleteHighlight(active.id); onActiveHighlightChange(null) },
             )
         }
     }

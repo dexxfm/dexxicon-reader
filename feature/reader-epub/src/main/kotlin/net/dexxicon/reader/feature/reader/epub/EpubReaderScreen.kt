@@ -4,68 +4,22 @@ import android.content.res.Configuration
 import android.view.View
 import android.widget.FrameLayout
 import androidx.activity.compose.LocalActivity
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.BookmarkBorder
-import androidx.compose.material.icons.filled.Bookmarks
-import androidx.compose.material.icons.filled.BorderColor
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.ui.graphics.Color
-import net.dexxicon.reader.core.designsystem.component.BackPill
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.material.icons.automirrored.filled.ListAlt
-import androidx.compose.material.icons.filled.TextFields
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.FragmentActivity
@@ -73,20 +27,28 @@ import androidx.fragment.app.FragmentContainerView
 import androidx.fragment.app.commit
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.reader.EdgeTapNavigator
-import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
-import net.dexxicon.reader.core.datastore.ReaderFitMode
-import net.dexxicon.reader.core.datastore.ReaderPageLayout
-import net.dexxicon.reader.core.datastore.ReaderScrollMode
-import net.dexxicon.reader.core.datastore.ReaderTheme
+import net.dexxicon.reader.shared.reader.epub.EpubReaderScreen as SharedEpubReaderScreen
+import net.dexxicon.reader.shared.reader.epub.EpubReaderUiState
+import net.dexxicon.reader.shared.reader.epub.TocEntry
+import org.readium.r2.navigator.Decoration
+import org.readium.r2.navigator.DecorableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.html.HtmlDecorationTemplates
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 
 private const val NAV_FRAGMENT_TAG = "dexxicon.epub.navigator"
 
+/**
+ * The EPUB reader's native embed point (Phase 2 of #183) — everything genuinely tied to
+ * Readium's Android Toolkit (the navigator fragment itself, decoration rendering, edge-tap
+ * navigation, the text-selection "Highlight" menu item, and translating a portable
+ * [TocEntry]/[net.dexxicon.reader.core.model.Bookmark]/[net.dexxicon.reader.core.model.Highlight]
+ * into a real [Locator]/[Link] jump) lives here; the chrome itself (top bar, TOC/bookmarks/
+ * highlights/display-settings sheets) is the shared `EpubReaderScreen` this composable wraps.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun EpubReaderScreen(
@@ -99,15 +61,8 @@ fun EpubReaderScreen(
     val bookmarks by viewModel.bookmarks.collectAsStateWithLifecycle()
 
     when (val s = state) {
-        is EpubReaderState.Loading -> Center { CircularProgressIndicator() }
-        is EpubReaderState.Error -> Center {
-            Text(
-                s.message,
-                color = MaterialTheme.colorScheme.error,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(32.dp),
-            )
-        }
+        is EpubReaderState.Loading -> SharedEpubReaderScreen(EpubReaderUiState.Loading, onBack)
+        is EpubReaderState.Error -> SharedEpubReaderScreen(EpubReaderUiState.Error(s.message), onBack)
         is EpubReaderState.Ready -> ReaderContent(
             state = s,
             preferences = prefs,
@@ -130,12 +85,12 @@ fun EpubReaderScreen(
 @Composable
 private fun ReaderContent(
     state: EpubReaderState.Ready,
-    preferences: ReaderDisplayPreferences,
+    preferences: net.dexxicon.reader.core.datastore.ReaderDisplayPreferences,
     highlights: List<net.dexxicon.reader.core.model.Highlight>,
     bookmarks: List<net.dexxicon.reader.core.model.Bookmark>,
     onBack: () -> Unit,
     onLocator: (Locator) -> Unit,
-    onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
+    onUpdatePreferences: suspend ((net.dexxicon.reader.core.datastore.ReaderDisplayPreferences) -> net.dexxicon.reader.core.datastore.ReaderDisplayPreferences) -> Unit,
     onAddHighlight: (Locator) -> Unit,
     onSetNote: (String, String?) -> Unit,
     onSetColor: (String, net.dexxicon.reader.core.model.HighlightColor) -> Unit,
@@ -144,7 +99,6 @@ private fun ReaderContent(
     onDeleteBookmark: (String) -> Unit,
 ) {
     val activity = LocalActivity.current as? FragmentActivity
-    val scope = rememberCoroutineScope()
     val darkTheme = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
         Configuration.UI_MODE_NIGHT_YES
     // issue #117: same 720dp breakpoint used elsewhere (App.kt's two-pane split, the
@@ -153,22 +107,30 @@ private fun ReaderContent(
     val wideViewport = LocalConfiguration.current.screenWidthDp.dp >= 720.dp
 
     if (activity == null) {
-        Center { Text("The reader needs a FragmentActivity host") }
+        Surface(Modifier.fillMaxSize()) {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize(), Alignment.Center) {
+                Text("The reader needs a FragmentActivity host")
+            }
+        }
         return
     }
 
     val fragmentManager = activity.supportFragmentManager
     var navigator by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
-    var showToc by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
-    var showHighlights by remember { mutableStateOf(false) }
-    var showBookmarks by remember { mutableStateOf(false) }
     var activeHighlightId by remember { mutableStateOf<String?>(null) }
     var currentLocator by remember { mutableStateOf<Locator?>(null) }
     var chromeVisible by remember { mutableStateOf(true) }
     val tapNavEnabled by rememberUpdatedState(preferences.tapNavigation)
     val navHolder = remember { arrayOfNulls<EpubNavigatorFragment?>(1) }
     val addHighlight by rememberUpdatedState(onAddHighlight)
+
+    // The same flattened order backs both the shared TOC sheet (as portable TocEntry rows,
+    // ref = index into this list as a string) and this embed's own "go to ref" resolution —
+    // built once per publication so both stay in lockstep.
+    val flatToc = remember(state.publication) { flatten(state.publication.tableOfContents) }
+    val tocEntries = remember(flatToc) {
+        flatToc.mapIndexed { index, (depth, link) -> TocEntry(depth, link.title ?: link.href.toString(), index.toString()) }
+    }
 
     // Build the navigator fragment once per opened publication and set it as the factory
     // the FragmentManager will use to instantiate EpubNavigatorFragment by class.
@@ -178,8 +140,8 @@ private fun ReaderContent(
             .createFragmentFactory(
                 initialLocator = state.initialLocator,
                 initialPreferences = initialPrefs,
-                configuration = org.readium.r2.navigator.epub.EpubNavigatorFragment.Configuration().apply {
-                    decorationTemplates = org.readium.r2.navigator.html.HtmlDecorationTemplates.defaultTemplates()
+                configuration = EpubNavigatorFragment.Configuration().apply {
+                    decorationTemplates = HtmlDecorationTemplates.defaultTemplates()
                     selectionActionModeCallback = HighlightSelectionCallback(
                         activity = activity,
                         navigator = { navHolder[0] },
@@ -226,8 +188,7 @@ private fun ReaderContent(
         val nav = navigator ?: return
         if (b.isForeign) {
             // Chapter-level jump: match the label to a table-of-contents entry.
-            flatten(state.publication.tableOfContents)
-                .firstOrNull { (_, link) -> link.title?.equals(b.title, ignoreCase = true) == true }
+            flatToc.firstOrNull { (_, link) -> link.title?.equals(b.title, ignoreCase = true) == true }
                 ?.let { (_, link) -> nav.go(link, true) }
         } else {
             runCatching { Locator.fromJSON(org.json.JSONObject(b.locatorJson)) }
@@ -235,20 +196,21 @@ private fun ReaderContent(
         }
     }
 
+    fun goToLocatorJson(json: String) {
+        runCatching { Locator.fromJSON(org.json.JSONObject(json)) }.getOrNull()?.let { navigator?.go(it, true) }
+    }
+
     // Render highlight decorations and react to taps on them.
     LaunchedEffect(navigator, highlights) {
         val nav = navigator ?: return@LaunchedEffect
         val decorations = highlights.mapNotNull { h ->
             val locator = runCatching {
-                org.readium.r2.shared.publication.Locator.fromJSON(org.json.JSONObject(h.locatorJson))
+                Locator.fromJSON(org.json.JSONObject(h.locatorJson))
             }.getOrNull() ?: return@mapNotNull null
-            org.readium.r2.navigator.Decoration(
+            Decoration(
                 id = h.id,
                 locator = locator,
-                style = org.readium.r2.navigator.Decoration.Style.Highlight(
-                    tint = h.color.argb,
-                    isActive = false,
-                ),
+                style = Decoration.Style.Highlight(tint = h.color.argb, isActive = false),
             )
         }
         runCatching { nav.applyDecorations(decorations, "highlights") }
@@ -256,10 +218,8 @@ private fun ReaderContent(
 
     DisposableEffect(navigator) {
         val nav = navigator
-        val listener = object : org.readium.r2.navigator.DecorableNavigator.Listener {
-            override fun onDecorationActivated(
-                event: org.readium.r2.navigator.DecorableNavigator.OnActivatedEvent,
-            ): Boolean {
+        val listener = object : DecorableNavigator.Listener {
+            override fun onDecorationActivated(event: DecorableNavigator.OnActivatedEvent): Boolean {
                 activeHighlightId = event.decoration.id
                 return true
             }
@@ -285,527 +245,57 @@ private fun ReaderContent(
         navigator?.submitPreferences(preferences.toEpubPreferences(darkTheme, wideViewport))
     }
 
-    Scaffold(
-        topBar = {
-            if (chromeVisible) {
-                TopAppBar(
-                    // No title here — five action icons plus the BackPill already crowd this
-                    // row with no room left for a title to render legibly (issue #117).
-                    title = {},
-                    navigationIcon = { BackPill(onBack) },
-                    actions = {
-                        val locatorNow = currentLocator
-                        IconButton(
-                            enabled = locatorNow != null,
-                            onClick = {
-                                currentBookmark?.let { onDeleteBookmark(it.id) }
-                                    ?: locatorNow?.let(onAddBookmark)
-                            },
-                        ) {
-                            Icon(
-                                if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                                contentDescription = if (currentBookmark != null) "Remove bookmark" else "Add bookmark",
+    SharedEpubReaderScreen(
+        state = EpubReaderUiState.Ready(
+            title = state.title,
+            toc = tocEntries,
+            remoteResumePercent = state.remoteResumePercent,
+        ),
+        onBack = onBack,
+        preferences = preferences,
+        bookmarks = bookmarks,
+        highlights = highlights,
+        currentBookmark = currentBookmark,
+        chromeVisible = chromeVisible,
+        activeHighlightId = activeHighlightId,
+        onActiveHighlightChange = { activeHighlightId = it },
+        onAddBookmark = { currentLocator?.let(onAddBookmark) },
+        onDeleteBookmark = onDeleteBookmark,
+        onGoToBookmark = ::goToBookmark,
+        onGoToToc = { entry -> flatToc.getOrNull(entry.ref.toIntOrNull() ?: -1)?.let { (_, link) -> navigator?.go(link, true) } },
+        onGoToHighlight = { h -> goToLocatorJson(h.locatorJson) },
+        onSetNote = onSetNote,
+        onSetColor = onSetColor,
+        onDeleteHighlight = onDeleteHighlight,
+        onJumpToRemoteResume = { state.remoteResumeLocator?.let { navigator?.go(it, true) } },
+        onDismissRemoteResume = {},
+        onUpdatePreferences = onUpdatePreferences,
+        readerContent = {
+            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+                AndroidView(
+                    factory = { ctx ->
+                        val container = FragmentContainerView(ctx).apply {
+                            id = View.generateViewId()
+                            layoutParams = FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.MATCH_PARENT,
                             )
                         }
-                        IconButton(onClick = { showBookmarks = true }) {
-                            Icon(Icons.Filled.Bookmarks, contentDescription = "Bookmarks")
+                        if (fragmentManager.findFragmentByTag(NAV_FRAGMENT_TAG) == null &&
+                            !fragmentManager.isStateSaved
+                        ) {
+                            fragmentManager.commit {
+                                setReorderingAllowed(true)
+                                add(container.id, EpubNavigatorFragment::class.java, null, NAV_FRAGMENT_TAG)
+                            }
                         }
-                        IconButton(onClick = { showHighlights = true }) {
-                            Icon(Icons.Filled.BorderColor, contentDescription = "Highlights")
-                        }
-                        IconButton(onClick = { showToc = true }) {
-                            Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Contents")
-                        }
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(Icons.Filled.TextFields, contentDescription = "Display settings")
-                        }
+                        container
                     },
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
         },
-    ) { padding ->
-        androidx.compose.foundation.layout.Box(Modifier.fillMaxSize().padding(padding)) {
-            AndroidView(
-                factory = { ctx ->
-                    val container = FragmentContainerView(ctx).apply {
-                        id = View.generateViewId()
-                        layoutParams = FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                        )
-                    }
-                    if (fragmentManager.findFragmentByTag(NAV_FRAGMENT_TAG) == null &&
-                        !fragmentManager.isStateSaved
-                    ) {
-                        fragmentManager.commit {
-                            setReorderingAllowed(true)
-                            add(container.id, EpubNavigatorFragment::class.java, null, NAV_FRAGMENT_TAG)
-                        }
-                    }
-                    container
-                },
-                modifier = Modifier.fillMaxSize(),
-            )
-
-            var resumeDismissed by remember { mutableStateOf(false) }
-            val resumeLocator = state.remoteResumeLocator
-            if (resumeLocator != null && !resumeDismissed) {
-                Surface(
-                    tonalElevation = 3.dp,
-                    shadowElevation = 4.dp,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
-                ) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            "Continue from ${((state.remoteResumePercent ?: 0.0) * 100).toInt()}% (synced)",
-                            Modifier.weight(1f),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        TextButton(onClick = {
-                            navigator?.go(resumeLocator, true)
-                            resumeDismissed = true
-                        }) { Text("Jump") }
-                        IconButton(onClick = { resumeDismissed = true }) {
-                            Icon(Icons.Filled.Close, contentDescription = "Dismiss")
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    if (showToc) {
-        ModalBottomSheet(onDismissRequest = { showToc = false }) {
-            LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                val tocLinks = flatten(state.publication.tableOfContents)
-                if (tocLinks.isEmpty()) {
-                    item {
-                        Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
-                            Text("No table of contents")
-                        }
-                    }
-                }
-                items(tocLinks) { (depth, link) ->
-                    TextButton(
-                        onClick = { navigator?.go(link, true); showToc = false },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            link.title ?: link.href.toString(),
-                            modifier = Modifier.fillMaxWidth().padding(start = (depth * 16).dp),
-                            textAlign = TextAlign.Start,
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    if (showSettings) {
-        ModalBottomSheet(onDismissRequest = { showSettings = false }) {
-            DisplaySettings(
-                preferences = preferences,
-                onChange = { transform -> scope.launch { onUpdatePreferences(transform) } },
-            )
-        }
-    }
-
-    if (showBookmarks) {
-        ModalBottomSheet(onDismissRequest = { showBookmarks = false }) {
-            if (bookmarks.isEmpty()) {
-                Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
-                    Text("Tap the bookmark icon to save your place")
-                }
-            } else {
-                LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                    items(bookmarks, key = { it.id }) { b ->
-                        BookmarkRow(
-                            bookmark = b,
-                            onOpen = { goToBookmark(b); showBookmarks = false },
-                            onDelete = { onDeleteBookmark(b.id) },
-                        )
-                    }
-                }
-            }
-        }
-    }
-
-    if (showHighlights) {
-        ModalBottomSheet(onDismissRequest = { showHighlights = false }) {
-            HighlightList(
-                highlights = highlights,
-                onSelect = { h ->
-                    runCatching {
-                        org.readium.r2.shared.publication.Locator.fromJSON(org.json.JSONObject(h.locatorJson))
-                    }.getOrNull()?.let { navigator?.go(it, true) }
-                    showHighlights = false
-                },
-                onEdit = { activeHighlightId = it.id; showHighlights = false },
-            )
-        }
-    }
-
-    val active = highlights.firstOrNull { it.id == activeHighlightId }
-    if (active != null) {
-        ModalBottomSheet(onDismissRequest = { activeHighlightId = null }) {
-            HighlightEditor(
-                highlight = active,
-                onNote = { onSetNote(active.id, it) },
-                onColor = { onSetColor(active.id, it) },
-                onDelete = { onDeleteHighlight(active.id); activeHighlightId = null },
-            )
-        }
-    }
-}
-
-@Composable
-private fun BookmarkRow(
-    bookmark: net.dexxicon.reader.core.model.Bookmark,
-    onOpen: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    val subtitle = remember(bookmark.id) { bookmarkLocationLabel(bookmark) }
-    Row(
-        Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            Icons.Filled.Bookmark,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(18.dp),
-        )
-        Column(
-            Modifier.weight(1f).padding(start = 12.dp).clickableText(onOpen),
-        ) {
-            Text(
-                bookmark.title,
-                style = MaterialTheme.typography.bodyMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (subtitle != null) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        IconButton(onClick = onDelete) {
-            Icon(Icons.Filled.Close, contentDescription = "Remove bookmark")
-        }
-    }
-}
-
-/**
- * A "where in the book" hint for a bookmark row: how far through the chapter, then Readium's
- * page number when the publication has a position list — e.g. "43% – Page 87". Null for
- * bookmarks made in a server's web reader (they carry no precise position).
- */
-private fun bookmarkLocationLabel(bookmark: net.dexxicon.reader.core.model.Bookmark): String? {
-    if (bookmark.isForeign) return null
-    return runCatching {
-        val locations = org.json.JSONObject(bookmark.locatorJson).optJSONObject("locations")
-        val chapterProgression = locations?.optDouble("progression", Double.NaN)
-            ?.takeUnless { it.isNaN() }
-        val percent = ((chapterProgression ?: bookmark.progression) * 100).toInt()
-        val page = locations?.optInt("position", -1) ?: -1
-        if (page > 0) "$percent% – Page $page" else "$percent%"
-    }.getOrNull()
-}
-
-@Composable
-private fun HighlightList(
-    highlights: List<net.dexxicon.reader.core.model.Highlight>,
-    onSelect: (net.dexxicon.reader.core.model.Highlight) -> Unit,
-    onEdit: (net.dexxicon.reader.core.model.Highlight) -> Unit,
-) {
-    if (highlights.isEmpty()) {
-        Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
-            Text("Select text in the book to add a highlight")
-        }
-        return
-    }
-    LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-        items(highlights, key = { it.id }) { h ->
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(
-                    Modifier
-                        .size(10.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(androidx.compose.ui.graphics.Color(h.color.argb)),
-                )
-                Column(
-                    Modifier.weight(1f).padding(start = 12.dp).clickableText { onSelect(h) },
-                ) {
-                    Text(
-                        h.text,
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    if (!h.note.isNullOrBlank()) {
-                        Text(
-                            h.note!!,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
-                IconButton(onClick = { onEdit(h) }) {
-                    Icon(Icons.Filled.Edit, contentDescription = "Edit highlight")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun HighlightEditor(
-    highlight: net.dexxicon.reader.core.model.Highlight,
-    onNote: (String?) -> Unit,
-    onColor: (net.dexxicon.reader.core.model.HighlightColor) -> Unit,
-    onDelete: () -> Unit,
-) {
-    var note by remember(highlight.id) { mutableStateOf(highlight.note.orEmpty()) }
-    var selectedColor by remember(highlight.id) { mutableStateOf(highlight.color) }
-    val latestNote by rememberUpdatedState(note)
-
-    // Persist the note when the sheet goes away (or the highlight changes) so an edit is
-    // never lost just because the user dismissed without tapping "Save".
-    DisposableEffect(highlight.id) {
-        onDispose {
-            if (latestNote != highlight.note.orEmpty()) onNote(latestNote)
-        }
-    }
-
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(androidx.compose.foundation.rememberScrollState())
-            .padding(20.dp)
-            .imePadding()
-            .navigationBarsPadding(),
-    ) {
-        Text(highlight.text, style = MaterialTheme.typography.bodyMedium, maxLines = 4, overflow = TextOverflow.Ellipsis)
-        Row(Modifier.padding(top = 16.dp)) {
-            net.dexxicon.reader.core.model.HighlightColor.entries.forEach { c ->
-                val selected = c == selectedColor
-                Box(
-                    Modifier
-                        .padding(end = 10.dp)
-                        .size(30.dp)
-                        .clip(androidx.compose.foundation.shape.CircleShape)
-                        .background(androidx.compose.ui.graphics.Color(c.argb))
-                        .then(
-                            if (selected) {
-                                Modifier.border(
-                                    3.dp,
-                                    MaterialTheme.colorScheme.onSurface,
-                                    androidx.compose.foundation.shape.CircleShape,
-                                )
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .clickableText {
-                            selectedColor = c
-                            onColor(c)
-                        },
-                )
-            }
-        }
-        androidx.compose.material3.OutlinedTextField(
-            value = note,
-            onValueChange = { note = it },
-            label = { Text("Note") },
-            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-        )
-        Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
-            TextButton(onClick = onDelete) {
-                Icon(Icons.Filled.Delete, contentDescription = null)
-                Text("  Delete")
-            }
-            TextButton(onClick = { onNote(note) }) { Text("Save note") }
-        }
-    }
-}
-
-private fun Modifier.androidx_navBars(): Modifier = this.navigationBarsPadding()
-
-private fun Modifier.clickableText(onClick: () -> Unit): Modifier = this.clickable(onClick = onClick)
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun DisplaySettings(
-    preferences: ReaderDisplayPreferences,
-    onChange: ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
-) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .verticalScroll(androidx.compose.foundation.rememberScrollState())
-            .padding(24.dp)
-            .navigationBarsPadding(),
-    ) {
-        Text("Text size", style = MaterialTheme.typography.titleSmall)
-        Slider(
-            value = preferences.fontScale.toFloat(),
-            onValueChange = { v -> onChange { it.copy(fontScale = v.toDouble()) } },
-            valueRange = 0.6f..2.4f,
-            steps = 8,
-            modifier = Modifier.semantics {
-                contentDescription = "Text size"
-                stateDescription = "${(preferences.fontScale * 100).toInt()} percent"
-            },
-        )
-
-        SettingChips(
-            title = "Background",
-            entries = ReaderTheme.entries,
-            selected = preferences.theme,
-            label = ::readerThemeLabel,
-            onSelect = { theme -> onChange { it.copy(theme = theme) } },
-            leadingIcon = { theme -> ThemeSwatch(theme) },
-        )
-
-        SettingChips(
-            title = "Page fit",
-            entries = ReaderFitMode.entries,
-            selected = preferences.fitMode,
-            label = ::readerFitLabel,
-            onSelect = { fit -> onChange { it.copy(fitMode = fit) } },
-        )
-
-        SettingChips(
-            title = "Page layout",
-            entries = ReaderPageLayout.entries,
-            selected = preferences.pageLayout,
-            label = ::readerPageLayoutLabel,
-            onSelect = { layout -> onChange { it.copy(pageLayout = layout) } },
-        )
-
-        SettingChips(
-            title = "Reading mode",
-            // CONTINUOUS is scaffolding — kept out of the picker until a navigator honours it.
-            entries = listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
-            selected = if (preferences.scrollMode == ReaderScrollMode.PAGED) {
-                ReaderScrollMode.PAGED
-            } else {
-                ReaderScrollMode.SCROLL
-            },
-            label = ::readerScrollModeLabel,
-            onSelect = { mode -> onChange { it.copy(scrollMode = mode) } },
-        )
-
-        Row(
-            Modifier.fillMaxWidth().padding(top = 16.dp),
-            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
-        ) {
-            Text("Tap edges to turn pages", Modifier.weight(1f))
-            androidx.compose.material3.Switch(
-                checked = preferences.tapNavigation,
-                onCheckedChange = { on -> onChange { it.copy(tapNavigation = on) } },
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun <T> SettingChips(
-    title: String,
-    entries: List<T>,
-    selected: T,
-    label: (T) -> String,
-    onSelect: (T) -> Unit,
-    leadingIcon: (@Composable (T) -> Unit)? = null,
-) {
-    Text(title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
-    FlowRow(
-        Modifier.fillMaxWidth().padding(top = 4.dp),
-        horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp),
-    ) {
-        entries.forEach { entry ->
-            FilterChip(
-                selected = selected == entry,
-                onClick = { onSelect(entry) },
-                label = { Text(label(entry)) },
-                leadingIcon = leadingIcon?.let { icon -> { icon(entry) } },
-                shape = net.dexxicon.reader.core.designsystem.theme.Pill,
-            )
-        }
-    }
-}
-
-/**
- * issue #117 (from the Claude Design mockup): a small preview dot on each Background chip
- * showing the actual page colour that choice renders, rather than a bare text label. System
- * has no single colour to show — a half-white/half-black dot signals "follows the device"
- * instead of guessing the current system theme.
- */
-@Composable
-private fun ThemeSwatch(theme: ReaderTheme) {
-    val borderColor = MaterialTheme.colorScheme.outlineVariant
-    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
-        when (theme) {
-            ReaderTheme.SYSTEM -> {
-                drawArc(androidx.compose.ui.graphics.Color.White, -90f, 180f, useCenter = true)
-                drawArc(androidx.compose.ui.graphics.Color.Black, 90f, 180f, useCenter = true)
-            }
-            ReaderTheme.LIGHT -> drawCircle(androidx.compose.ui.graphics.Color(0xFFFFFFFF.toInt()))
-            ReaderTheme.SEPIA -> drawCircle(androidx.compose.ui.graphics.Color(SEPIA_BACKGROUND))
-            ReaderTheme.GREY -> drawCircle(androidx.compose.ui.graphics.Color(GREY_BACKGROUND))
-            ReaderTheme.DARK -> drawCircle(androidx.compose.ui.graphics.Color(DARK_BACKGROUND))
-        }
-        drawCircle(borderColor, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()))
-    }
-}
-
-private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
-    ReaderTheme.SYSTEM -> "System"
-    ReaderTheme.LIGHT -> "White"
-    ReaderTheme.SEPIA -> "Sepia"
-    ReaderTheme.GREY -> "Grey"
-    ReaderTheme.DARK -> "Black"
-}
-
-private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {
-    ReaderFitMode.PAGE_FIT -> "Fit"
-    ReaderFitMode.PAGE_WIDTH -> "Width"
-    ReaderFitMode.PAGE_HEIGHT -> "Height"
-    ReaderFitMode.ACTUAL_SIZE -> "Actual size"
-}
-
-private fun readerPageLayoutLabel(layout: ReaderPageLayout): String = when (layout) {
-    ReaderPageLayout.AUTO -> "Auto"
-    ReaderPageLayout.SINGLE -> "Single"
-    ReaderPageLayout.DOUBLE -> "Two-page"
-}
-
-private fun readerScrollModeLabel(mode: ReaderScrollMode): String = when (mode) {
-    ReaderScrollMode.PAGED -> "Paged"
-    ReaderScrollMode.SCROLL -> "Scroll"
-    ReaderScrollMode.CONTINUOUS -> "Continuous"
-}
-
-@Composable
-private fun Center(content: @Composable () -> Unit) {
-    Surface(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize(), Alignment.Center) { content() }
-    }
+    )
 }
 
 private fun flatten(links: List<Link>, depth: Int = 0): List<Pair<Int, Link>> =
