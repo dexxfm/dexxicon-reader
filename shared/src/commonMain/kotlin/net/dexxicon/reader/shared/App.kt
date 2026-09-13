@@ -87,6 +87,8 @@ import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.HomeScreen
 import net.dexxicon.reader.shared.library.LibraryScreen
 import net.dexxicon.reader.shared.nav.TopLevelDestination
+import net.dexxicon.reader.shared.settings.AudiobookDefaultsScreen
+import net.dexxicon.reader.shared.settings.BookDefaultsScreen
 import net.dexxicon.reader.shared.settings.SettingsScreen
 import net.dexxicon.reader.shared.servers.AddServerState
 import net.dexxicon.reader.shared.servers.ServersState
@@ -109,6 +111,8 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 @Serializable private object LibraryRoute
 @Serializable private object HomeRoute
 @Serializable private object SettingsRoute
+@Serializable private object AudiobookDefaultsRoute
+@Serializable private object BookDefaultsRoute
 @Serializable private data class BooksRoute(val serverId: String)
 @Serializable private data class BookDetailRoute(val serverId: String, val bookId: String)
 
@@ -216,7 +220,15 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
                             SettingsScreen(
                                 container = container,
                                 onManageServers = { nav.navigate(ManageServersRoute) },
+                                onOpenAudiobookDefaults = { nav.navigate(AudiobookDefaultsRoute) },
+                                onOpenBookDefaults = { nav.navigate(BookDefaultsRoute) },
                             )
+                        }
+                        composable<AudiobookDefaultsRoute> {
+                            AudiobookDefaultsScreen(container = container, onBack = { nav.popBackStack() })
+                        }
+                        composable<BookDefaultsRoute> {
+                            BookDefaultsScreen(container = container, onBack = { nav.popBackStack() })
                         }
                         composable<AddServerRoute> {
                             AddServerScreen(

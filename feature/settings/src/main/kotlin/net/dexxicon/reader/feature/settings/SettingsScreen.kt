@@ -1,321 +1,74 @@
 package net.dexxicon.reader.feature.settings
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer as LayoutSpacer
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Dns
-import androidx.compose.material.icons.filled.Headphones
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.launch
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import net.dexxicon.reader.core.datastore.AppTheme
-import net.dexxicon.reader.core.datastore.CoverTapAction
-import net.dexxicon.reader.core.designsystem.component.FormatLegend
-import net.dexxicon.reader.core.model.BookViewMode
+import net.dexxicon.reader.core.common.crash.CrashReporter
+import net.dexxicon.reader.core.common.crash.DiagnosticsArchive
+import net.dexxicon.reader.shared.di.AndroidAppContainer
+import net.dexxicon.reader.shared.settings.SettingsScreen as SharedSettingsScreen
 
-private const val GB = 1024L * 1024 * 1024
-
-private val CoverTapAction.label: String
-    get() = when (this) {
-        CoverTapAction.OPEN_DETAILS -> "Open book details"
-        CoverTapAction.OPEN_BOOK -> "Open book"
-    }
-
-/** Storage-limit presets. `null` = no limit. */
-private val DOWNLOAD_LIMIT_OPTIONS: List<Pair<String, Long?>> = listOf(
-    "1 GB" to 1 * GB,
-    "5 GB" to 5 * GB,
-    "10 GB" to 10 * GB,
-    "20 GB" to 20 * GB,
-    "50 GB" to 50 * GB,
-    "None" to null,
-)
-
-private fun formatGigabytes(bytes: Long): String {
-    val gb = bytes / GB.toDouble()
-    return when {
-        bytes < GB / 10 -> "%.0f MB".format(bytes / (1024.0 * 1024))
-        gb < 10 -> "%.1f GB".format(gb)
-        else -> "%.0f GB".format(gb)
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+/**
+ * Phase 4 Stage H (issue #145) — a thin platform entry point, same shape as
+ * `feature/catalog/BookDetailScreen.kt`'s own doc comment: `:shared`'s `SettingsScreen`/
+ * `SettingsState` hold the real logic and render (Appearance, Downloads, Book Defaults,
+ * Reading sync, Format badges, About). `SettingsViewModel`, `KoSyncSettingsViewModel` and the
+ * native-only `BookDefaultsScreens.kt` composables are gone — `:shared`'s own versions have
+ * full parity now that `ReaderPreferencesStore`/`PlayerPreferencesStore`/`KoSyncRepository`
+ * are all commonMain.
+ *
+ * [onReportProblem] is the one section `:shared`'s screen can't build itself — see its own
+ * doc comment for why. [CrashReporter]/[DiagnosticsArchive] don't actually need Hilt (both
+ * just take a `Context`, `@Inject`/`@Singleton` are there only for convenience elsewhere) so
+ * this thin wrapper constructs them directly, same as [AndroidAppContainer.get] does for
+ * everything else in this pattern — reading the same on-disk crash/log files the real
+ * Hilt-provided [CrashReporter] singleton in `DexxiconApplication` already writes to.
+ */
 @Composable
 fun SettingsScreen(
     versionName: String,
     onManageServers: () -> Unit = {},
     onOpenAudiobookDefaults: () -> Unit = {},
     onOpenBookDefaults: () -> Unit = {},
-    viewModel: SettingsViewModel = hiltViewModel(),
-    koSyncViewModel: KoSyncSettingsViewModel = hiltViewModel(),
 ) {
-    val prefs by viewModel.preferences.collectAsStateWithLifecycle()
-    val koSyncRows by koSyncViewModel.rows.collectAsStateWithLifecycle()
-    val refreshing by koSyncViewModel.refreshing.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    val container = remember { AndroidAppContainer.get(context) }
+    val crashReporter = remember { CrashReporter(context) }
+    val diagnosticsArchive = remember { DiagnosticsArchive(context, crashReporter) }
+    val scope = rememberCoroutineScope()
 
-    Scaffold(topBar = { TopAppBar(title = { Text("Settings") }) }) { padding ->
-        PullToRefreshBox(
-            isRefreshing = refreshing,
-            onRefresh = koSyncViewModel::refreshAll,
-            modifier = Modifier.fillMaxSize().padding(padding),
-        ) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .widthIn(max = 720.dp)
-                .padding(20.dp),
-        ) {
-            SectionTitle("Servers")
-            NavigableSettingRow(
-                icon = Icons.Filled.Dns,
-                title = "Manage servers",
-                subtitle = "Add, edit, remove, or reorder your servers.",
-                onClick = onManageServers,
-            )
-
-            Spacer()
-            SectionTitle("Appearance")
-            Text("Theme", style = MaterialTheme.typography.bodyMedium)
-            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AppTheme.entries.forEach { theme ->
-                    FilterChip(
-                        selected = prefs.theme == theme,
-                        onClick = { viewModel.setTheme(theme) },
-                        label = { Text(theme.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                    )
-                }
-            }
-
-            LayoutSpacer(Modifier.height(16.dp))
-            Text("Book layout", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "The default for the Library and a server's catalog. Each screen keeps its own " +
-                    "grid/list toggle; changing this here resets them all.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                BookViewMode.entries.forEach { mode ->
-                    FilterChip(
-                        selected = prefs.bookViewDefault == mode,
-                        onClick = { viewModel.setBookViewDefault(mode) },
-                        label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                    )
-                }
-            }
-
-            LayoutSpacer(Modifier.height(16.dp))
-            Text("Tapping a cover", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                "In the catalog and Browse — Home's Continue/On Deck shelves always jump " +
-                    "straight into the reader either way.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CoverTapAction.entries.forEach { action ->
-                    FilterChip(
-                        selected = prefs.coverTapAction == action,
-                        onClick = { viewModel.setCoverTapAction(action) },
-                        label = { Text(action.label) },
-                    )
-                }
-            }
-
-            Spacer()
-            SectionTitle("Book Defaults")
-            Text(
-                "The look, page-turn feel and playback options each format opens with.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 4.dp),
-            )
-            NavigableSettingRow(
-                icon = Icons.Filled.Headphones,
-                title = "Audiobooks",
-                subtitle = "Default speed, skip silence",
-                onClick = onOpenAudiobookDefaults,
-            )
-            NavigableSettingRow(
-                icon = Icons.AutoMirrored.Filled.MenuBook,
-                title = "Books",
-                subtitle = "EPUB, comics and PDF — text size, background, page-turn swipe",
-                onClick = onOpenBookDefaults,
-            )
-
-            Spacer()
-            SectionTitle("Downloads")
-            SettingRow(
-                title = "Download over Wi-Fi only",
-                subtitle = "Queued downloads wait for an unmetered connection",
-            ) {
-                Switch(
-                    checked = prefs.downloadsWifiOnly,
-                    onCheckedChange = viewModel::setDownloadsWifiOnly,
-                )
-            }
-
-            val usedBytes by viewModel.downloadUsedBytes.collectAsStateWithLifecycle()
-            LayoutSpacer(Modifier.height(16.dp))
-            Text("Storage limit", style = MaterialTheme.typography.bodyMedium)
-            Text(
-                buildString {
-                    append(formatGigabytes(usedBytes)).append(" used")
-                    prefs.downloadLimitBytes?.let { append(" of ").append(formatGigabytes(it)) }
-                    append(". A download that would go over is skipped.")
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp),
-            )
-            FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DOWNLOAD_LIMIT_OPTIONS.forEach { (label, bytes) ->
-                    FilterChip(
-                        selected = prefs.downloadLimitBytes == bytes,
-                        onClick = { viewModel.setDownloadLimit(bytes) },
-                        label = { Text(label) },
-                    )
-                }
-            }
-
-            Spacer()
-            SectionTitle("Reading sync")
-            Text(
-                "Reading & listening position syncs with each server. BookOrbit and Grimmory " +
-                    "sync through their own library API (same as the web reader); other OPDS " +
-                    "servers use a KOReader sync account.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-            if (koSyncRows.isEmpty()) {
-                Text(
-                    "Add a server first.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            koSyncRows.forEach { row ->
-                if (row.usesNative) {
-                    NativeSyncRow(row)
-                } else {
-                    KoSyncServerCard(
-                        row = row,
-                        onSave = { url, user, pass -> koSyncViewModel.save(row.serverId, url, user, pass) },
-                        onVerify = { koSyncViewModel.verify(row.serverId) },
-                    )
-                }
-                LayoutSpacer(Modifier.height(10.dp))
-            }
-
-            Spacer()
-            SectionTitle("Format badges")
-            Text(
-                "The coloured tag on a cover's bottom-right corner shows its file type.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(bottom = 12.dp),
-            )
-            FormatLegend()
-
-            Spacer()
-            SectionTitle("Feedback")
-            val context = androidx.compose.ui.platform.LocalContext.current
-            val scope = androidx.compose.runtime.rememberCoroutineScope()
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        scope.launch {
-                            sendProblemReport(context, versionName, viewModel.buildLogArchive())
-                        }
-                    }
-                    .padding(vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("Report a problem", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "Opens an email with your device details and a zip of the app's logs " +
-                            "attached. Nothing is sent until you send it.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-
-            Spacer()
-            SectionTitle("About")
-            SettingRow(title = "Dexxicon Reader", subtitle = "Version $versionName") {}
-            SettingRow(
-                title = "Source code",
-                subtitle = "github.com/dexxfm/dexxicon-reader",
-            ) {}
-        }
-        }
-    }
+    SharedSettingsScreen(
+        container = container,
+        onManageServers = onManageServers,
+        onOpenAudiobookDefaults = onOpenAudiobookDefaults,
+        onOpenBookDefaults = onOpenBookDefaults,
+        onReportProblem = {
+            scope.launch { sendProblemReport(context, versionName, diagnosticsArchive) }
+        },
+    )
 }
 
 /**
  * Opens the user's email app with device/app context prefilled and a zip of the app's logs
- * attached — no crash required. Nothing is sent until the user sends it. [logsZip] is null
- * when the archive couldn't be built; the email still opens, without the attachment.
+ * attached — no crash required. Nothing is sent until the user sends it.
  */
-private fun sendProblemReport(
+private suspend fun sendProblemReport(
     context: android.content.Context,
     versionName: String,
-    logsZip: java.io.File?,
+    diagnosticsArchive: DiagnosticsArchive,
 ) {
+    val logsZip = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        diagnosticsArchive.build()
+    }
     val body = buildString {
         appendLine("Describe the problem here:")
         appendLine()
         appendLine()
         appendLine("---")
         appendLine("A zip of the app's logs is attached.")
-        appendLine(net.dexxicon.reader.core.common.crash.CrashReporter.deviceBlock(context))
+        appendLine(CrashReporter.deviceBlock(context))
     }
     val attachment = logsZip?.let {
         runCatching {
@@ -326,10 +79,7 @@ private fun sendProblemReport(
     }
     val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
         type = "message/rfc822"
-        putExtra(
-            android.content.Intent.EXTRA_EMAIL,
-            arrayOf(net.dexxicon.reader.core.common.crash.CrashReporter.CONTACT_EMAIL),
-        )
+        putExtra(android.content.Intent.EXTRA_EMAIL, arrayOf(CrashReporter.CONTACT_EMAIL))
         putExtra(android.content.Intent.EXTRA_SUBJECT, "Dexxicon Reader $versionName — problem report")
         putExtra(android.content.Intent.EXTRA_TEXT, body)
         if (attachment != null) {
@@ -338,212 +88,6 @@ private fun sendProblemReport(
         }
     }
     runCatching {
-        context.startActivity(
-            android.content.Intent.createChooser(intent, "Report a problem"),
-        )
+        context.startActivity(android.content.Intent.createChooser(intent, "Report a problem"))
     }
-}
-
-@Composable
-private fun NativeSyncRow(row: SyncServerRow) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text(row.name, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                "Syncs with the library",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            row.lastSyncedAt?.let { at ->
-                Text(
-                    "Last synced ${relativeTime(at)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun KoSyncServerCard(
-    row: SyncServerRow,
-    onSave: (customUrl: String, user: String, pass: String) -> Unit,
-    onVerify: () -> Unit,
-) {
-    var user by remember(row.serverId) { mutableStateOf(row.koSyncUsername) }
-    var pass by remember(row.serverId) { mutableStateOf("") }
-    var customUrl by remember(row.serverId) { mutableStateOf(row.customUrl) }
-    var useCustom by remember(row.serverId) { mutableStateOf(row.customUrl.isNotBlank()) }
-    var expanded by remember(row.serverId) { mutableStateOf(false) }
-
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(row.name, style = MaterialTheme.typography.bodyLarge)
-                    val status = when {
-                        row.verifying -> "Checking…"
-                        row.verified == true -> "(koreader) · connected"
-                        row.verified == false -> "(koreader) · sign-in failed"
-                        row.configured -> "(koreader) · configured"
-                        else -> "Not set up"
-                    }
-                    Text(
-                        status,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (row.verified == false) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
-                    )
-                    row.lastSyncedAt?.let { at ->
-                        Text(
-                            "Last synced ${relativeTime(at)}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                if (row.verifying) {
-                    CircularProgressIndicator(Modifier.size(18.dp))
-                }
-                TextButton(onClick = { expanded = !expanded }) {
-                    Text(if (expanded) "Close" else "Edit")
-                }
-            }
-            if (expanded) {
-                Text(
-                    "Sync endpoint",
-                    style = MaterialTheme.typography.labelMedium,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-                Row(Modifier.padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilterChip(
-                        selected = !useCustom,
-                        onClick = { useCustom = false },
-                        label = { Text("Assumed") },
-                    )
-                    FilterChip(
-                        selected = useCustom,
-                        onClick = { useCustom = true },
-                        label = { Text("Custom") },
-                    )
-                }
-                if (!useCustom) {
-                    Text(
-                        row.assumedUrl,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                } else {
-                    OutlinedTextField(
-                        value = customUrl,
-                        onValueChange = { customUrl = it },
-                        label = { Text("Custom sync URL") },
-                        placeholder = { Text(row.assumedUrl) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    )
-                }
-                OutlinedTextField(
-                    value = user,
-                    onValueChange = { user = it },
-                    label = { Text("Sync username") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                )
-                OutlinedTextField(
-                    value = pass,
-                    onValueChange = { pass = it },
-                    label = { Text(if (row.configured) "Sync password (leave blank to keep)" else "Sync password") },
-                    visualTransformation = PasswordVisualTransformation(),
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                )
-                Row(Modifier.fillMaxWidth().padding(top = 8.dp), horizontalArrangement = Arrangement.End) {
-                    TextButton(onClick = onVerify, enabled = row.configured) { Text("Verify") }
-                    TextButton(onClick = {
-                        onSave(if (useCustom) customUrl else "", user, pass)
-                        expanded = false
-                    }) { Text("Save") }
-                }
-            }
-        }
-    }
-}
-
-private fun relativeTime(atMillis: Long): String {
-    val now = System.currentTimeMillis()
-    if (atMillis <= 0L || atMillis > now) return "just now"
-    return android.text.format.DateUtils.getRelativeTimeSpanString(
-        atMillis,
-        now,
-        android.text.format.DateUtils.MINUTE_IN_MILLIS,
-        android.text.format.DateUtils.FORMAT_ABBREV_RELATIVE,
-    ).toString().replaceFirstChar { it.lowercase() }
-}
-
-@Composable
-internal fun SectionTitle(text: String) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(bottom = 8.dp),
-    )
-}
-
-@Composable
-private fun Spacer() {
-    HorizontalDivider(Modifier.padding(vertical = 20.dp))
-}
-
-@Composable
-internal fun SettingRow(
-    title: String,
-    subtitle: String?,
-    trailing: @Composable () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth().padding(vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            subtitle?.let {
-                Text(
-                    it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-        trailing()
-    }
-}
-
-/** A Settings row that opens a sub-screen — used by the Book Defaults entries. */
-@Composable
-private fun NavigableSettingRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    onClick: () -> Unit,
-) {
-    ListItem(
-        headlineContent = { Text(title) },
-        supportingContent = { Text(subtitle, style = MaterialTheme.typography.bodySmall) },
-        leadingContent = { Icon(icon, contentDescription = null) },
-        trailingContent = {
-            Icon(
-                Icons.Filled.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        },
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-    )
 }

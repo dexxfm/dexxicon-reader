@@ -1,9 +1,9 @@
 package net.dexxicon.reader.feature.reader.pdf
 
 import androidx.compose.ui.graphics.Color
-import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
-import net.dexxicon.reader.core.reader.ReaderFitMode
-import net.dexxicon.reader.core.reader.ReaderTheme
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.datastore.ReaderFitMode
+import net.dexxicon.reader.core.datastore.ReaderTheme
 import org.readium.adapter.pdfium.navigator.PdfiumPreferences
 import org.readium.r2.navigator.preferences.Axis
 import org.readium.r2.navigator.preferences.Fit

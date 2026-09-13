@@ -20,6 +20,9 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:datastore"))
     implementation(project(":core:reader"))
+    // Phase 4 Stage H (issue #145): SettingsScreen/AudiobookDefaultsScreen/BookDefaultsScreen
+    // are thin wrappers over :shared's versions now, same pattern as :feature:servers.
+    implementation(project(":shared"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.runtime)

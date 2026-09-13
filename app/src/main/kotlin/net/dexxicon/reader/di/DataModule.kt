@@ -20,6 +20,8 @@ import net.dexxicon.reader.core.data.media.PlaybackProgressSinkImpl
 import net.dexxicon.reader.core.database.dao.ServerDao
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.PlatformStorageContext
+import net.dexxicon.reader.core.datastore.PlayerPreferencesStore
+import net.dexxicon.reader.core.datastore.ReaderPreferencesStore
 import net.dexxicon.reader.core.media.MediaLibraryContentSource
 import net.dexxicon.reader.core.media.PlaybackProgressSink
 import net.dexxicon.reader.core.network.AuthHeaderProvider
@@ -86,5 +88,17 @@ abstract class DataModule {
         @Singleton
         fun provideAppPreferencesStore(@ApplicationContext context: Context): AppPreferencesStore =
             AppPreferencesStore(PlatformStorageContext(context))
+
+        // ReaderPreferencesStore/PlayerPreferencesStore (Stage H, issue #145) moved to
+        // commonMain the same way — @Inject/@Singleton dropped, explicit @Provides here.
+        @Provides
+        @Singleton
+        fun provideReaderPreferencesStore(@ApplicationContext context: Context): ReaderPreferencesStore =
+            ReaderPreferencesStore(PlatformStorageContext(context))
+
+        @Provides
+        @Singleton
+        fun providePlayerPreferencesStore(@ApplicationContext context: Context): PlayerPreferencesStore =
+            PlayerPreferencesStore(PlatformStorageContext(context))
     }
 }
