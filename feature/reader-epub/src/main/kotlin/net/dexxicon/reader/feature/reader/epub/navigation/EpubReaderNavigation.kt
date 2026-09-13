@@ -12,8 +12,9 @@ data class EpubReaderRoute(val serverId: String, val bookId: String)
 fun NavController.navigateToEpubReader(serverId: String, bookId: String) =
     navigate(EpubReaderRoute(serverId, bookId))
 
-fun NavGraphBuilder.epubReaderSection(navController: NavController) {
+/** See `comicReaderSection`'s doc comment (issue #155) for why [onExit] exists. */
+fun NavGraphBuilder.epubReaderSection(navController: NavController, onExit: () -> Unit) {
     composable<EpubReaderRoute> {
-        EpubReaderScreen(onBack = { navController.popBackStack() })
+        EpubReaderScreen(onBack = { if (!navController.popBackStack()) onExit() })
     }
 }
