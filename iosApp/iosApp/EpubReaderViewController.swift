@@ -29,8 +29,10 @@ import ReadiumNavigator
 /// top of that is a cosmetic addition, not a functional gap, and wasn't sized accurately in
 /// the original feasibility report).
 ///
-/// Not yet verified beyond compiling — no Mac available locally; the real test is a
-/// triggered `ios-ci` run.
+/// Verified live on a real Mac/simulator against a real BookOrbit server (issues #169-#171):
+/// EPUB, CBZ, and CBR all open successfully. EPUB/CBZ/MOBI/AZW3/FB2 are downloaded in full
+/// before opening — see `RemoteFileCache`'s doc comment for why streaming them doesn't work
+/// with this Readium Swift Toolkit version.
 final class EpubReaderViewController: UIViewController {
     private let url: URL
     private let authHeader: String?
@@ -84,22 +86,25 @@ final class EpubReaderViewController: UIViewController {
             }
             resolvedURL = fileURL
         } else {
-            // AssetRetriever.retrieve(url:) takes Readium's own AbsoluteURL protocol, not
-            // Foundation's URL — HTTPURL(string:) is Readium's real, documented constructor
-            // for a remote http(s) URL (confirmed against ios-ci's actual compiler error, not
-            // guessed a second time: `argument type 'URL' does not conform to expected type
-            // 'AbsoluteURL'`).
-            guard let httpURL = HTTPURL(string: url.absoluteString) else {
+            // issue #170/#171: EPUB and CBZ (and MOBI/AZW3/FB2, server-converted to EPUB) are
+            // all ZIP containers, and Readium Swift Toolkit 3.11.0's ZIP-over-HTTP range
+            // streaming requests a fixed ~6 MiB look-ahead window without ever clamping it to
+            // the file's real length — see RemoteFileCache's doc comment for the confirmed root
+            // cause. Downloading the whole file up front (same workaround CBR needed above, for
+            // a different reason) sidesteps ranged reads entirely.
+            let ext = isComic ? "cbz" : "epub"
+            guard let localURL = try? await RemoteFileCache.download(url: url, authHeader: authHeader, extension: ext),
+                  let fileURL = FileURL(url: localURL) else {
                 showError("Couldn't open this book.")
                 return
             }
-            resolvedURL = httpURL
+            resolvedURL = fileURL
         }
 
-        // additionalHeaders applies to every request this client makes — the same one-time
-        // attachment Android's authenticated OkHttp client does, just via Readium Swift's own
-        // HTTP client instead of Ktor. A normalized CBR is read from a local file, so it never
-        // makes another authenticated request — the header was already spent downloading it.
+        // `resolvedURL` is always a local file:// URL by this point (every branch above
+        // downloads first) — this client's `additionalHeaders` is defensive plumbing for
+        // whatever Readium might still fetch on its own, not something the normal open path
+        // relies on; the auth header was already spent downloading the file.
         let httpClient = DefaultHTTPClient(
             additionalHeaders: authHeader.map { ["Authorization": $0] }
         )
