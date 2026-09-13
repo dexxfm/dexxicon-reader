@@ -46,6 +46,7 @@ targets:
       - path: iosApp
     settings:
       base:
+        PRODUCT_NAME: iosApp
         PRODUCT_BUNDLE_IDENTIFIER: net.dexxicon.reader
         INFOPLIST_FILE: iosApp/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
