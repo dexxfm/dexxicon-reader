@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.1 — 2026-09-13
+
+- **Fixed: the back arrow inside the audiobook player and the EPUB/PDF/comic readers did
+  nothing.** It now correctly closes the reader/player and returns you to where you were.
+
 ## 0.13.0 — 2026-09-13
 
 Settings, Servers, and the per-server catalog move onto the same shared code the iOS build
