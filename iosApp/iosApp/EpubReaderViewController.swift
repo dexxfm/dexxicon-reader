@@ -146,6 +146,14 @@ final class EpubReaderViewController: UIViewController {
             showError("Couldn't open this book.")
             return
         }
+        if isComic {
+            // issue #179: diagnosing a blank/white screen for comics that otherwise open with
+            // no error — checking whether the synthesized fixed-layout publication actually
+            // carries a layout + per-page width/height, which Readium's fixed-layout renderer
+            // may need to size each page's viewport.
+            let firstLink = publication.readingOrder.first
+            NSLog("[EpubReader] comic publication: layout=\(String(describing: publication.metadata.layout)) readingOrder.count=\(publication.readingOrder.count) firstLink.width=\(String(describing: firstLink?.width)) firstLink.height=\(String(describing: firstLink?.height)) firstLink.href=\(String(describing: firstLink?.href))")
+        }
 
         do {
             // issue #108: manga reads right-to-left — nil (not .ltr) lets a non-manga book
@@ -177,6 +185,10 @@ final class EpubReaderViewController: UIViewController {
         navigator.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(navigator.view)
         navigator.didMove(toParent: self)
+        // issue #179: checking whether the container ever has a real, non-zero frame to embed
+        // the navigator into — a blank/white fixed-layout page can happen if the navigator's
+        // view is laid out with zero size at embed time.
+        NSLog("[EpubReader] embedded navigator: view.bounds=\(self.view.bounds) navigator.view.frame=\(navigator.view.frame)")
     }
 
     private func showError(_ message: String) {
