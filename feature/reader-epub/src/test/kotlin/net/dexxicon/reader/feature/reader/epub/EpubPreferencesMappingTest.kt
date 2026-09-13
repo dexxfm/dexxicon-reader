@@ -46,6 +46,25 @@ class EpubPreferencesMappingTest {
         assertThat(dark.backgroundColor).isNull()
     }
 
+    @Test fun `auto page layout switches to two columns on a wide viewport`() {
+        val narrow = ReaderDisplayPreferences(pageLayout = ReaderPageLayout.AUTO)
+            .toEpubPreferences(systemInDark = false, wideViewport = false)
+        assertThat(narrow.columnCount).isEqualTo(ColumnCount.AUTO)
+
+        val wide = ReaderDisplayPreferences(pageLayout = ReaderPageLayout.AUTO)
+            .toEpubPreferences(systemInDark = false, wideViewport = true)
+        assertThat(wide.columnCount).isEqualTo(ColumnCount.TWO)
+    }
+
+    @Test fun `a manual page layout choice ignores viewport width`() {
+        fun columns(layout: ReaderPageLayout, wide: Boolean) =
+            ReaderDisplayPreferences(pageLayout = layout)
+                .toEpubPreferences(systemInDark = false, wideViewport = wide).columnCount
+
+        assertThat(columns(ReaderPageLayout.SINGLE, wide = true)).isEqualTo(ColumnCount.ONE)
+        assertThat(columns(ReaderPageLayout.DOUBLE, wide = false)).isEqualTo(ColumnCount.TWO)
+    }
+
     @Test fun `scroll mode drives the Readium scroll flag`() {
         fun scroll(m: ReaderScrollMode) =
             ReaderDisplayPreferences(scrollMode = m).toEpubPreferences(systemInDark = false).scroll
