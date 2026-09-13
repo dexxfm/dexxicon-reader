@@ -54,6 +54,9 @@ import net.dexxicon.reader.shared.player.NowPlaying
 import net.dexxicon.reader.shared.player.PlayerActions
 import net.dexxicon.reader.shared.player.PlayerUiSnapshot
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
+import net.dexxicon.reader.shared.reader.epub.EpubProgressBridge
+import net.dexxicon.reader.shared.reader.epub.EpubReaderActions
+import net.dexxicon.reader.shared.reader.epub.EpubReaderNativeState
 
 /**
  * Manual (non-Hilt) composition root for `:shared`'s commonMain UI. Every `:core:*` module
@@ -314,6 +317,38 @@ class AppContainer(
      * [net.dexxicon.reader.shared.player.PlayerScreen]'s caller is expected to only render once
      * [playerState] is non-null, by which point this is always set too. */
     var playerActions: PlayerActions? = null
+
+    /** Phase 2 of the shared-reader-chrome redesign (issue #183) — the iOS EPUB reader's own
+     * bridge; see [EpubReaderNativeState]/[EpubReaderActions]'s own doc comments for why this
+     * exists only for iOS (Android's native embed is Kotlin, so it needs no push at all). */
+    private val _epubReaderState = MutableStateFlow<EpubReaderNativeState?>(null)
+    val epubReaderState: StateFlow<EpubReaderNativeState?> = _epubReaderState.asStateFlow()
+
+    fun updateEpubReaderState(value: EpubReaderNativeState?) {
+        _epubReaderState.value = value
+    }
+
+    var epubReaderActions: EpubReaderActions? = null
+
+    val epubProgressBridge: EpubProgressBridge = EpubProgressBridge(progressRepository, scope)
+
+    /** Pure UI state the shared chrome owns — unlike [epubReaderState], a native *gesture*
+     * (an edge-tap-navigator centre tap, a decoration tap) is the only thing that needs to
+     * reach in and change these from outside Compose, so they're exposed as plain mutable
+     * state rather than folded into the native-authoritative snapshot above. */
+    private val _epubChromeVisible = MutableStateFlow(true)
+    val epubChromeVisible: StateFlow<Boolean> = _epubChromeVisible.asStateFlow()
+
+    fun toggleEpubChrome() {
+        _epubChromeVisible.value = !_epubChromeVisible.value
+    }
+
+    private val _epubActiveHighlightId = MutableStateFlow<String?>(null)
+    val epubActiveHighlightId: StateFlow<String?> = _epubActiveHighlightId.asStateFlow()
+
+    fun setEpubActiveHighlightId(value: String?) {
+        _epubActiveHighlightId.value = value
+    }
 
     init {
         realAuthHeaderProvider =

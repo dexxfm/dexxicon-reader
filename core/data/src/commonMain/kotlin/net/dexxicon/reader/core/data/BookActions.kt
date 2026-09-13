@@ -73,6 +73,32 @@ class BookActions(
         }
     }
 
+    /**
+     * Records a metadata snapshot (title/author/cover) for [serverId]/[bookId] right as a
+     * reader opens it, so the book can show up on the Library's "Continue" shelves even
+     * before any real position is saved. Fire-and-forget, same shape as every other public
+     * method here — called once from [net.dexxicon.reader.shared.openReader] (issue #183) so
+     * every platform/format gets this for free, instead of each native reader recording it
+     * itself (Android's EPUB reader already does via `ReaderLocatorStore.noteOpened`; this
+     * is what lets iOS's readers, which have no equivalent of their own yet, get it too).
+     */
+    fun noteOpened(serverId: String, bookId: String, detail: BookDetail) {
+        scope.launch {
+            val s = detail.summary
+            progressRepository.save(
+                ReadingProgress(
+                    serverId = serverId,
+                    bookId = bookId,
+                    format = s.format,
+                    title = s.title,
+                    author = s.authorLine.takeIf { it.isNotBlank() },
+                    coverUrl = s.coverUrl,
+                    digestUrl = detail.primaryAcquisition?.href,
+                ),
+            )
+        }
+    }
+
     private suspend fun pushProgress(serverId: String, bookId: String, percent: Double) {
         val detail = detailOf(serverId, bookId) ?: return
         val s = detail.summary

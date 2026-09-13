@@ -1,8 +1,19 @@
 package net.dexxicon.reader.shared
 
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.UIKitViewController
 import androidx.compose.ui.window.ComposeUIViewController
+import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.model.Bookmark
+import net.dexxicon.reader.core.model.Highlight
+import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.di.PlatformContext
 import net.dexxicon.reader.shared.di.createAppContainer
@@ -11,7 +22,16 @@ import net.dexxicon.reader.shared.player.PlayerActions
 import net.dexxicon.reader.shared.player.PlayerScreen
 import net.dexxicon.reader.shared.player.PlayerUiSnapshot
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
+import net.dexxicon.reader.shared.reader.epub.EpubProgressBridge
+import net.dexxicon.reader.shared.reader.epub.EpubReaderActions
+import net.dexxicon.reader.shared.reader.epub.EpubReaderNativeState
+import net.dexxicon.reader.shared.reader.epub.EpubReaderScreen
+import net.dexxicon.reader.shared.reader.epub.EpubReaderUiState
+import net.dexxicon.reader.shared.reader.epub.TocEntry
+import net.dexxicon.reader.shared.reader.epub.progressionFromLocatorJson
+import net.dexxicon.reader.shared.reader.epub.titleFromLocatorJson
 import platform.UIKit.UIViewController
+import kotlin.math.abs
 
 /**
  * One process-lifetime [AppContainer] — hoisted out of `MainViewController`'s Compose content
@@ -127,5 +147,151 @@ fun PlayerViewController(onBack: () -> Unit): UIViewController = ComposeUIViewCo
     val actions = appContainer.playerActions
     if (actions != null) {
         PlayerScreen(state = state, actions = actions, onBack = onBack)
+    }
+}
+
+/**
+ * Phase 2 of the shared-reader-chrome redesign (issue #183) — lets Swift's
+ * `EpubReaderViewController` resolve/report reading position and (elsewhere) push preferences,
+ * the same "hand a piece of the container to Swift" shape as [audiobookProgressSync].
+ */
+fun epubProgressBridge(): EpubProgressBridge = appContainer.epubProgressBridge
+
+/** Swift's `EPUBNavigatorDelegate` calls this on every `locationDidChange`/on open, the same
+ * "native engine pushes a fresh snapshot" shape as [updatePlayerState]. */
+fun updateEpubReaderState(state: EpubReaderNativeState?) {
+    appContainer.updateEpubReaderState(state)
+}
+
+/**
+ * Wires the shared EPUB chrome's navigation/preference commands back to the real Readium
+ * Swift navigator — called once by Swift right after it builds the navigator (it needs the
+ * real `Publication`/`Locator` types the shared chrome never sees), same convention as
+ * [setPlayerActions].
+ */
+fun setEpubReaderActions(
+    goToBookmark: (Bookmark) -> Unit,
+    goToHighlight: (Highlight) -> Unit,
+    goToToc: (TocEntry) -> Unit,
+    jumpToRemoteResume: () -> Unit,
+    submitPreferences: (ReaderDisplayPreferences) -> Unit,
+    applyHighlights: (List<Highlight>) -> Unit,
+) {
+    appContainer.epubReaderActions = EpubReaderActions(
+        goToBookmark = goToBookmark,
+        goToHighlight = goToHighlight,
+        goToToc = goToToc,
+        jumpToRemoteResume = jumpToRemoteResume,
+        submitPreferences = submitPreferences,
+        applyHighlights = applyHighlights,
+    )
+}
+
+/** A native edge-tap-navigator centre tap toggles the shared chrome's visibility — called by
+ * Swift's `EPUBNavigatorDelegate.navigator(_:didTapAt:)` when a tap lands outside the page-turn
+ * edge zones, the Swift equivalent of Android's own `EdgeTapNavigator(onCenterTap = ...)`. */
+fun epubReaderToggleChrome() {
+    appContainer.toggleEpubChrome()
+}
+
+/** A native decoration tap opens the highlight editor sheet — called by Swift's
+ * `observeDecorationInteractions(inGroup:onActivated:)` callback. `null` closes it (matches
+ * the shared chrome's own `onActiveHighlightChange(null)` dismiss path). */
+fun epubReaderSetActiveHighlight(id: String?) {
+    appContainer.setEpubActiveHighlightId(id)
+}
+
+/**
+ * Third Compose root for iOS (issue #183) — same shape as [PlayerViewController], but the
+ * actual page-rendering surface is genuinely native (Readium's `EPUBNavigatorViewController`,
+ * a real `UIViewController` Swift has already built and delegate-wired by the time this is
+ * presented), so [navigatorViewController] is embedded via `UIKitViewController` rather than
+ * this screen rendering the whole surface itself the way [PlayerViewController] can for audio.
+ *
+ * [serverId]/[bookId] are only needed here for the two calls that are portable enough to make
+ * directly against [AppContainer.bookmarkRepository]/[AppContainer.highlightRepository] —
+ * everything that needs the real `Locator`/`Publication` (going *to* a bookmark/highlight/TOC
+ * entry, submitting preferences, applying decorations) is answered by
+ * [AppContainer.epubReaderActions] instead, which Swift sets right after building the
+ * navigator (see [setEpubReaderActions]).
+ */
+fun EpubReaderViewController(
+    onBack: () -> Unit,
+    navigatorViewController: UIViewController,
+    serverId: String,
+    bookId: String,
+): UIViewController = ComposeUIViewController {
+    val native by appContainer.epubReaderState.collectAsState()
+    val chromeVisible by appContainer.epubChromeVisible.collectAsState()
+    val activeHighlightId by appContainer.epubActiveHighlightId.collectAsState()
+    val bookmarks by appContainer.bookmarkRepository.observe(serverId, bookId).collectAsState(emptyList())
+    val highlights by appContainer.highlightRepository.observe(serverId, bookId).collectAsState(emptyList())
+    val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
+    val actions = appContainer.epubReaderActions
+    val scope = rememberCoroutineScope()
+
+    val screenState = native?.screenState ?: EpubReaderUiState.Loading
+    val currentLocatorJson = native?.currentLocatorJson
+    val currentProgression = currentLocatorJson?.let(::progressionFromLocatorJson)
+
+    val currentBookmark = remember(bookmarks, currentProgression) {
+        val here = currentProgression
+        if (here == null) {
+            null
+        } else {
+            bookmarks.filter { !it.isForeign }
+                .minByOrNull { abs(it.progression - here) }
+                ?.takeIf { abs(it.progression - here) < 0.001 }
+        }
+    }
+
+    LaunchedEffect(preferences) {
+        actions?.submitPreferences?.invoke(preferences)
+    }
+    LaunchedEffect(highlights) {
+        actions?.applyHighlights?.invoke(highlights)
+    }
+
+    if (actions != null) {
+        EpubReaderScreen(
+            state = screenState,
+            onBack = onBack,
+            preferences = preferences,
+            bookmarks = bookmarks,
+            highlights = highlights,
+            currentBookmark = currentBookmark,
+            chromeVisible = chromeVisible,
+            activeHighlightId = activeHighlightId,
+            onActiveHighlightChange = { appContainer.setEpubActiveHighlightId(it) },
+            onAddBookmark = {
+                currentLocatorJson?.let { json ->
+                    scope.launch {
+                        appContainer.bookmarkRepository.add(
+                            serverId = serverId,
+                            bookId = bookId,
+                            locatorJson = json,
+                            progression = progressionFromLocatorJson(json) ?: 0.0,
+                            title = titleFromLocatorJson(json).orEmpty(),
+                        )
+                    }
+                }
+            },
+            onDeleteBookmark = { id -> scope.launch { appContainer.bookmarkRepository.delete(id) } },
+            onGoToBookmark = actions.goToBookmark,
+            onGoToToc = actions.goToToc,
+            onGoToHighlight = actions.goToHighlight,
+            onSetNote = { id, note -> scope.launch { appContainer.highlightRepository.updateNote(id, note) } },
+            onSetColor = { id, color: HighlightColor -> scope.launch { appContainer.highlightRepository.updateColor(id, color) } },
+            onDeleteHighlight = { id -> scope.launch { appContainer.highlightRepository.delete(id) } },
+            onJumpToRemoteResume = actions.jumpToRemoteResume,
+            onDismissRemoteResume = {},
+            onUpdatePreferences = { transform -> appContainer.readerPreferences.update(transform) },
+            readerContent = {
+                UIKitViewController(
+                    factory = { navigatorViewController },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
+        )
     }
 }
