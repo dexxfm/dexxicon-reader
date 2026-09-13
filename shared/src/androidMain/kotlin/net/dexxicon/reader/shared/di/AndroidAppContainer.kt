@@ -2,6 +2,7 @@ package net.dexxicon.reader.shared.di
 
 import android.content.Context
 import net.dexxicon.reader.core.database.DexxiconDatabase
+import okhttp3.OkHttpClient
 
 /**
  * Process-lifetime [AppContainer] singleton for native `:app` (issue #126) — mirrors iOS's
@@ -18,17 +19,29 @@ import net.dexxicon.reader.core.database.DexxiconDatabase
  * one (issue #156): a separate `RoomDatabase` instance on the same file compiles and reads
  * fine, but its `InvalidationTracker` never sees writes made through the other instance, so
  * `DownloadWorker`'s progress updates (through `:app`'s Hilt-provided instance) never
- * reached this container's `Flow`s. `SharedPreviewActivity` — the one caller with no Hilt
- * graph to pull a database from — calls [createAppContainer] directly instead of going
- * through this singleton, so it isn't affected by (or a fix target for) that bug.
+ * reached this container's `Flow`s.
+ *
+ * [get] also takes `:app`'s Hilt-provided [OkHttpClient] (issue #161) for the same reason:
+ * without it, this container's `TokenManager` — the one every real sign-in and every real API
+ * call actually goes through — ran on a bare engine with no cookie jar, silently dropping
+ * BookOrbit's session-refresh cookie, and `:app`'s own separate `TokenManager` (built by
+ * `ServerAuthModule` from scratch) sat unused by any real traffic, watched only by the
+ * background refresh worker/reauth banner — two independent in-memory session caches that
+ * could each refresh (and, for Grimmory's single-use rotating refresh tokens, invalidate) the
+ * other's copy. `ServerAuthModule.provideTokenManager` now returns *this* container's
+ * `tokenManager` instead of building a second one, closing that gap.
+ *
+ * `SharedPreviewActivity` — the one caller with no Hilt graph to pull either from — calls
+ * [createAppContainer] directly instead of going through this singleton, so it isn't affected
+ * by (or a fix target for) either bug.
  */
 object AndroidAppContainer {
     @Volatile
     private var instance: AppContainer? = null
 
-    fun get(context: Context, database: DexxiconDatabase): AppContainer =
+    fun get(context: Context, database: DexxiconDatabase, okHttpClient: OkHttpClient): AppContainer =
         instance ?: synchronized(this) {
-            instance ?: createAppContainer(PlatformContext(context.applicationContext), database)
+            instance ?: createAppContainer(PlatformContext(context.applicationContext), database, okHttpClient)
                 .also { instance = it }
         }
 }

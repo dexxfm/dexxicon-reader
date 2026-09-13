@@ -9,9 +9,11 @@ import androidx.fragment.app.FragmentActivity
 import dagger.hilt.android.AndroidEntryPoint
 import net.dexxicon.reader.core.data.auth.SignInNotifier
 import net.dexxicon.reader.core.database.DexxiconDatabase
+import net.dexxicon.reader.core.network.DexxiconHttpClient
 import net.dexxicon.reader.shared.di.AndroidAppContainer
 import net.dexxicon.reader.ui.DexxiconApp
 import net.dexxicon.reader.ui.ReauthCoordinator
+import okhttp3.OkHttpClient
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -20,12 +22,16 @@ class MainActivity : FragmentActivity() {
     @Inject
     lateinit var reauthCoordinator: ReauthCoordinator
 
-    /** issue #156 — see [AndroidAppContainer.get]'s doc comment; [DexxiconApplication] already
-     * initializes the singleton with this same instance before this Activity is ever created,
-     * but injecting it here too means `.get()` is never called without it, regardless of
-     * startup order. */
+    /** issue #156/#161 — see [AndroidAppContainer.get]'s doc comment; [DexxiconApplication]
+     * already initializes the singleton with these same instances before this Activity is
+     * ever created, but injecting them here too means `.get()` is never called without them,
+     * regardless of startup order. */
     @Inject
     lateinit var database: DexxiconDatabase
+
+    @Inject
+    @DexxiconHttpClient
+    lateinit var okHttpClient: OkHttpClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -33,7 +39,7 @@ class MainActivity : FragmentActivity() {
         handleReauthIntent(intent)
 
         setContent {
-            val container = remember { AndroidAppContainer.get(applicationContext, database) }
+            val container = remember { AndroidAppContainer.get(applicationContext, database, okHttpClient) }
             DexxiconApp(
                 container = container,
                 // Phase 4 Stage I (issue #146) — mirrors iOS's ContentView.swift exactly:

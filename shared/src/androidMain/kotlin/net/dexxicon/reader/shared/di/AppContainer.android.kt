@@ -17,6 +17,7 @@ import net.dexxicon.reader.core.datastore.ReaderPreferencesStore
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.security.CredentialStore
 import net.dexxicon.reader.core.security.CryptoStore
+import okhttp3.OkHttpClient
 
 /**
  * Android [actual]: wraps the plain [Context] the DB path and [CredentialStore]'s DataStore
@@ -38,7 +39,7 @@ actual class PlatformContext(val context: Context)
  * `coilPlatformContext` param with no extra wrapping needed.
  */
 actual fun createAppContainer(context: PlatformContext): AppContainer =
-    createAppContainer(context, sharedDatabase = null)
+    createAppContainer(context, sharedDatabase = null, sharedOkHttpClient = null)
 
 /**
  * issue #156 — `:app`'s Hilt graph (see `DatabaseModule.provideDatabase`) and this function's
@@ -51,8 +52,22 @@ actual fun createAppContainer(context: PlatformContext): AppContainer =
  * overload) closes that gap for the real app; [SharedPreviewActivity][net.dexxicon.reader.SharedPreviewActivity]
  * still passes `null` since it deliberately has no access to `:app`'s Hilt graph and was
  * never in this bug's path (a debug-only, one-shot comparison screen).
+ *
+ * issue #161 — [sharedOkHttpClient], when given, is `:app`'s Hilt-provided `OkHttpClient`
+ * (`@DexxiconHttpClient`), which carries `PersistentCookieJar` — BookOrbit's session refresh
+ * depends on an HttpOnly cookie that jar stores. Without it, this container's own `TokenManager`
+ * (the one every real sign-in and every real API call actually goes through) ran on a bare
+ * `OkHttp.create()` with no cookie jar at all, silently dropping that cookie on every request.
+ * `OkHttp.create { preconfigured = ... }` is the same "wrap the shared client in a Ktor engine"
+ * pattern `ServerAuthModule.provideServerHttpClient` already uses for the same reason — its own
+ * doc comment there confirms the shared client's `AuthInterceptor` is a no-op on auth endpoints,
+ * so nothing double-fires.
  */
-fun createAppContainer(context: PlatformContext, sharedDatabase: DexxiconDatabase?): AppContainer {
+fun createAppContainer(
+    context: PlatformContext,
+    sharedDatabase: DexxiconDatabase?,
+    sharedOkHttpClient: OkHttpClient?,
+): AppContainer {
     val appContext = context.context.applicationContext
     val database = sharedDatabase ?: getDatabaseBuilder(appContext).finish(Dispatchers.IO)
     val credentialStore = CredentialStore(appContext, CryptoStore())
@@ -64,8 +79,11 @@ fun createAppContainer(context: PlatformContext, sharedDatabase: DexxiconDatabas
         io = Dispatchers.IO,
     )
     val syncStateStore = SyncStateStore(PlatformStorageContext(appContext))
+    val engine = sharedOkHttpClient
+        ?.let { OkHttp.create { preconfigured = it } }
+        ?: OkHttp.create()
     return AppContainer(
-        engine = OkHttp.create(),
+        engine = engine,
         credentialStore = credentialStore,
         database = database,
         io = Dispatchers.IO,
