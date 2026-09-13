@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
@@ -58,6 +57,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
@@ -231,7 +231,8 @@ private fun HeroBlock(
             m
                 .aspectRatio(0.66f)
                 .clip(CoverShapeMedium)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CoverShapeMedium),
         ) {
             s.coverUrl?.let {
                 AsyncImage(
@@ -322,13 +323,6 @@ private fun ReadingStatusChip(current: ReadingStatus?, onSet: (ReadingStatus) ->
             onClick = { open = true },
             shape = Pill,
             label = { Text(current?.label ?: "Set status") },
-            leadingIcon = {
-                Icon(
-                    Icons.AutoMirrored.Filled.MenuBook,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp),
-                )
-            },
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             ReadingStatus.entries.forEach { status ->
@@ -586,13 +580,18 @@ private fun DownloadButton(
     when (download?.status) {
         DownloadStatus.DONE -> OutlinedButton(
             onClick = onRemove,
-            modifier = Modifier.fillMaxWidth(),
+            shape = Pill,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
         ) {
             LeftAligned({ Icon(Icons.Filled.CheckCircle, contentDescription = null) }, "Downloaded — remove")
         }
 
         DownloadStatus.QUEUED, DownloadStatus.RUNNING -> Column(Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = onRemove, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = onRemove,
+                shape = Pill,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
                 val pct = download.fraction?.let { " ${(it * 100).toInt()}%" }.orEmpty()
                 LeftAligned(
                     { Icon(Icons.Filled.Delete, contentDescription = null) },
@@ -611,7 +610,11 @@ private fun DownloadButton(
         }
 
         DownloadStatus.FAILED -> Column(Modifier.fillMaxWidth()) {
-            OutlinedButton(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = onDownload,
+                shape = Pill,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+            ) {
                 LeftAligned({ Icon(Icons.Filled.ErrorOutline, contentDescription = null) }, "Download failed — retry")
             }
             download.error?.let {
@@ -624,7 +627,11 @@ private fun DownloadButton(
             }
         }
 
-        null -> OutlinedButton(onClick = onDownload, modifier = Modifier.fillMaxWidth()) {
+        null -> OutlinedButton(
+            onClick = onDownload,
+            shape = Pill,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
             LeftAligned({ Icon(Icons.Filled.CloudDownload, contentDescription = null) }, "Make available offline")
         }
     }
@@ -634,11 +641,13 @@ private fun DownloadButton(
 private fun MetaRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = 10.dp), Arrangement.spacedBy(12.dp)) {
         Text(
-            label,
+            label.uppercase(),
             style = MaterialTheme.typography.bodySmall,
+            fontSize = 11.sp,
+            letterSpacing = 0.5.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.width(104.dp),
         )
-        Text(value, style = MaterialTheme.typography.bodyMedium)
+        Text(value, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
     }
 }

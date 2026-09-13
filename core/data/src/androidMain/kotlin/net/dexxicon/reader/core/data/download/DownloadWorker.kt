@@ -6,12 +6,9 @@ import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
-import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
-import dagger.assisted.Assisted
-import dagger.assisted.AssistedInject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import net.dexxicon.reader.core.database.dao.DownloadDao
@@ -19,16 +16,22 @@ import net.dexxicon.reader.core.database.entity.DownloadEntity
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.fileExtension
-import net.dexxicon.reader.core.network.DexxiconHttpClient
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 
-@HiltWorker
-class DownloadWorker @AssistedInject constructor(
-    @Assisted appContext: Context,
-    @Assisted params: WorkerParameters,
-    @DexxiconHttpClient private val client: OkHttpClient,
+/**
+ * Deliberately a plain constructor, not `@HiltWorker`/`@AssistedInject` — this class lives in
+ * `:core:data`'s `androidMain`, a KMP source set the Hilt Gradle plugin refuses to apply to
+ * (see this module's `build.gradle.kts`), so `@HiltWorker`'s codegen never runs here and
+ * `HiltWorkerFactory` silently can't construct it (issue #143: downloads got queued but never
+ * ran — WorkManager fell back to a no-args reflection constructor that doesn't exist). Built
+ * by hand instead, via [CoreDataWorkerFactory], which `DexxiconApplication` registers directly.
+ */
+class DownloadWorker(
+    appContext: Context,
+    params: WorkerParameters,
+    private val client: OkHttpClient,
     private val downloadDao: DownloadDao,
 ) : CoroutineWorker(appContext, params) {
 
