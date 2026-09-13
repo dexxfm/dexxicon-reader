@@ -12,8 +12,9 @@ data class PlayerRoute(val serverId: String, val bookId: String)
 fun NavController.navigateToPlayer(serverId: String, bookId: String) =
     navigate(PlayerRoute(serverId, bookId))
 
-fun NavGraphBuilder.playerSection(navController: NavController) {
+/** See `comicReaderSection`'s doc comment (issue #155) for why [onExit] exists. */
+fun NavGraphBuilder.playerSection(navController: NavController, onExit: () -> Unit) {
     composable<PlayerRoute> {
-        PlayerScreen(onBack = { navController.popBackStack() })
+        PlayerScreen(onBack = { if (!navController.popBackStack()) onExit() })
     }
 }

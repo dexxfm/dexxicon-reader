@@ -72,10 +72,13 @@ class ReaderActivity : FragmentActivity() {
                     navController = navController,
                     startDestination = format.startRoute(serverId, bookId),
                 ) {
-                    epubReaderSection(navController)
-                    comicReaderSection(navController)
-                    pdfReaderSection(navController)
-                    playerSection(navController)
+                    // issue #155: this NavHost's sole destination is whichever reader/player
+                    // route `format` picked above — there's nothing else to pop back to, so
+                    // each section's own onBack falls through to finishing this Activity.
+                    epubReaderSection(navController, onExit = ::finish)
+                    comicReaderSection(navController, onExit = ::finish)
+                    pdfReaderSection(navController, onExit = ::finish)
+                    playerSection(navController, onExit = ::finish)
                 }
             }
         }

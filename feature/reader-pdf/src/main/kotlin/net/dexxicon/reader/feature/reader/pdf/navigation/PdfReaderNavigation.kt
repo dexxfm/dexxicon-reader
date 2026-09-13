@@ -12,8 +12,9 @@ data class PdfReaderRoute(val serverId: String, val bookId: String)
 fun NavController.navigateToPdfReader(serverId: String, bookId: String) =
     navigate(PdfReaderRoute(serverId, bookId))
 
-fun NavGraphBuilder.pdfReaderSection(navController: NavController) {
+/** See `comicReaderSection`'s doc comment (issue #155) for why [onExit] exists. */
+fun NavGraphBuilder.pdfReaderSection(navController: NavController, onExit: () -> Unit) {
     composable<PdfReaderRoute> {
-        PdfReaderScreen(onBack = { navController.popBackStack() })
+        PdfReaderScreen(onBack = { if (!navController.popBackStack()) onExit() })
     }
 }
