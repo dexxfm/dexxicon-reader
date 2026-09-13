@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -164,7 +165,11 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
                     }
                 },
             ) { innerPadding ->
-                Row(Modifier.fillMaxSize().padding(innerPadding)) {
+                // issue #140 — without this, a screen further down the tree (Home/Library's
+                // own Scaffold+TopAppBar) that also asks for WindowInsets.statusBars sees it
+                // as still unconsumed and pads for it a second time, doubling the headroom
+                // above the title. This marks innerPadding's region as already spent.
+                Row(Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)) {
                     if (showRail) {
                         PillNavigationRail(
                             destinations = TopLevelDestination.entries,

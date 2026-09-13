@@ -1,7 +1,6 @@
 package net.dexxicon.reader
 
 import android.app.Application
-import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import coil3.ImageLoader
 import coil3.PlatformContext
@@ -15,6 +14,7 @@ import dagger.hilt.android.HiltAndroidApp
 import net.dexxicon.reader.core.common.crash.CrashReporter
 import net.dexxicon.reader.core.data.auth.SessionRefreshWorker
 import net.dexxicon.reader.core.data.auth.SignInNotifier
+import net.dexxicon.reader.core.data.download.CoreDataWorkerFactory
 import net.dexxicon.reader.core.network.DexxiconHttpClient
 import okhttp3.OkHttpClient
 import okio.Path.Companion.toOkioPath
@@ -28,7 +28,7 @@ class DexxiconApplication :
     SingletonImageLoader.Factory {
 
     @Inject
-    lateinit var workerFactory: HiltWorkerFactory
+    lateinit var workerFactory: CoreDataWorkerFactory
 
     @Inject
     @DexxiconHttpClient

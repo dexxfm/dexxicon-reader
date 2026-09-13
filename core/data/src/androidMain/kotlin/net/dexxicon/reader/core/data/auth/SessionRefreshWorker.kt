@@ -1,7 +1,6 @@
 package net.dexxicon.reader.core.data.auth
 
 import android.content.Context
-import androidx.hilt.work.HiltWorker
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -9,8 +8,6 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import dagger.assisted.Assisted
-import dagger.assisted.AssistedInject
 import kotlinx.coroutines.flow.first
 import net.dexxicon.reader.core.data.ServerRepository
 import java.util.concurrent.TimeUnit
@@ -20,11 +17,15 @@ import java.util.concurrent.TimeUnit
  * still has a live access token when it's next used — and, crucially, each OIDC refresh
  * token is exercised well before the IdP would expire an idle one and leave a manual
  * re-sign-in as the only way back.
+ *
+ * Deliberately a plain constructor, not `@HiltWorker`/`@AssistedInject` — see [net.dexxicon
+ * .reader.core.data.download.DownloadWorker]'s doc comment for why: `:core:data`'s
+ * `androidMain` never runs Hilt's worker codegen, so this silently never ran either. Built by
+ * hand via `net.dexxicon.reader.core.data.download.CoreDataWorkerFactory`.
  */
-@HiltWorker
-class SessionRefreshWorker @AssistedInject constructor(
-    @Assisted appContext: Context,
-    @Assisted params: WorkerParameters,
+class SessionRefreshWorker(
+    appContext: Context,
+    params: WorkerParameters,
     private val serverRepository: ServerRepository,
     private val tokenManager: TokenManager,
 ) : CoroutineWorker(appContext, params) {

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -134,7 +135,13 @@ fun LibraryContent(
         )
     }
 
-    Scaffold(modifier = modifier, topBar = { TopAppBar(title = { Text("Library") }) }) { padding ->
+    Scaffold(
+        modifier = modifier,
+        topBar = { TopAppBar(title = { Text("Library") }) },
+        // See HomeContent.kt's matching Scaffold for why — the app shell already accounts
+        // for the bottom nav / system inset; without this the Scaffold reserves it again.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+    ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             TextField(
                 value = uiState.query,
