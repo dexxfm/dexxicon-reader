@@ -186,16 +186,6 @@ fun AddEditServerScreen(
             )
 
             Spacer(Modifier.height(20.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                HorizontalDivider(modifier = Modifier.weight(1f))
-                Text(
-                    "  or  ",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                HorizontalDivider(modifier = Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(12.dp))
             SsoBlock(
                 state = state.sso,
                 onDiscover = viewModel::discoverSso,
@@ -208,6 +198,16 @@ fun AddEditServerScreen(
             )
 
             Spacer(Modifier.height(20.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                HorizontalDivider(modifier = Modifier.weight(1f))
+                Text(
+                    "  or  ",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HorizontalDivider(modifier = Modifier.weight(1f))
+            }
+            Spacer(Modifier.height(12.dp))
             Button(
                 onClick = { viewModel.save(onDone) },
                 enabled = state.canSave && !state.saving,

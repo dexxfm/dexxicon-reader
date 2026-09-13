@@ -10,10 +10,13 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -37,7 +40,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -72,6 +74,7 @@ import net.dexxicon.reader.core.designsystem.nav.FloatingPillNavBar
 import net.dexxicon.reader.core.designsystem.nav.PillNavigationRail
 import net.dexxicon.reader.core.datastore.AppPreferences
 import net.dexxicon.reader.core.datastore.AppTheme
+import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.core.designsystem.theme.DexxiconTheme
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
@@ -232,6 +235,7 @@ fun App(container: AppContainer, onOpenReader: OnOpenReader) {
                                 serverId = route.serverId,
                                 onBack = { nav.popBackStack() },
                                 onOpenBook = { bookId -> nav.navigate(BookDetailRoute(route.serverId, bookId)) },
+                                onOpenReader = onOpenReader,
                             )
                         }
                         composable<BookDetailRoute> { entry ->
@@ -278,22 +282,24 @@ private fun ServersScreen(
     val serversState = remember { ServersState(container.serverRepository, scope) }
     var pendingDelete by remember { mutableStateOf<Server?>(null) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Servers") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
-            )
-        },
-    ) { padding ->
-        val list = servers
-        when {
-            list == null -> Unit // first emission still pending
-            list.isEmpty() -> EmptyServersState(Modifier.fillMaxSize().padding(padding), onAddServer)
-            else -> Column(
-                Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(16.dp),
+    Scaffold { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Row(
+                Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (list.size > 1) {
+                BackPill(onBack)
+                Spacer(Modifier.width(12.dp))
+                Text("Servers", style = MaterialTheme.typography.headlineSmall)
+            }
+            val list = servers
+            when {
+                list == null -> Unit // first emission still pending
+                list.isEmpty() -> EmptyServersState(Modifier.fillMaxSize(), onAddServer)
+                else -> Column(
+                    Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                ) {
+                    if (list.size > 1) {
                     Text(
                         "Press and hold the handle to reorder. This order sets which library's " +
                             "books come first when browsing.",
@@ -326,6 +332,7 @@ private fun ServersScreen(
                 ) {
                     Icon(Icons.Filled.Add, contentDescription = null)
                     Text("  Add server")
+                }
                 }
             }
         }
@@ -549,16 +556,19 @@ private fun AddServerScreen(
     // flash the native/password form for what's about to turn out to be a reauth screen
     // (issue #94).
     if (state.isEditing && state.editingAuthMode == null) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text("Edit server") },
-                    navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
-                )
-            },
-        ) { padding ->
-            Column(Modifier.fillMaxSize().padding(padding), verticalArrangement = Arrangement.Center) {
-                CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+        Scaffold { padding ->
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                Row(
+                    Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BackPill(onBack)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Edit server", style = MaterialTheme.typography.headlineSmall)
+                }
+                Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Center) {
+                    CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+                }
             }
         }
         return
@@ -568,111 +578,129 @@ private fun AddServerScreen(
     // just re-run the SSO handshake against the same server id. See AddServerState's doc
     // comment for why this is manual-only, not the native app's auto-detected-expiry flow.
     if (state.isEditing && state.editingAuthMode == AuthMode.OIDC) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text("Sign in again") },
-                    navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
-                )
-            },
-        ) { padding ->
-            Column(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(
-                    "${state.displayName} uses single sign-on. Sign in again to refresh its session.",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Button(onClick = state::discoverSso, enabled = state.baseUrl.isNotBlank()) {
-                    Text("Sign in with SSO")
+        Scaffold { padding ->
+            Column(Modifier.fillMaxSize().padding(padding)) {
+                Row(
+                    Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BackPill(onBack)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Sign in again", style = MaterialTheme.typography.headlineSmall)
                 }
-                when (sso) {
-                    SsoState.Discovering -> CircularProgressIndicator(Modifier.padding(8.dp))
-                    is SsoState.Error -> Text(sso.message, color = MaterialTheme.colorScheme.error)
-                    else -> Unit
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        "${state.displayName} uses single sign-on. Sign in again to refresh its session.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Button(onClick = state::discoverSso, enabled = state.baseUrl.isNotBlank()) {
+                        Text("Sign in with SSO")
+                    }
+                    when (sso) {
+                        SsoState.Discovering -> CircularProgressIndicator(Modifier.padding(8.dp))
+                        is SsoState.Error -> Text(sso.message, color = MaterialTheme.colorScheme.error)
+                        else -> Unit
+                    }
                 }
             }
         }
         return
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (state.isEditing) "Edit server" else "Add server") },
-                navigationIcon = { TextButton(onClick = onBack) { Text("‹ Back") } },
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedTextField(
-                value = state.baseUrl,
-                onValueChange = state::onBaseUrlChange,
-                label = { Text("Server URL") },
-                placeholder = { Text("books.example.com") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            // SSO sign-in only applies to adding a new server — an existing OIDC server uses
-            // the reauth-only branch above instead (issue #94).
-            if (!state.isEditing) {
-                TextButton(onClick = state::discoverSso, enabled = state.baseUrl.isNotBlank()) {
-                    Text("Sign in with SSO instead")
-                }
-                when (sso) {
-                    SsoState.Discovering -> CircularProgressIndicator(Modifier.padding(8.dp))
-                    is SsoState.Error -> Text(sso.message, color = MaterialTheme.colorScheme.error)
-                    else -> Unit
-                }
+    Scaffold { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Row(
+                Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BackPill(onBack)
+                Spacer(Modifier.width(12.dp))
+                Text(if (state.isEditing) "Edit server" else "Add server", style = MaterialTheme.typography.headlineSmall)
             }
-
-            HorizontalDivider()
-
-            OutlinedTextField(
-                value = state.username,
-                onValueChange = state::onUsernameChange,
-                label = { Text("Username") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = state.password,
-                onValueChange = state::onPasswordChange,
-                label = { Text(if (state.isEditing) "Password (leave blank to keep current)" else "Password") },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
-                value = state.displayName,
-                onValueChange = state::onDisplayNameChange,
-                label = { Text("Display name") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            val testState = state.testState
-            when (testState) {
-                TestState.Idle -> Unit
-                TestState.Testing -> CircularProgressIndicator(Modifier.padding(8.dp))
-                is TestState.Success -> Text(
-                    testState.detail,
-                    color = MaterialTheme.colorScheme.primary,
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                // Display name above Server URL, and SSO moved below Test Connection (was
+                // between Server URL and the Username/Password divider) — user-requested
+                // reordering, purely cosmetic.
+                OutlinedTextField(
+                    value = state.displayName,
+                    onValueChange = state::onDisplayNameChange,
+                    label = { Text("Display name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                 )
-                is TestState.Failure -> Text(
-                    testState.message,
-                    color = MaterialTheme.colorScheme.error,
+                OutlinedTextField(
+                    value = state.baseUrl,
+                    onValueChange = state::onBaseUrlChange,
+                    label = { Text("Server URL") },
+                    placeholder = { Text("books.example.com") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
                 )
-            }
 
-            Button(onClick = state::test, enabled = state.canTest) { Text("Test connection") }
-            Button(onClick = { state.save(onSaved) }, enabled = state.canSave) {
-                Text(if (state.saving) "Saving…" else "Save")
+                HorizontalDivider()
+
+                OutlinedTextField(
+                    value = state.username,
+                    onValueChange = state::onUsernameChange,
+                    label = { Text("Username") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = state.password,
+                    onValueChange = state::onPasswordChange,
+                    label = { Text(if (state.isEditing) "Password (leave blank to keep current)" else "Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                val testState = state.testState
+                when (testState) {
+                    TestState.Idle -> Unit
+                    TestState.Testing -> CircularProgressIndicator(Modifier.padding(8.dp))
+                    is TestState.Success -> Text(
+                        testState.detail,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    is TestState.Failure -> Text(
+                        testState.message,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+
+                Button(onClick = state::test, enabled = state.canTest) { Text("Test connection") }
+
+                // SSO sign-in only applies to adding a new server — an existing OIDC server
+                // uses the reauth-only branch above instead (issue #94).
+                if (!state.isEditing) {
+                    TextButton(
+                        onClick = state::discoverSso,
+                        enabled = state.baseUrl.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Sign in with SSO instead")
+                    }
+                    when (sso) {
+                        SsoState.Discovering -> CircularProgressIndicator(Modifier.padding(8.dp))
+                        is SsoState.Error -> Text(sso.message, color = MaterialTheme.colorScheme.error)
+                        else -> Unit
+                    }
+                }
+
+                Button(
+                    onClick = { state.save(onSaved) },
+                    enabled = state.canSave,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(if (state.saving) "Saving…" else "Save")
+                }
             }
         }
     }
