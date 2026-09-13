@@ -13,10 +13,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.BookmarkRepository
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.HighlightRepository
+import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.core.data.ProgressSeeder
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerProber
@@ -348,6 +350,34 @@ class AppContainer(
 
     fun setEpubActiveHighlightId(value: String?) {
         _epubActiveHighlightId.value = value
+    }
+
+    /**
+     * Fire-and-forget, non-`suspend` — the text-selection "Highlight" menu item's own action
+     * handler is native-only (Swift's `EditingAction`/Android's `HighlightSelectionCallback`,
+     * neither routed through the shared chrome at all), so it needs the same closure-based
+     * entry point [EpubProgressBridge] uses rather than calling
+     * [HighlightRepository.add] — a `suspend` function — directly.
+     */
+    fun addEpubHighlight(
+        serverId: String,
+        bookId: String,
+        locatorJson: String,
+        progression: Double,
+        text: String,
+        chapterTitle: String?,
+    ) {
+        scope.launch {
+            highlightRepository.add(
+                serverId = serverId,
+                bookId = bookId,
+                locatorJson = locatorJson,
+                progression = progression,
+                text = text,
+                color = HighlightColor.YELLOW,
+                chapterTitle = chapterTitle,
+            )
+        }
     }
 
     init {

@@ -201,6 +201,20 @@ fun epubReaderSetActiveHighlight(id: String?) {
     appContainer.setEpubActiveHighlightId(id)
 }
 
+/** The text-selection "Highlight" menu item's action handler calls this directly — entirely
+ * native-triggered (never routed through the shared chrome), so it's a plain fire-and-forget
+ * function rather than part of [EpubReaderActions]. */
+fun epubReaderAddHighlight(
+    serverId: String,
+    bookId: String,
+    locatorJson: String,
+    progression: Double,
+    text: String,
+    chapterTitle: String?,
+) {
+    appContainer.addEpubHighlight(serverId, bookId, locatorJson, progression, text, chapterTitle)
+}
+
 /**
  * Third Compose root for iOS (issue #183) — same shape as [PlayerViewController], but the
  * actual page-rendering surface is genuinely native (Readium's `EPUBNavigatorViewController`,
