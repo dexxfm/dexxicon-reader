@@ -1,11 +1,17 @@
 package net.dexxicon.reader.core.data
 
+import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import net.dexxicon.reader.core.common.DexxiconDispatcher
-import net.dexxicon.reader.core.common.Dispatcher
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import net.dexxicon.reader.core.common.currentTimeMillis
 import net.dexxicon.reader.core.database.dao.BookmarkDao
 import net.dexxicon.reader.core.database.entity.BookmarkEntity
 import net.dexxicon.reader.core.model.Bookmark
@@ -14,11 +20,8 @@ import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.serverapi.bookmark.BookOrbitBookmarkBody
 import net.dexxicon.reader.core.serverapi.bookmark.BookmarkApi
 import net.dexxicon.reader.core.serverapi.bookmark.GrimmoryBookmarkBody
-import org.json.JSONObject
-import io.ktor.client.plugins.ResponseException
-import java.util.UUID
-import javax.inject.Inject
-import javax.inject.Singleton
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * EPUB bookmarks. The source of truth is the local `bookmarks` table; a best-effort sync
@@ -26,13 +29,19 @@ import javax.inject.Singleton
  * A bookmark created here has its Readium `Locator` packed into the server's `cfi` field so
  * it round-trips; a bookmark made in a web reader comes back as a real EPUB CFI and is kept
  * in the list but jumps only to its chapter.
+ *
+ * Phase 2 of the shared-reader-chrome redesign (issue #183) — moved to commonMain following
+ * the same fix [net.dexxicon.reader.core.data.ReadingProgressRepository] already received
+ * (issue #126): `org.json.JSONObject` (Android/JVM-only) replaced with
+ * `kotlinx.serialization.json`, `@Inject`/`@Singleton` dropped (`:app`'s `DataModule` and
+ * `:shared`'s `AppContainer` each build this by hand now, same as that repository).
  */
-@Singleton
-class BookmarkRepository @Inject constructor(
+@OptIn(ExperimentalUuidApi::class)
+class BookmarkRepository(
     private val dao: BookmarkDao,
     private val api: BookmarkApi,
     private val serverRepository: ServerRepository,
-    @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
+    private val io: CoroutineDispatcher,
 ) {
     fun observe(serverId: String, bookId: String): Flow<List<Bookmark>> =
         dao.observeForBook(serverId, bookId).map { list -> list.map { it.toDomain() } }
@@ -45,13 +54,13 @@ class BookmarkRepository @Inject constructor(
         title: String,
     ): Bookmark = withContext(io) {
         val bookmark = Bookmark(
-            id = UUID.randomUUID().toString(),
+            id = Uuid.random().toString(),
             serverId = serverId,
             bookId = bookId,
             locatorJson = locatorJson,
             progression = progression,
             title = title.ifBlank { "Bookmark" },
-            createdAt = System.currentTimeMillis(),
+            createdAt = currentTimeMillis(),
             dirty = true,
         )
         dao.upsert(BookmarkEntity.fromDomain(bookmark))
@@ -92,7 +101,7 @@ class BookmarkRepository @Inject constructor(
             val (loc, prog) = unpackCfi(dto.cfi)
             dao.upsert(
                 BookmarkEntity(
-                    id = UUID.randomUUID().toString(),
+                    id = Uuid.random().toString(),
                     serverId = serverId,
                     bookId = bookId,
                     locatorJson = loc ?: "{}",
@@ -100,7 +109,7 @@ class BookmarkRepository @Inject constructor(
                     title = dto.title?.takeIf { it.isNotBlank() } ?: "Bookmark",
                     // A real EPUB CFI we didn't write → chapter-only, kept for reference.
                     foreignCfi = if (loc == null) dto.cfi else null,
-                    createdAt = System.currentTimeMillis(),
+                    createdAt = currentTimeMillis(),
                     remoteId = remoteId,
                     dirty = false,
                 ),
@@ -167,13 +176,18 @@ class BookmarkRepository @Inject constructor(
     }
 
     private fun packCfi(locatorJson: String, progression: Double): String =
-        JSONObject().put("l", JSONObject(locatorJson)).put("p", progression).toString()
+        buildJsonObject {
+            put("l", Json.parseToJsonElement(locatorJson))
+            put("p", progression)
+        }.toString()
 
     private fun unpackCfi(cfi: String?): Pair<String?, Double> {
         if (cfi.isNullOrBlank()) return null to 0.0
         return runCatching {
-            val obj = JSONObject(cfi)
-            obj.getJSONObject("l").toString() to obj.optDouble("p", 0.0)
+            val obj = Json.parseToJsonElement(cfi).jsonObject
+            val locator = obj["l"]?.jsonObject?.toString()
+            val progression = obj["p"]?.jsonPrimitive?.double ?: 0.0
+            locator to progression
         }.getOrDefault(null to 0.0)
     }
 }

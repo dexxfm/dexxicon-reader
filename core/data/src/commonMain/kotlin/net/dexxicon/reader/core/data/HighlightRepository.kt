@@ -4,8 +4,13 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
-import net.dexxicon.reader.core.common.DexxiconDispatcher
-import net.dexxicon.reader.core.common.Dispatcher
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.double
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import net.dexxicon.reader.core.common.currentTimeMillis
 import net.dexxicon.reader.core.database.dao.HighlightDao
 import net.dexxicon.reader.core.database.entity.HighlightEntity
 import net.dexxicon.reader.core.model.Highlight
@@ -14,10 +19,8 @@ import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.serverapi.annotation.AnnotationApi
 import net.dexxicon.reader.core.serverapi.annotation.CreateAnnotationDto
 import net.dexxicon.reader.core.serverapi.annotation.UpdateAnnotationDto
-import org.json.JSONObject
-import java.util.UUID
-import javax.inject.Inject
-import javax.inject.Singleton
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Highlights & notes. The source of truth is the local `highlights` table; a best-effort
@@ -25,13 +28,18 @@ import javax.inject.Singleton
  * BookOrbit is read-only). The Readium `Locator` for a highlight we created is packed into
  * the server's `cfi` field so it round-trips; foreign annotations (real EPUB CFIs from a
  * web reader) are kept for the list but can't be placed precisely.
+ *
+ * Phase 2 of the shared-reader-chrome redesign (issue #183) — moved to commonMain following
+ * the same fix [net.dexxicon.reader.core.data.ReadingProgressRepository] already received
+ * (issue #126); see [net.dexxicon.reader.core.data.BookmarkRepository]'s doc comment, which
+ * got the identical treatment in the same pass.
  */
-@Singleton
-class HighlightRepository @Inject constructor(
+@OptIn(ExperimentalUuidApi::class)
+class HighlightRepository(
     private val dao: HighlightDao,
     private val api: AnnotationApi,
     private val serverRepository: ServerRepository,
-    @Dispatcher(DexxiconDispatcher.IO) private val io: CoroutineDispatcher,
+    private val io: CoroutineDispatcher,
 ) {
     fun observe(serverId: String, bookId: String): Flow<List<Highlight>> =
         dao.observeForBook(serverId, bookId).map { list -> list.map { it.toDomain() } }
@@ -49,9 +57,9 @@ class HighlightRepository @Inject constructor(
         color: HighlightColor,
         chapterTitle: String?,
     ): Highlight = withContext(io) {
-        val now = System.currentTimeMillis()
+        val now = currentTimeMillis()
         val highlight = Highlight(
-            id = UUID.randomUUID().toString(),
+            id = Uuid.random().toString(),
             serverId = serverId,
             bookId = bookId,
             locatorJson = locatorJson,
@@ -71,7 +79,7 @@ class HighlightRepository @Inject constructor(
     suspend fun updateNote(id: String, note: String?) = withContext(io) {
         val existing = dao.find(id) ?: return@withContext
         dao.upsert(
-            existing.copy(note = note, dirty = true, updatedAt = System.currentTimeMillis()),
+            existing.copy(note = note, dirty = true, updatedAt = currentTimeMillis()),
         )
         push(existing.serverId)
     }
@@ -79,7 +87,7 @@ class HighlightRepository @Inject constructor(
     suspend fun updateColor(id: String, color: HighlightColor) = withContext(io) {
         val existing = dao.find(id) ?: return@withContext
         dao.upsert(
-            existing.copy(color = color.name, dirty = true, updatedAt = System.currentTimeMillis()),
+            existing.copy(color = color.name, dirty = true, updatedAt = currentTimeMillis()),
         )
         push(existing.serverId)
     }
@@ -89,7 +97,7 @@ class HighlightRepository @Inject constructor(
         if (existing.remoteId == null) {
             dao.hardDelete(id)
         } else {
-            dao.markDeleted(id, System.currentTimeMillis())
+            dao.markDeleted(id, currentTimeMillis())
             push(existing.serverId)
         }
     }
@@ -133,10 +141,10 @@ class HighlightRepository @Inject constructor(
         val local = dao.forBook(serverId, bookId)
         val knownRemoteIds = local.mapNotNull { it.remoteId }.toSet()
         remote.filter { it.remoteId !in knownRemoteIds }.forEach { r ->
-            val now = System.currentTimeMillis()
+            val now = currentTimeMillis()
             dao.upsert(
                 HighlightEntity(
-                    id = UUID.randomUUID().toString(),
+                    id = Uuid.random().toString(),
                     serverId = serverId,
                     bookId = bookId,
                     locatorJson = r.locatorJson ?: "{}",
@@ -196,13 +204,18 @@ class HighlightRepository @Inject constructor(
     }
 
     private fun packCfi(locatorJson: String, progression: Double): String =
-        JSONObject().put("l", JSONObject(locatorJson)).put("p", progression).toString()
+        buildJsonObject {
+            put("l", Json.parseToJsonElement(locatorJson))
+            put("p", progression)
+        }.toString()
 
     private fun unpackCfi(cfi: String?): Pair<String?, Double> {
         if (cfi.isNullOrBlank()) return null to 0.0
         return runCatching {
-            val obj = JSONObject(cfi)
-            obj.getJSONObject("l").toString() to obj.optDouble("p", 0.0)
+            val obj = Json.parseToJsonElement(cfi).jsonObject
+            val locator = obj["l"]?.jsonObject?.toString()
+            val progression = obj["p"]?.jsonPrimitive?.double ?: 0.0
+            locator to progression
         }.getOrDefault(null to 0.0)
     }
 

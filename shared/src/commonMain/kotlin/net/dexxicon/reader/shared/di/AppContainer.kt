@@ -14,7 +14,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import net.dexxicon.reader.core.data.BookActions
+import net.dexxicon.reader.core.data.BookmarkRepository
 import net.dexxicon.reader.core.data.CatalogRepository
+import net.dexxicon.reader.core.data.HighlightRepository
 import net.dexxicon.reader.core.data.ProgressSeeder
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerProber
@@ -37,8 +39,10 @@ import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.createHttpClient
 import net.dexxicon.reader.core.security.CredentialStore
+import net.dexxicon.reader.core.serverapi.annotation.AnnotationApi
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthClient
+import net.dexxicon.reader.core.serverapi.bookmark.BookmarkApi
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
@@ -216,6 +220,22 @@ class AppContainer(
         tokenManager = tokenManager,
         downloadRepository = downloadRepository,
         appScope = scope,
+        io = io,
+    )
+    /** Phase 2 of the shared-reader-chrome redesign (issue #183) — moved to commonMain
+     * alongside [progressRepository] (same [BookmarkRepository]/[HighlightRepository] doc
+     * comment reasoning); built by hand here for the same reason as everything else in
+     * this class. */
+    val bookmarkRepository: BookmarkRepository = BookmarkRepository(
+        dao = database.bookmarkDao(),
+        api = BookmarkApi(httpClient),
+        serverRepository = serverRepository,
+        io = io,
+    )
+    val highlightRepository: HighlightRepository = HighlightRepository(
+        dao = database.highlightDao(),
+        api = AnnotationApi(httpClient),
+        serverRepository = serverRepository,
         io = io,
     )
 

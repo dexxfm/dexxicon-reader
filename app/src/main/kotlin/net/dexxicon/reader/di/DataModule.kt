@@ -7,16 +7,24 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import net.dexxicon.reader.core.common.DexxiconDispatcher
+import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.common.di.ApplicationScope
+import net.dexxicon.reader.core.data.BookmarkRepository
+import net.dexxicon.reader.core.data.HighlightRepository
 import net.dexxicon.reader.core.data.ProgressSeeder
 import net.dexxicon.reader.core.data.ReadingProgressRepository
+import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.AuthHeaderProviderImpl
 import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.data.download.AndroidDownloadRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.media.MediaLibraryContentSourceImpl
 import net.dexxicon.reader.core.data.media.PlaybackProgressSinkImpl
+import net.dexxicon.reader.core.database.dao.BookmarkDao
+import net.dexxicon.reader.core.database.dao.HighlightDao
 import net.dexxicon.reader.core.database.dao.ServerDao
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.PlatformStorageContext
@@ -26,6 +34,8 @@ import net.dexxicon.reader.core.media.MediaLibraryContentSource
 import net.dexxicon.reader.core.media.PlaybackProgressSink
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.security.CredentialStore
+import net.dexxicon.reader.core.serverapi.annotation.AnnotationApi
+import net.dexxicon.reader.core.serverapi.bookmark.BookmarkApi
 import javax.inject.Singleton
 
 /**
@@ -100,5 +110,26 @@ abstract class DataModule {
         @Singleton
         fun providePlayerPreferencesStore(@ApplicationContext context: Context): PlayerPreferencesStore =
             PlayerPreferencesStore(PlatformStorageContext(context))
+
+        // BookmarkRepository/HighlightRepository (Phase 2 of #183) moved to commonMain the
+        // same way ReadingProgressRepository did (issue #126) — @Inject/@Singleton dropped,
+        // explicit @Provides here; :shared's AppContainer builds the identical graph by hand.
+        @Provides
+        @Singleton
+        fun provideBookmarkRepository(
+            dao: BookmarkDao,
+            api: BookmarkApi,
+            serverRepository: ServerRepository,
+            @Dispatcher(DexxiconDispatcher.IO) io: CoroutineDispatcher,
+        ): BookmarkRepository = BookmarkRepository(dao, api, serverRepository, io)
+
+        @Provides
+        @Singleton
+        fun provideHighlightRepository(
+            dao: HighlightDao,
+            api: AnnotationApi,
+            serverRepository: ServerRepository,
+            @Dispatcher(DexxiconDispatcher.IO) io: CoroutineDispatcher,
+        ): HighlightRepository = HighlightRepository(dao, api, serverRepository, io)
     }
 }
