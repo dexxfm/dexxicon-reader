@@ -32,15 +32,17 @@ import net.dexxicon.reader.shared.sso.Pkce
  * [password] on save means "keep the stored one" — [ServerRepository.save]'s `password` param
  * is already nullable for exactly this.
  *
- * When [editingId] targets an [AuthMode.OIDC] server ([editingAuthMode]), the caller switches
- * to a reauth-only UI (issue #94) instead of the native/password form — [ssoCandidateServer]
- * carries [editingId] as its id (rather than `""`), so [completeSso] updates that same row via
- * [ServerRepository.save]'s existing upsert-by-id behavior instead of inserting a new server.
- * Deliberately **manual reauth only**: no automatic expired-session detection (the native
- * app's `ShellViewModel.reauthRequests`/session-expired prompt is a separate, larger piece
- * tied to detecting a 401 app-wide) — a fresh interactive SSO login here needs no server-side
- * `offline_access` config either, unlike the *silent* refresh-token renewal tracked in the
- * `auth-session-resilience` memory.
+ * Phase 4 Stage G (issue #144): the form itself is always the same regardless of the loaded
+ * server's auth mode — matching native's `AddEditServerScreen` exactly — with "Sign in with
+ * SSO" as one more optional action on the form (via [ssoState]/[discoverSso]), not a
+ * different screen. An earlier version of this class swapped to a reauth-only UI for OIDC
+ * servers (issue #94); that traded away the ability to rename/re-point an SSO server at all,
+ * which native never did, so it's gone. [reauth], when the caller is landing here from
+ * native's session-expiry notification/banner (`ReauthCoordinator`/`SignInNotifier` —
+ * necessarily Android-only, `MainActivity`'s launch-intent extra and a system notification
+ * have no portable equivalent, so that detection stays in `:app`), immediately kicks off
+ * [discoverSso] instead of waiting for the user to tap the button — same as native's
+ * `AddEditServerRoute.reauth`/`AddEditServerViewModel.init`.
  */
 class AddServerState(
     private val serverProber: ServerProber,
@@ -48,6 +50,7 @@ class AddServerState(
     private val oidcAuthenticator: OidcAuthenticator,
     private val scope: CoroutineScope,
     private val editingId: String? = null,
+    private val reauth: Boolean = false,
 ) {
     var displayName by mutableStateOf("")
         private set
@@ -56,6 +59,12 @@ class AddServerState(
     var username by mutableStateOf("")
         private set
     var password by mutableStateOf("")
+        private set
+    var koSyncUrl by mutableStateOf("")
+        private set
+    var koSyncUsername by mutableStateOf("")
+        private set
+    var koSyncPassword by mutableStateOf("")
         private set
     var testState: TestState by mutableStateOf(TestState.Idle)
         private set
@@ -66,17 +75,11 @@ class AddServerState(
 
     private var pendingPkce: Pkce? = null
 
-    /** Set once the edit target loads; null while loading and for a plain "add" form.
-     * `mutableStateOf`, not a plain `var` — [editingAuthMode] reads it to pick which form UI
-     * to show, so Compose needs to observe the write the way it does every other field here. */
+    /** Set once the edit target loads; null while loading and for a plain "add" form. */
     private var loadedServer: Server? by mutableStateOf(null)
         private set
 
     val isEditing: Boolean get() = editingId != null
-
-    /** The persisted server's auth mode once loaded, null until then (or for a plain "add"
-     * form). Drives the reauth-only UI switch (issue #94) — see this class's doc comment. */
-    val editingAuthMode: AuthMode? get() = loadedServer?.authMode
 
     init {
         if (editingId != null) {
@@ -86,6 +89,9 @@ class AddServerState(
                     displayName = server.displayName
                     baseUrl = server.baseUrl
                     username = server.username
+                    koSyncUrl = server.koSyncUrl.orEmpty()
+                    koSyncUsername = server.koSyncUsername.orEmpty()
+                    if (reauth) discoverSso()
                 }
             }
         }
@@ -109,6 +115,9 @@ class AddServerState(
     }
     fun onUsernameChange(value: String) { username = value; testState = TestState.Idle }
     fun onPasswordChange(value: String) { password = value; testState = TestState.Idle }
+    fun onKoSyncUrlChange(value: String) { koSyncUrl = value }
+    fun onKoSyncUsernameChange(value: String) { koSyncUsername = value }
+    fun onKoSyncPasswordChange(value: String) { koSyncPassword = value }
 
     fun test() {
         if (!canTest) return
@@ -142,16 +151,18 @@ class AddServerState(
                     baseUrl = normalizeUrl(baseUrl),
                     type = success?.type ?: base?.type ?: ServerType.GENERIC,
                     // Keep an existing server's auth mode — editing a field shouldn't
-                    // silently downgrade an SSO server to password auth. Moot in practice:
-                    // this plain save() path is only reachable for NATIVE servers — an OIDC
-                    // one uses the reauth-only UI (issue #94), which saves via completeSso()
-                    // instead — but matches the native form's rule regardless.
+                    // silently downgrade an SSO server to password auth. An OIDC server can
+                    // still edit its name/URL/username here; re-authenticating is a separate
+                    // action (discoverSso/completeSso) matching native's form exactly.
                     authMode = base?.authMode ?: AuthMode.NATIVE,
                     username = username.trim(),
+                    koSyncUrl = koSyncUrl.trim().trimEnd('/').takeIf { it.isNotBlank() },
+                    koSyncUsername = koSyncUsername.trim().takeIf { it.isNotBlank() },
                 ),
                 // Blank means "keep the stored password" when editing — never overwrite a
                 // real secret with an empty one just because the field was left untouched.
                 password = password.takeIf { it.isNotBlank() },
+                koSyncPassword = koSyncPassword.takeIf { it.isNotBlank() },
             )
             saving = false
             onSaved()

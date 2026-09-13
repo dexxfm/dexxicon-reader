@@ -12,7 +12,6 @@ import androidx.navigation.compose.composable
 import net.dexxicon.reader.feature.catalog.BrowseScreen
 import net.dexxicon.reader.feature.catalog.navigation.catalogSection
 import net.dexxicon.reader.feature.catalog.navigation.navigateToBookDetail
-import net.dexxicon.reader.feature.catalog.navigation.navigateToCatalog
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.feature.library.LibraryScreen
 import net.dexxicon.reader.feature.reader.comic.navigation.comicReaderSection
@@ -23,8 +22,7 @@ import net.dexxicon.reader.feature.reader.epub.navigation.epubReaderSection
 import net.dexxicon.reader.feature.reader.epub.navigation.navigateToEpubReader
 import net.dexxicon.reader.feature.reader.pdf.navigation.navigateToPdfReader
 import net.dexxicon.reader.feature.reader.pdf.navigation.pdfReaderSection
-import net.dexxicon.reader.feature.servers.navigation.navigateToAddServer
-import net.dexxicon.reader.feature.servers.navigation.navigateToEditServer
+import net.dexxicon.reader.feature.servers.navigation.navigateToManageServers
 import net.dexxicon.reader.feature.servers.navigation.serversSection
 import net.dexxicon.reader.feature.settings.SettingsScreen
 import net.dexxicon.reader.feature.settings.navigation.bookDefaultsSection
@@ -93,9 +91,7 @@ fun DexxiconNavHost(
         composable<TopLevelRoute.Settings> {
             SettingsScreen(
                 versionName = BuildConfig.VERSION_NAME,
-                onAddServer = { navController.navigateToAddServer() },
-                onEditServer = { navController.navigateToEditServer(it) },
-                onOpenServerCatalog = { id, name -> navController.navigateToCatalog(id, name) },
+                onManageServers = { navController.navigateToManageServers() },
                 onOpenAudiobookDefaults = { navController.navigateToAudiobookDefaults() },
                 onOpenBookDefaults = { navController.navigateToBookDefaults() },
             )

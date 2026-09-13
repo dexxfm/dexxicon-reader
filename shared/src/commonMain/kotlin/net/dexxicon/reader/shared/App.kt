@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -36,6 +37,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -273,9 +275,12 @@ private fun NavDestination?.isOnTopLevel(destination: TopLevelDestination): Bool
     return this?.hierarchy?.any { it.hasRoute(route::class) } == true
 }
 
+/** Public — Phase 4 Stage G (issue #144): native `:app` calls this directly (thin wrapper via
+ * `AndroidAppContainer`, same pattern as `feature/library/LibraryScreen.kt`) instead of its
+ * own separate `feature/servers` implementation. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ServersScreen(
+fun ServersScreen(
     container: AppContainer,
     onBack: () -> Unit,
     onAddServer: () -> Unit,
@@ -522,13 +527,21 @@ private fun ServerRow(
     )
 }
 
+/**
+ * Public — see [ServersScreen]'s matching doc comment (issue #144). [reauth] is the shared-UI
+ * equivalent of native's `AddEditServerRoute.reauth` — a caller landing here from a session-
+ * expiry notification/banner passes `true` so the SSO handshake starts immediately instead of
+ * waiting for a tap; see [AddServerState]'s doc comment for why the detection itself stays
+ * native (Android-only notification/intent plumbing).
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun AddServerScreen(
+fun AddServerScreen(
     container: AppContainer,
     editingId: String?,
     onBack: () -> Unit,
     onSaved: () -> Unit,
+    reauth: Boolean = false,
 ) {
     val scope = rememberCoroutineScope()
     val state = remember(editingId) {
@@ -538,8 +551,10 @@ private fun AddServerScreen(
             container.oidcAuthenticator,
             scope,
             editingId = editingId,
+            reauth = reauth,
         )
     }
+    var showKoReader by remember { mutableStateOf(false) }
 
     // While the browser step is in progress, the SSO WebView replaces the form entirely —
     // once completeSso() moves ssoState past Ready (into Exchanging, on the way to Idle+saved
@@ -557,64 +572,6 @@ private fun AddServerScreen(
         return
     }
 
-    // While an OIDC edit target is loading, its auth mode isn't known yet — wait rather than
-    // flash the native/password form for what's about to turn out to be a reauth screen
-    // (issue #94).
-    if (state.isEditing && state.editingAuthMode == null) {
-        Scaffold { padding ->
-            Column(Modifier.fillMaxSize().padding(padding)) {
-                Row(
-                    Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BackPill(onBack)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Edit server", style = MaterialTheme.typography.headlineSmall)
-                }
-                Column(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.Center) {
-                    CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
-                }
-            }
-        }
-        return
-    }
-
-    // Reauth-only for an existing OIDC server (issue #94) — no native/password fields apply,
-    // just re-run the SSO handshake against the same server id. See AddServerState's doc
-    // comment for why this is manual-only, not the native app's auto-detected-expiry flow.
-    if (state.isEditing && state.editingAuthMode == AuthMode.OIDC) {
-        Scaffold { padding ->
-            Column(Modifier.fillMaxSize().padding(padding)) {
-                Row(
-                    Modifier.padding(horizontal = 20.dp, vertical = 16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    BackPill(onBack)
-                    Spacer(Modifier.width(12.dp))
-                    Text("Sign in again", style = MaterialTheme.typography.headlineSmall)
-                }
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(
-                        "${state.displayName} uses single sign-on. Sign in again to refresh its session.",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Button(onClick = state::discoverSso, enabled = state.baseUrl.isNotBlank()) {
-                        Text("Sign in with SSO")
-                    }
-                    when (sso) {
-                        SsoState.Discovering -> CircularProgressIndicator(Modifier.padding(8.dp))
-                        is SsoState.Error -> Text(sso.message, color = MaterialTheme.colorScheme.error)
-                        else -> Unit
-                    }
-                }
-            }
-        }
-        return
-    }
-
     Scaffold { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             Row(
@@ -626,7 +583,10 @@ private fun AddServerScreen(
                 Text(if (state.isEditing) "Edit server" else "Add server", style = MaterialTheme.typography.headlineSmall)
             }
             Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 // Display name above Server URL, and SSO moved below Test Connection (was
@@ -682,21 +642,38 @@ private fun AddServerScreen(
 
                 Button(onClick = state::test, enabled = state.canTest) { Text("Test connection") }
 
-                // SSO sign-in only applies to adding a new server — an existing OIDC server
-                // uses the reauth-only branch above instead (issue #94).
-                if (!state.isEditing) {
-                    TextButton(
+                KoReaderRow(
+                    summary = koReaderSummary(state.koSyncUrl, state.koSyncUsername),
+                    onClick = { showKoReader = true },
+                )
+
+                // Phase 4 Stage G (issue #144) — always shown, matching native's form exactly:
+                // SSO is one more optional action on the same form, not a different screen for
+                // OIDC servers (see AddServerState's doc comment for what this replaced).
+                when (sso) {
+                    is SsoState.Discovering -> OutlinedButton(
+                        onClick = {},
+                        enabled = false,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Looking for SSO…") }
+                    else -> TextButton(
                         onClick = state::discoverSso,
                         enabled = state.baseUrl.isNotBlank(),
                         modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Sign in with SSO instead")
-                    }
-                    when (sso) {
-                        SsoState.Discovering -> CircularProgressIndicator(Modifier.padding(8.dp))
-                        is SsoState.Error -> Text(sso.message, color = MaterialTheme.colorScheme.error)
-                        else -> Unit
-                    }
+                    ) { Text("Sign in with SSO") }
+                }
+                if (sso is SsoState.Error) {
+                    Text(sso.message, color = MaterialTheme.colorScheme.error)
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    HorizontalDivider(modifier = Modifier.weight(1f))
+                    Text(
+                        "  or  ",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    HorizontalDivider(modifier = Modifier.weight(1f))
                 }
 
                 Button(
@@ -706,7 +683,107 @@ private fun AddServerScreen(
                 ) {
                     Text(if (state.saving) "Saving…" else "Save")
                 }
+                Spacer(Modifier.height(12.dp))
             }
         }
+    }
+
+    if (showKoReader) {
+        ModalBottomSheet(onDismissRequest = { showKoReader = false }) {
+            KoReaderSheet(
+                url = state.koSyncUrl,
+                username = state.koSyncUsername,
+                password = state.koSyncPassword,
+                onUrlChange = state::onKoSyncUrlChange,
+                onUsernameChange = state::onKoSyncUsernameChange,
+                onPasswordChange = state::onKoSyncPasswordChange,
+                onDone = { showKoReader = false },
+            )
+        }
+    }
+}
+
+/** Same summary rule as native's `AddEditServerScreen.koReaderSummary` (issue #144). */
+private fun koReaderSummary(url: String, username: String): String {
+    val host = url.substringAfter("://").substringBefore('/').trim()
+    return when {
+        host.isNotBlank() && username.isNotBlank() -> "$username · $host"
+        host.isNotBlank() -> host
+        username.isNotBlank() -> username
+        else -> "Not set up"
+    }
+}
+
+@Composable
+private fun KoReaderRow(summary: String, onClick: () -> Unit) {
+    OutlinedButton(onClick = onClick, modifier = Modifier.fillMaxWidth()) {
+        Icon(Icons.Filled.Sync, contentDescription = null)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text("KOReader sync (optional)")
+            Text(
+                summary,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun KoReaderSheet(
+    url: String,
+    username: String,
+    password: String,
+    onUrlChange: (String) -> Unit,
+    onUsernameChange: (String) -> Unit,
+    onPasswordChange: (String) -> Unit,
+    onDone: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 12.dp)
+            .navigationBarsPadding(),
+    ) {
+        Text("KOReader (optional)", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Share reading progress with the KOReader app and other devices. Needs a " +
+                "dedicated sync account on the server.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),
+        )
+        OutlinedTextField(
+            value = url,
+            onValueChange = onUrlChange,
+            label = { Text("Sync server URL") },
+            placeholder = { Text("https://host/koreader") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = username,
+            onValueChange = onUsernameChange,
+            label = { Text("Sync username") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(12.dp))
+        OutlinedTextField(
+            value = password,
+            onValueChange = onPasswordChange,
+            label = { Text("Sync password") },
+            visualTransformation = PasswordVisualTransformation(),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(20.dp))
+        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+        Spacer(Modifier.height(8.dp))
     }
 }
