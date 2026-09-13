@@ -1,5 +1,47 @@
 # Changelog
 
+## 0.13.0 — 2026-09-13
+
+Settings, Servers, and the per-server catalog move onto the same shared code the iOS build
+uses — Android's screens and behavior stay the same, but every fix here now lands on both
+platforms at once instead of twice.
+
+- **Fixed: downloads got stuck at "queued" forever** and never actually started, on any
+  download begun after a fresh install or update.
+- **Fixed: extra empty space above the Home and Library titles**, left over from the status
+  bar height being counted twice.
+- **The bottom navigation now floats over your books** instead of sitting in its own
+  reserved strip — scroll a shelf to the bottom and content runs right up under the
+  translucent pill instead of stopping short of it.
+- **Book Detail polish**: the cover now has a subtle border, download buttons are pill-shaped
+  and a consistent width, and detail labels (format, series, publisher…) are uppercase for
+  easier scanning.
+- **Add/Edit Server**: Display Name now comes before Server URL, and "Sign in with SSO" moved
+  below Test Connection, matching Save's width.
+- Also in this range: the iOS build gained real EPUB, PDF, and comic readers plus an
+  audiobook player (resume sync, sleep timer, AirPlay), and now has the same Settings/
+  Servers/Catalog feature set as Android. Not yet released as its own version — this is
+  groundwork toward a first real iOS release.
+
+## 0.12.5 — 2026-09-11
+
+- **Comics: right-to-left reading direction is now detected automatically** from a book's
+  "manga" genre tag, instead of needing to be set by hand.
+- **Fixed: a rapid swipe in the reader sometimes didn't turn the page.**
+- **Comics and PDF: a soft rubber-band pull at the first and last page** when you swipe past
+  the end, instead of the page just stopping dead.
+- Groundwork for an iOS build: the sign-in, server, and catalog data layer moved to Kotlin
+  Multiplatform. No change to the Android app.
+
+## 0.12.0 — 2026-09-10
+
+- **Android Auto now shows the current chapter** — number and title, when the server
+  provides one — and carries it through correctly from the moment playback starts.
+- **Comics: smoother zoomed panel navigation.** Smart zoom's panel detection no longer misses
+  real pages, page-turn readahead is more generous, fling momentum feels more natural, and
+  tap-to-turn is disabled while Smart zoom is active so it no longer fights the gesture.
+- **PDF: pinch-to-zoom can now pan all the way to the page edges.**
+
 ## 0.11.9 — 2026-09-10
 
 - **New: Smart zoom for comics.** An optional "guided view" that auto-zooms into each panel
