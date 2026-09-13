@@ -22,6 +22,11 @@
 	<string>1</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- issue #169: Compose Multiplatform's own startup sanity check (PlistSanityCheck)
+	     throws an uncaught fatal exception on launch without this — required for smooth
+	     scrolling on ProMotion/high-refresh-rate displays, not optional polish. -->
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
 	<!-- issue #114: without this, AVAudioSession playback is silently cut short the moment
 	     the app backgrounds — required for the audiobook player's whole reason for having
 	     MPNowPlayingInfoCenter/lock-screen controls at all, not optional polish. -->
