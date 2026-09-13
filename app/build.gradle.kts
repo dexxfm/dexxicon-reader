@@ -127,8 +127,8 @@ dependencies {
     implementation(project(":core:data"))
     implementation(project(":core:datastore"))
     implementation(project(":core:media"))
-    // ServerAuthModule builds NativeAuthApi/OidcApi/TokenManager/ServerProber directly
-    // (moved here from :core:serverapi/:core:data — Hilt can't apply to a KMP module; see
+    // ServerAuthModule builds NativeAuthApi/TokenManager/ServerRepository directly (moved
+    // here from :core:serverapi/:core:data — Hilt can't apply to a KMP module; see
     // ServerAuthModule's doc comment). CredentialStore is TokenManager's constructor param.
     implementation(project(":core:serverapi"))
     implementation(project(":core:security"))
@@ -146,18 +146,18 @@ dependencies {
     // Supplies the AppCompat theme attrs the Cast MediaRouteButton dialogs need.
     implementation(libs.androidx.appcompat)
 
-    implementation(project(":feature:servers"))
-    implementation(project(":feature:catalog"))
-    implementation(project(":feature:library"))
+    // Phase 4 Stage J (issue #147): feature:servers/catalog/library/settings all became
+    // unreachable from :app once Stage I repointed MainActivity at :shared's own App() —
+    // that NavHost renders :shared's Home/Library/Settings/Servers/Catalog screens directly,
+    // never these modules' own now-orphaned thin-wrapper composables/nav sections. Deleted.
     implementation(project(":feature:reader-epub"))
     implementation(project(":feature:reader-pdf"))
     implementation(project(":feature:reader-comic"))
     implementation(project(":feature:player"))
     implementation(project(":feature:annotations"))
-    implementation(project(":feature:settings"))
 
-    // Phase 0 spike: the shared Compose Multiplatform module, exercised by
-    // SharedPreviewActivity (debug builds only).
+    // :app hosts :shared's App() directly (MainActivity) — see this file's Stage J comment
+    // above for why the old feature:*/thin-wrapper layer is gone.
     implementation(project(":shared"))
 
     implementation(platform(libs.androidx.compose.bom))

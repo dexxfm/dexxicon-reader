@@ -1,7 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Dexxicon Reader</string>
-    <string name="nav_library">Home</string>
-    <string name="nav_browse">Library</string>
-    <string name="nav_settings">Settings</string>
 </resources>
