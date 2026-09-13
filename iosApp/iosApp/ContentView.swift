@@ -44,7 +44,7 @@ struct ComposeView: UIViewControllerRepresentable {
                 // format sniffing is ZIP-only — but that happens inside
                 // EpubReaderViewController's own async open, transparently to this switch;
                 // there's nothing format-specific left to do here.
-                let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue)
+                let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue, isComic: true)
                 hostVC.present(reader, animated: true)
             case .pdf:
                 // issue #112: backed by Apple's own PDFKit via Readium's

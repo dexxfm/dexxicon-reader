@@ -35,14 +35,16 @@ final class EpubReaderViewController: UIViewController {
     private let url: URL
     private let authHeader: String?
     private let isManga: Bool
+    private let isComic: Bool
 
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
     private var navigatorViewController: EPUBNavigatorViewController?
 
-    init(url: URL, authHeader: String?, isManga: Bool) {
+    init(url: URL, authHeader: String?, isManga: Bool, isComic: Bool) {
         self.url = url
         self.authHeader = authHeader
         self.isManga = isManga
+        self.isComic = isComic
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -110,7 +112,14 @@ final class EpubReaderViewController: UIViewController {
             )
         )
 
-        let assetResult = await assetRetriever.retrieve(url: resolvedURL)
+        // issue #170/#171: sniffing purely from the network stream (no hint at all) was
+        // failing outright with formatNotSupported for both EPUB and CBZ — confirmed live via
+        // NSLog on a real device, not guessed. We already know the format from our own catalog
+        // metadata (that's the whole reason this file exists as a distinct case in
+        // ContentView.swift's switch), so hand it to Readium directly instead of asking it to
+        // guess over HTTP. A normalized CBR is a real CBZ by this point too.
+        let expectedMediaType: MediaType = isComic ? .cbz : .epub
+        let assetResult = await assetRetriever.retrieve(url: resolvedURL, mediaType: expectedMediaType)
         guard case let .success(asset) = assetResult else {
             if case let .failure(retrieveError) = assetResult {
                 NSLog("[EpubReader] assetRetriever.retrieve failed: \(retrieveError)")
@@ -183,8 +192,8 @@ extension EpubReaderViewController {
     /// Wraps the reader in its own `UINavigationController` with a "Done" button, ready to
     /// present modally from any view controller — no dependency on the app having its own
     /// root navigation controller (it doesn't, today).
-    static func presentable(url: URL, authHeader: String?, isManga: Bool) -> UIViewController {
-        let reader = EpubReaderViewController(url: url, authHeader: authHeader, isManga: isManga)
+    static func presentable(url: URL, authHeader: String?, isManga: Bool, isComic: Bool = false) -> UIViewController {
+        let reader = EpubReaderViewController(url: url, authHeader: authHeader, isManga: isManga, isComic: isComic)
         reader.title = "Reading"
         reader.navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .done,
