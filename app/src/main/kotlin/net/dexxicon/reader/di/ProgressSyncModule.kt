@@ -15,8 +15,6 @@ import kotlinx.coroutines.CoroutineScope
 import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.common.di.ApplicationScope
-import net.dexxicon.reader.core.data.BookActions
-import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.TokenManager
@@ -119,23 +117,5 @@ object ProgressSyncModule {
         downloadRepository = downloadRepository,
         appScope = appScope,
         io = io,
-    )
-
-    @Provides
-    @Singleton
-    fun provideBookActions(
-        catalogRepository: CatalogRepository,
-        downloadRepository: DownloadRepository,
-        progressRepository: ReadingProgressRepository,
-        serverRepository: ServerRepository,
-        nativeProgressSync: NativeProgressSync,
-        @ApplicationScope scope: CoroutineScope,
-    ): BookActions = BookActions(
-        catalogRepository = catalogRepository,
-        downloadRepository = downloadRepository,
-        progressRepository = progressRepository,
-        serverRepository = serverRepository,
-        nativeProgressSync = nativeProgressSync,
-        scope = scope,
     )
 }
