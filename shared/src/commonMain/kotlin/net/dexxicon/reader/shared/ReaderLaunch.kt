@@ -57,6 +57,7 @@ typealias OnOpenReader = (
 data class AudiobookLaunchInfo(
     val title: String,
     val author: String?,
+    val narrator: String?,
     val coverUrl: String?,
     val durationMs: Long,
     val chapters: List<Chapter>,
@@ -92,6 +93,7 @@ fun AppContainer.openReader(
             AudiobookLaunchInfo(
                 title = detail.summary.title,
                 author = detail.summary.authorLine.takeIf { it.isNotBlank() },
+                narrator = detail.narratorLine.takeIf { it.isNotBlank() },
                 coverUrl = detail.summary.coverUrl,
                 durationMs = it.durationMs,
                 chapters = it.chapters,
