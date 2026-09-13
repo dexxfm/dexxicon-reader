@@ -123,7 +123,12 @@ class AddServerState(
         if (!canTest) return
         testState = TestState.Testing
         scope.launch {
-            testState = when (val result = serverProber.probe(baseUrl, username, password)) {
+            // issue #177: matches save()'s existing `username.trim()` — without it, stray
+            // leading/trailing whitespace a keyboard's predictive-text bar can silently insert
+            // (confirmed live on iOS: the submitted username failed a round-trip trim check)
+            // makes the connection test fail even though the exact same credentials work
+            // everywhere else, since save() would have trimmed it but test() never got that far.
+            testState = when (val result = serverProber.probe(baseUrl, username.trim(), password)) {
                 is ServerProbeResult.Success -> {
                     if (displayName.isBlank()) displayName = prettyHost(baseUrl)
                     TestState.Success(result.detectedType, connectedLabel(result.detectedType))
