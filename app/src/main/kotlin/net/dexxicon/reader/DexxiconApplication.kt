@@ -25,6 +25,9 @@ import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.network.DexxiconHttpClient
 import net.dexxicon.reader.shared.di.AndroidAppContainer
 import net.dexxicon.reader.shared.player.NowPlaying
+import net.dexxicon.reader.shared.player.PlayerActions
+import net.dexxicon.reader.shared.player.PlayerChapter
+import net.dexxicon.reader.shared.player.PlayerUiSnapshot
 import okhttp3.OkHttpClient
 import okio.Path.Companion.toOkioPath
 import javax.inject.Inject
@@ -107,19 +110,57 @@ class DexxiconApplication :
                 )
             }
         }
+        // Phase 1 of the shared-reader-chrome redesign (issue #183) — the full player screen's
+        // own bridge, alongside the mini-player's narrower slice above. Same shape as
+        // onMiniPlayerPlayPause and friends: every command the shared PlayerScreen can send,
+        // pointed at the same real AudiobookPlayer.
+        container.playerActions = PlayerActions(
+            playPause = audiobookPlayer::playPause,
+            skipForward = audiobookPlayer::skipForward,
+            skipBack = audiobookPlayer::skipBack,
+            nextChapter = audiobookPlayer::nextChapter,
+            previousChapter = audiobookPlayer::previousChapter,
+            seekTo = audiobookPlayer::seekTo,
+            seekToChapter = audiobookPlayer::seekToChapter,
+            setSpeed = audiobookPlayer::setSpeed,
+            setSleepTimer = audiobookPlayer::setSleepTimer,
+            setSleepTimerEndOfChapter = audiobookPlayer::setSleepTimerEndOfChapter,
+        )
         applicationScope.launch {
             audiobookPlayer.state.collect { state ->
+                val book = state.audiobook
                 container.updateNowPlaying(
-                    state.audiobook?.let { book ->
+                    book?.let {
                         NowPlaying(
-                            serverId = book.serverId,
-                            bookId = book.bookId,
-                            title = book.title,
-                            coverUrl = book.coverUrl,
+                            serverId = it.serverId,
+                            bookId = it.bookId,
+                            title = it.title,
+                            coverUrl = it.coverUrl,
                             currentChapterTitle = state.currentChapterTitle,
                             isPlaying = state.isPlaying,
                             positionMs = state.positionMs,
                             durationMs = state.durationMs,
+                        )
+                    },
+                )
+                container.updatePlayerState(
+                    book?.let {
+                        PlayerUiSnapshot(
+                            serverId = it.serverId,
+                            bookId = it.bookId,
+                            title = it.title,
+                            author = it.author,
+                            narrator = it.narrator,
+                            coverUrl = it.coverUrl,
+                            isPlaying = state.isPlaying,
+                            isBuffering = state.isBuffering,
+                            positionMs = state.positionMs,
+                            durationMs = state.durationMs,
+                            speed = state.speed,
+                            sleepTimerEndsAtEpochMs = state.sleepTimerEndsAt,
+                            sleepAtChapterEnd = state.sleepAtChapterEnd,
+                            currentChapterIndex = state.currentChapterIndex,
+                            chapters = it.chapters.map { chapter -> PlayerChapter(chapter.title, chapter.startMs) },
                         )
                     },
                 )

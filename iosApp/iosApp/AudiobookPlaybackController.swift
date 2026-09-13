@@ -26,6 +26,7 @@ final class AudiobookPlaybackController: NSObject {
         let bookId: String
         let title: String
         let author: String?
+        let narrator: String?
         let coverUrl: String?
         let durationMs: Int64
         let chapters: [ChapterInfo]
@@ -63,6 +64,7 @@ final class AudiobookPlaybackController: NSObject {
         didSet {
             onUpdate?(state)
             pushNowPlaying()
+            pushPlayerState()
         }
     }
 
@@ -413,6 +415,32 @@ final class AudiobookPlaybackController: NSObject {
             isPlaying: state.isPlaying,
             positionMs: state.positionMs,
             durationMs: state.durationMs
+        ))
+    }
+
+    /// Phase 1 of the shared-reader-chrome redesign (issue #183) — the full player screen's own
+    /// bridge, pushed alongside (not instead of) [pushNowPlaying]'s narrower mini-player slice.
+    private func pushPlayerState() {
+        guard let book = state.book else {
+            MainViewControllerKt.updatePlayerState(state: nil)
+            return
+        }
+        MainViewControllerKt.updatePlayerState(state: PlayerUiSnapshot(
+            serverId: book.serverId,
+            bookId: book.bookId,
+            title: book.title,
+            author: book.author,
+            narrator: book.narrator,
+            coverUrl: book.coverUrl,
+            isPlaying: state.isPlaying,
+            isBuffering: state.isBuffering,
+            positionMs: state.positionMs,
+            durationMs: state.durationMs,
+            speed: state.speed,
+            sleepTimerEndsAtEpochMs: state.sleepTimerEndsAt.map { KotlinLong(value: Int64($0.timeIntervalSince1970 * 1000)) },
+            sleepAtChapterEnd: state.sleepAtChapterEnd,
+            currentChapterIndex: Int32(state.currentChapterIndex),
+            chapters: book.chapters.map { PlayerChapter(title: $0.title, startMs: $0.startMs) }
         ))
     }
 

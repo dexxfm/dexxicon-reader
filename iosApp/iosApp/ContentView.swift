@@ -53,28 +53,30 @@ struct ComposeView: UIViewControllerRepresentable {
                 let reader = PdfReaderViewController.presentable(url: bookUrl, authHeader: authHeader)
                 hostVC.present(reader, animated: true)
             case .audiobook:
-                // issue #114: no Readium involvement at all — Android's own player bypasses
+                // issue #114/#183: no Readium involvement at all — Android's own player bypasses
                 // Readium for audio too (a plain stream URL + ExoPlayer), so this mirrors that
                 // with AVPlayer instead of adopting Readium Swift's AudioNavigator, which
-                // expects a packaged Readium/ZAB manifest this app's servers don't produce.
-                // `audiobook` carries the metadata (title/author/cover/duration/chapters) no
-                // other reader needs — BookDetailScreen only builds it for this format, so it
-                // should never actually be nil here, but the player needs *some* title even in
-                // that unexpected case.
-                let reader = AudiobookPlayerViewController.presentable(
+                // expects a packaged Readium/ZAB manifest this app's servers don't produce. The
+                // screen itself is the shared Compose `PlayerScreen` (issue #183) — this closure
+                // only needs to start the real engine and present it.
+                // `audiobook` carries the metadata (title/author/narrator/cover/duration/
+                // chapters) no other reader needs — BookDetailScreen only builds it for this
+                // format, so it should never actually be nil here, but the player needs *some*
+                // title even in that unexpected case.
+                let book = AudiobookPlaybackController.Book(
                     serverId: serverId,
                     bookId: bookId,
-                    url: bookUrl,
-                    authHeader: authHeader,
                     title: audiobook?.title ?? "Audiobook",
                     author: audiobook?.author,
+                    narrator: audiobook?.narrator,
                     coverUrl: audiobook?.coverUrl,
                     durationMs: audiobook?.durationMs ?? 0,
                     chapters: (audiobook?.chapters ?? []).map {
                         AudiobookPlaybackController.ChapterInfo(title: $0.title, startMs: $0.startMs)
-                    }
+                    },
+                    digestUrl: url
                 )
-                hostVC.present(reader, animated: true)
+                presentPlayer(from: hostVC, book: book, authHeader: authHeader)
             default:
                 // .unknown — includes CB7 (issue #110: dropped rather than supported) and any
                 // genuinely unrecognized format. Same placeholder #99 proved the plumbing with.
@@ -90,27 +92,60 @@ struct ComposeView: UIViewControllerRepresentable {
             playPause: { AudiobookPlaybackController.shared.playPause() },
             dismiss: { AudiobookPlaybackController.shared.stop() },
             reopen: {
-                guard
-                    let book = AudiobookPlaybackController.shared.state.book,
-                    let url = URL(string: book.digestUrl)
-                else { return }
-                let reader = AudiobookPlayerViewController.presentable(
-                    serverId: book.serverId,
-                    bookId: book.bookId,
-                    url: url,
-                    authHeader: nil,
-                    title: book.title,
-                    author: book.author,
-                    coverUrl: book.coverUrl,
-                    durationMs: book.durationMs,
-                    chapters: book.chapters
-                )
-                hostVC.present(reader, animated: true)
+                guard let book = AudiobookPlaybackController.shared.state.book else { return }
+                presentPlayer(from: hostVC, book: book, authHeader: nil)
             }
+        )
+
+        // issue #183: the full player screen's own bridge, alongside setMiniPlayerActions'
+        // narrower slice — every command the shared PlayerScreen can send, pointed at the same
+        // real engine. Every primitive parameter here arrives boxed (KotlinLong/KotlinInt/
+        // KotlinFloat, not a native Int64/Int/Float) — same interop quirk as `isManga` above:
+        // a Kotlin function type Swift *implements* (Kotlin invokes it later) always boxes its
+        // primitive parameters, confirmed via a real ios-ci compile error on that closure, not
+        // guessed a second time here.
+        MainViewControllerKt.setPlayerActions(
+            playPause: { AudiobookPlaybackController.shared.playPause() },
+            skipForward: { AudiobookPlaybackController.shared.skipForward() },
+            skipBack: { AudiobookPlaybackController.shared.skipBack() },
+            nextChapter: { AudiobookPlaybackController.shared.nextChapter() },
+            previousChapter: { AudiobookPlaybackController.shared.previousChapter() },
+            seekTo: { AudiobookPlaybackController.shared.seek(toMs: $0.int64Value) },
+            seekToChapter: { index in
+                let controller = AudiobookPlaybackController.shared
+                let i = Int(index.int32Value)
+                guard let book = controller.state.book, book.chapters.indices.contains(i) else { return }
+                controller.seek(toMs: book.chapters[i].startMs)
+            },
+            setSpeed: { AudiobookPlaybackController.shared.setSpeed($0.floatValue) },
+            setSleepTimer: { durationMs in
+                guard let durationMs else {
+                    AudiobookPlaybackController.shared.clearSleepTimer()
+                    return
+                }
+                AudiobookPlaybackController.shared.setSleepTimer(minutes: Int(durationMs.int64Value / 60_000))
+            },
+            setSleepTimerEndOfChapter: { AudiobookPlaybackController.shared.setSleepTimerEndOfChapter() }
         )
 
         return hostVC
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+
+/// Starts the real engine (if not already loaded) and presents the shared Compose `PlayerScreen`
+/// (issue #183) — shared between the initial `onOpenReader` hand-off and the mini-player's
+/// "reopen" tap, which re-presents over an already-running engine instead of restarting it.
+private func presentPlayer(from hostVC: UIViewController, book: AudiobookPlaybackController.Book, authHeader: String?) {
+    let controller = AudiobookPlaybackController.shared
+    if !controller.isLoaded(serverId: book.serverId, bookId: book.bookId) {
+        controller.start(book: book, authHeader: authHeader)
+    }
+    let player = MainViewControllerKt.PlayerViewController(onBack: {
+        hostVC.dismiss(animated: true)
+    })
+    // hidesNavigationBar: true — PlayerScreen draws its own BackPill as part of its Compose
+    // content, so the native bar's back button here would just be a redundant second one.
+    hostVC.present(FullScreenReaderPresentation.wrap(player, hidesNavigationBar: true), animated: true)
 }

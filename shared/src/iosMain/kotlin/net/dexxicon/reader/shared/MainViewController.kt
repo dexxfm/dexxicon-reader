@@ -1,11 +1,17 @@
 package net.dexxicon.reader.shared
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.window.ComposeUIViewController
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.di.PlatformContext
 import net.dexxicon.reader.shared.di.createAppContainer
 import net.dexxicon.reader.shared.player.NowPlaying
+import net.dexxicon.reader.shared.player.PlayerActions
+import net.dexxicon.reader.shared.player.PlayerScreen
+import net.dexxicon.reader.shared.player.PlayerUiSnapshot
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
+import platform.UIKit.UIViewController
 
 /**
  * One process-lifetime [AppContainer] — hoisted out of `MainViewController`'s Compose content
@@ -63,4 +69,63 @@ fun setMiniPlayerActions(playPause: () -> Unit, dismiss: () -> Unit, reopen: () 
     appContainer.onMiniPlayerPlayPause = playPause
     appContainer.onMiniPlayerDismiss = dismiss
     appContainer.onMiniPlayerReopen = reopen
+}
+
+/**
+ * Phase 1 of the shared-reader-chrome redesign (issue #183) — the full player screen's own
+ * bridge, alongside (not replacing) [updateNowPlaying]/[setMiniPlayerActions]'s narrower
+ * mini-player slice. `AudiobookPlaybackController`'s `didSet` observer calls this on every
+ * playback state change, same as it already calls [updateNowPlaying].
+ */
+fun updatePlayerState(state: PlayerUiSnapshot?) {
+    appContainer.updatePlayerState(state)
+}
+
+/**
+ * Wires the full player screen's commands back to `AudiobookPlaybackController.shared` — called
+ * once from `ContentView.swift` at startup, same as [setMiniPlayerActions]. Individual named
+ * closure parameters (not a single [PlayerActions] Swift would have to construct) match that
+ * function's own established calling convention.
+ */
+fun setPlayerActions(
+    playPause: () -> Unit,
+    skipForward: () -> Unit,
+    skipBack: () -> Unit,
+    nextChapter: () -> Unit,
+    previousChapter: () -> Unit,
+    seekTo: (Long) -> Unit,
+    seekToChapter: (Int) -> Unit,
+    setSpeed: (Float) -> Unit,
+    setSleepTimer: (Long?) -> Unit,
+    setSleepTimerEndOfChapter: () -> Unit,
+) {
+    appContainer.playerActions = PlayerActions(
+        playPause = playPause,
+        skipForward = skipForward,
+        skipBack = skipBack,
+        nextChapter = nextChapter,
+        previousChapter = previousChapter,
+        seekTo = seekTo,
+        seekToChapter = seekToChapter,
+        setSpeed = setSpeed,
+        setSleepTimer = setSleepTimer,
+        setSleepTimerEndOfChapter = setSleepTimerEndOfChapter,
+    )
+}
+
+/**
+ * Second Compose root for iOS (issue #183) — mirrors [MainViewController] itself: a plain
+ * top-level function returning a real `UIViewController` via `ComposeUIViewController`, ready
+ * for Swift to present modally (via `FullScreenReaderPresentation`) exactly like every other
+ * native reader here. Reads the same process-lifetime [appContainer] the rest of the app uses,
+ * so it renders whatever `AudiobookPlaybackController` already pushed via [updatePlayerState] —
+ * no separate load-on-appear step, since by the time this is presented `ContentView.swift` has
+ * already called `AudiobookPlaybackController.shared.start(book:authHeader:)`.
+ */
+fun PlayerViewController(onBack: () -> Unit): UIViewController = ComposeUIViewController {
+    val state by appContainer.playerState.collectAsState()
+    val actions = appContainer.playerActions
+    if (actions != null) {
+        PlayerScreen(state = state, actions = actions, onBack = onBack)
+    }
 }
