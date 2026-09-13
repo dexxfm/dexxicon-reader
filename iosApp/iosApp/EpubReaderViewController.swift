@@ -72,28 +72,33 @@ final class EpubReaderViewController: UIViewController {
 
     @MainActor
     private func openPublication() async {
-        // issue #107: a CBR needs unpacking + repacking as a real ZIP before Readium's format
-        // sniffing (ZIP-only, same as the Kotlin toolkit) can do anything with it at all — the
-        // normalizer downloads it in full (RAR can't be range-streamed) and hands back a local
-        // file:// URL to the resulting CBZ. Every other format (including CBZ itself) is
-        // untouched by this check and keeps streaming straight from the server.
         let resolvedURL: any AbsoluteURL
-        if ComicArchiveNormalizer.looksLikeRar(url: url, mediaType: nil) {
+        if isComic {
+            // issue #106/#107: a comic might be CBZ (real ZIP) or CBR (RAR) — the URL/media-type
+            // extension the server advertises is only ever a heuristic, confirmed wrong live: a
+            // book routed here as a comic downloaded to real "Rar!" magic bytes despite a
+            // .cbz-shaped request, and got fed to Readium's ZIP reader as-is, which failed with
+            // missingEndOfCentralDirectoryRecord (a RAR file has no ZIP central directory at
+            // all). ComicArchiveNormalizer.normalize always downloads first and checks the real
+            // magic bytes rather than trusting the extension — unpacking+repacking as CBZ only
+            // when the bytes actually are RAR, and copying straight through otherwise — so it's
+            // now the single entry point for every comic, not just ones that look like CBR by
+            // extension.
             guard let cbzURL = try? await ComicArchiveNormalizer.normalize(url: url, authHeader: authHeader),
                   let fileURL = FileURL(url: cbzURL) else {
-                showError("Couldn't open this CBR comic.")
+                showError("Couldn't open this comic.")
                 return
             }
             resolvedURL = fileURL
         } else {
-            // issue #170/#171: EPUB and CBZ (and MOBI/AZW3/FB2, server-converted to EPUB) are
-            // all ZIP containers, and Readium Swift Toolkit 3.11.0's ZIP-over-HTTP range
-            // streaming requests a fixed ~6 MiB look-ahead window without ever clamping it to
-            // the file's real length — see RemoteFileCache's doc comment for the confirmed root
-            // cause. Downloading the whole file up front (same workaround CBR needed above, for
-            // a different reason) sidesteps ranged reads entirely.
-            let ext = isComic ? "cbz" : "epub"
-            guard let localURL = try? await RemoteFileCache.download(url: url, authHeader: authHeader, extension: ext),
+            // issue #170/#171: EPUB (and MOBI/AZW3/FB2, server-converted to EPUB) is a ZIP
+            // container, and Readium Swift Toolkit 3.11.0's ZIP-over-HTTP range streaming
+            // requests a fixed ~6 MiB look-ahead window without ever clamping it to the file's
+            // real length — see RemoteFileCache's doc comment for the confirmed root cause.
+            // Downloading the whole file up front (same workaround comics need above, for a
+            // different reason) sidesteps ranged reads entirely. No RAR ambiguity here — unlike
+            // comics, these formats are never anything but ZIP — so a plain download is enough.
+            guard let localURL = try? await RemoteFileCache.download(url: url, authHeader: authHeader, extension: "epub"),
                   let fileURL = FileURL(url: localURL) else {
                 showError("Couldn't open this book.")
                 return
