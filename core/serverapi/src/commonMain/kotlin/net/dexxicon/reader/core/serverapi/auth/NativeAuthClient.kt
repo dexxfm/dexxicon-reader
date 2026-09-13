@@ -5,6 +5,7 @@ import kotlinx.io.IOException
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 import net.dexxicon.reader.core.common.DexxiconError
+import net.dexxicon.reader.core.common.Logger
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
@@ -25,9 +26,22 @@ data class NativeSession(
 class NativeAuthClient(
     private val api: NativeAuthApi,
 ) {
-    suspend fun login(server: Server, username: String, password: String): Outcome<NativeSession> =
-        runCatching { api.login(server.resolve(LOGIN_PATH), LoginRequest(username, password)) }
+    suspend fun login(server: Server, username: String, password: String): Outcome<NativeSession> {
+        // issue #177: diagnosing an iOS-only "invalid username or password" that survived
+        // disabling autocorrect/autocapitalization on the text fields — logs shape only (never
+        // the actual value) to check for silent mangling upstream of this call: length,
+        // leading/trailing whitespace, and non-ASCII characters (autocorrect's smart-quotes
+        // substitution is a *separate* iOS text-input property from autocorrection itself and
+        // might not be covered by the KeyboardOptions fix).
+        Logger.i(
+            "NativeAuthClient",
+            "login attempt: usernameLen=${username.length} passwordLen=${password.length} " +
+                "usernameTrimMatches=${username == username.trim()} passwordTrimMatches=${password == password.trim()} " +
+                "usernameAscii=${username.all { it.code in 32..126 }} passwordAscii=${password.all { it.code in 32..126 }}",
+        )
+        return runCatching { api.login(server.resolve(LOGIN_PATH), LoginRequest(username, password)) }
             .fold(::toSession, ::toError)
+    }
 
     suspend fun refresh(server: Server, refreshToken: String): Outcome<NativeSession> =
         runCatching { api.refresh(server.resolve(REFRESH_PATH), RefreshRequest(refreshToken)) }
