@@ -25,8 +25,8 @@ import net.dexxicon.reader.core.reader.ComicArchiveNormalizer
 import net.dexxicon.reader.core.reader.PublicationStreamer
 import java.io.File
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
-import net.dexxicon.reader.core.reader.ReaderPreferencesStore
-import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
+import net.dexxicon.reader.core.datastore.ReaderPreferencesStore
+import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
 import net.dexxicon.reader.feature.reader.comic.navigation.ComicReaderRoute
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication

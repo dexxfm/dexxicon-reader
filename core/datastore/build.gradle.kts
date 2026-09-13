@@ -12,10 +12,10 @@ plugins {
 // the Android-only `Context.preferencesDataStore` extension, so each platform supplies its own
 // producer (androidMain: Context.filesDir; iosMain: NSDocumentDirectory).
 //
-// AppPreferencesStore and PlayerPreferencesStore stay Android-only in androidMain, unchanged —
-// nothing outside :app's own Hilt-injected screens needs them yet (confirmed: Book Detail's
-// dependency chain never touches them — DownloadRepository's Android actual is the only thing
-// that uses AppPreferencesStore, and it only ever runs on Android anyway).
+// AppPreferencesStore, ReaderPreferencesStore and PlayerPreferencesStore (Stage H, issue #145)
+// followed the same move once :shared's Book Defaults screens needed to read/write them —
+// nothing Android-only remained in any of the three once the DataStore path resolution moved
+// behind the same expect/actual as SyncStateStore's.
 //
 // No Hilt/KSP plugin here — same reason as :core:data: the Hilt Gradle plugin refuses to
 // apply to a KMP module. Hilt's :app-level KSP pass still wires up @Inject constructors

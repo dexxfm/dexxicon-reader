@@ -1,11 +1,11 @@
 package net.dexxicon.reader.feature.reader.epub
 
 import com.google.common.truth.Truth.assertThat
-import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
-import net.dexxicon.reader.core.reader.ReaderFitMode
-import net.dexxicon.reader.core.reader.ReaderPageLayout
-import net.dexxicon.reader.core.reader.ReaderScrollMode
-import net.dexxicon.reader.core.reader.ReaderTheme
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.datastore.ReaderFitMode
+import net.dexxicon.reader.core.datastore.ReaderPageLayout
+import net.dexxicon.reader.core.datastore.ReaderScrollMode
+import net.dexxicon.reader.core.datastore.ReaderTheme
 import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.Theme
 import org.junit.Test

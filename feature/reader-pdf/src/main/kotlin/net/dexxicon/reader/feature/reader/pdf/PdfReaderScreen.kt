@@ -75,11 +75,11 @@ import net.dexxicon.reader.core.designsystem.component.pageSnapshot
 import net.dexxicon.reader.core.designsystem.component.pageTurnGesture
 import net.dexxicon.reader.core.designsystem.component.rememberPageTurnState
 import net.dexxicon.reader.core.model.Bookmark
-import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
-import net.dexxicon.reader.core.reader.ReaderFitMode
-import net.dexxicon.reader.core.reader.ReaderScrollMode
-import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
-import net.dexxicon.reader.core.reader.ReaderTheme
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.datastore.ReaderFitMode
+import net.dexxicon.reader.core.datastore.ReaderScrollMode
+import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
+import net.dexxicon.reader.core.datastore.ReaderTheme
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
 import org.readium.adapter.pdfium.navigator.PdfiumPreferences
 import org.readium.adapter.pdfium.navigator.PdfiumSettings

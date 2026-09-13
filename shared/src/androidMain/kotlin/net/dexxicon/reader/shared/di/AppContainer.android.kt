@@ -11,6 +11,8 @@ import net.dexxicon.reader.core.database.finish
 import net.dexxicon.reader.core.database.getDatabaseBuilder
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.PlatformStorageContext
+import net.dexxicon.reader.core.datastore.PlayerPreferencesStore
+import net.dexxicon.reader.core.datastore.ReaderPreferencesStore
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.security.CredentialStore
 import net.dexxicon.reader.core.security.CryptoStore
@@ -57,6 +59,8 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
         koSyncRawDeviceId = deviceId(appContext),
         koSyncDeviceModel = Build.MODEL ?: "Android",
         appPreferences = appPreferences,
+        readerPreferences = ReaderPreferencesStore(PlatformStorageContext(appContext)),
+        playerPreferences = PlayerPreferencesStore(PlatformStorageContext(appContext)),
         appVersionName = runCatching {
             appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName
         }.getOrNull() ?: "unknown",

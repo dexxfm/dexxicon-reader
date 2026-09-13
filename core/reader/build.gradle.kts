@@ -15,6 +15,9 @@ dependencies {
     implementation(project(":core:common"))
     implementation(project(":core:network"))
     implementation(project(":core:data"))
+    // Stage H (issue #145): ReaderDisplayPreferences/ReaderPreferencesStore moved to
+    // :core:datastore's commonMain so :shared's Book Defaults screens can read/write them too.
+    api(project(":core:datastore"))
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)

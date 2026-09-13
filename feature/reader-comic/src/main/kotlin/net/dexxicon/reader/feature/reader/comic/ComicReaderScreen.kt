@@ -68,7 +68,7 @@ import net.dexxicon.reader.core.designsystem.component.rememberPageTurnState
 import net.dexxicon.reader.core.reader.ComicPanelDetector
 import net.dexxicon.reader.core.reader.EdgeTapNavigator
 import net.dexxicon.reader.core.reader.PanelSteppingNavigator
-import net.dexxicon.reader.core.reader.ReaderSwipeSensitivity
+import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
 import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.shared.publication.Locator
 

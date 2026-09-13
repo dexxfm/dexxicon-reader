@@ -27,9 +27,9 @@ import java.io.File
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.core.reader.PublicationStreamer
-import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
-import net.dexxicon.reader.core.reader.ReaderPreferencesStore
+import net.dexxicon.reader.core.datastore.ReaderPreferencesStore
 
 import net.dexxicon.reader.feature.reader.epub.navigation.EpubReaderRoute
 import org.readium.r2.shared.publication.Locator

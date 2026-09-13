@@ -28,6 +28,8 @@ import net.dexxicon.reader.core.data.sync.LibrarySeeder
 import net.dexxicon.reader.core.data.sync.NativeProgressSync
 import net.dexxicon.reader.core.database.DexxiconDatabase
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
+import net.dexxicon.reader.core.datastore.PlayerPreferencesStore
+import net.dexxicon.reader.core.datastore.ReaderPreferencesStore
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.createHttpClient
@@ -109,6 +111,11 @@ import net.dexxicon.reader.shared.reader.AudiobookProgressSync
  * [appPreferences] (issue #133) is likewise platform-supplied — Android's `createAppContainer`
  * reuses the same instance [downloadRepository] already needed one of; iOS builds a fresh one.
  * See [AppPreferencesStore]'s own doc comment for why constructing more than once is safe.
+ *
+ * [readerPreferences]/[playerPreferences] and [koSyncRepository]/[syncStateStore] (issue #145)
+ * follow the same shape for Settings' Book Defaults and Reading sync sections respectively —
+ * platform-supplied stores plus a repository this class already builds for other reasons,
+ * simply made public.
  */
 class AppContainer(
     engine: HttpClientEngine,
@@ -117,12 +124,19 @@ class AppContainer(
     io: CoroutineDispatcher,
     coilPlatformContext: CoilPlatformContext,
     val downloadRepository: DownloadRepository,
-    syncStateStore: SyncStateStore,
+    /** Phase 4 Stage H (issue #145) — public so Settings' Reading sync section can read
+     * [SyncStateStore.lastSyncedAt] directly, the same way [appPreferences] already is. */
+    val syncStateStore: SyncStateStore,
     koSyncRawDeviceId: String,
     koSyncDeviceModel: String,
     /** Phase 4 Stage D (issue #133) — Library's view-mode toggle and cover-tap-action need
      * this directly, the same way [progressRepository]/[bookActions] are exposed publicly. */
     val appPreferences: AppPreferencesStore,
+    /** Phase 4 Stage H (issue #145) — Settings' Book Defaults sub-screens. Platform-supplied
+     * the same way [appPreferences] is; see [ReaderPreferencesStore]'s own doc comment for
+     * why it moved to commonMain. */
+    val readerPreferences: ReaderPreferencesStore,
+    val playerPreferences: PlayerPreferencesStore,
     /** Phase 4 Stage E1 (issue #136) — Settings' About row. Resolved once per platform, same
      * "plain value, no expect/actual needed" shape as [koSyncRawDeviceId]/[koSyncDeviceModel]:
      * Android reads it via `PackageManager` (the same call
@@ -176,7 +190,9 @@ class AppContainer(
 
     private val nativeProgressSync = NativeProgressSync(nativeProgressApi, syncStateStore, io)
     private val librarySeeder = LibrarySeeder(grimmoryBrowseApi, bookOrbitBrowseApi, io)
-    private val koSyncRepository = KoSyncRepository(
+    /** Phase 4 Stage H (issue #145) — public so Settings' Reading sync section can call
+     * [KoSyncRepository.verify] directly, the same shape [progressRepository] already has. */
+    val koSyncRepository = KoSyncRepository(
         api = koSyncApi,
         credentialStore = credentialStore,
         syncStateStore = syncStateStore,

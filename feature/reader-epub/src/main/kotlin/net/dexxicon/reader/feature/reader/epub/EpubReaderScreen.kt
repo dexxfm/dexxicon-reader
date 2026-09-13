@@ -75,11 +75,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.reader.EdgeTapNavigator
-import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
-import net.dexxicon.reader.core.reader.ReaderFitMode
-import net.dexxicon.reader.core.reader.ReaderPageLayout
-import net.dexxicon.reader.core.reader.ReaderScrollMode
-import net.dexxicon.reader.core.reader.ReaderTheme
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.datastore.ReaderFitMode
+import net.dexxicon.reader.core.datastore.ReaderPageLayout
+import net.dexxicon.reader.core.datastore.ReaderScrollMode
+import net.dexxicon.reader.core.datastore.ReaderTheme
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
 import org.readium.r2.shared.publication.Link

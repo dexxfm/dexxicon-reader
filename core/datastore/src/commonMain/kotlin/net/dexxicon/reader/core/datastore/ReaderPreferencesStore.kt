@@ -1,18 +1,15 @@
-package net.dexxicon.reader.core.reader
+package net.dexxicon.reader.core.datastore
 
-import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import javax.inject.Inject
-import javax.inject.Singleton
+import okio.Path.Companion.toPath
 
 /** Reader look & feel, shared by every in-app reader. */
 data class ReaderDisplayPreferences(
@@ -85,12 +82,19 @@ enum class ReaderScrollMode(val scrolling: Boolean) {
     CONTINUOUS(true),
 }
 
-private val Context.readerPrefsDataStore: DataStore<Preferences> by preferencesDataStore("reader_prefs")
+/**
+ * Phase 4 Stage H (issue #145) — moved to commonMain following [AppPreferencesStore]'s
+ * precedent: `@Inject`/`@Singleton` dropped (an explicit `@Provides` in `:app`'s `DataModule`
+ * now supplies it to Hilt), the old Android-only `Context.preferencesDataStore` delegate
+ * replaced with [readerPreferencesFilePath] (expect, one `actual` per platform) plus the same
+ * [dataStoreFor] memoization [SyncStateStore]/[AppPreferencesStore] use. This was previously
+ * `:core:reader`'s own `ReaderPreferencesStore` — that module stays Android-only (it wraps
+ * Readium, which has no iOS build here), but the *preferences* have no Android dependency of
+ * their own, so `:shared`'s Book Defaults screens can now read/write them directly.
+ */
+class ReaderPreferencesStore(context: PlatformStorageContext) {
+    private val dataStore: DataStore<Preferences> = dataStoreFor(readerPreferencesFilePath(context))
 
-@Singleton
-class ReaderPreferencesStore @Inject constructor(
-    @ApplicationContext private val context: Context,
-) {
     private object Keys {
         val FONT_SCALE = doublePreferencesKey("font_scale")
         val THEME = stringPreferencesKey("theme")
@@ -104,11 +108,10 @@ class ReaderPreferencesStore @Inject constructor(
         val COMIC_RIGHT_TO_LEFT = booleanPreferencesKey("comic_right_to_left")
     }
 
-    val preferences: Flow<ReaderDisplayPreferences> =
-        context.readerPrefsDataStore.data.map { it.toPrefs() }
+    val preferences: Flow<ReaderDisplayPreferences> = dataStore.data.map { it.toPrefs() }
 
     suspend fun update(transform: (ReaderDisplayPreferences) -> ReaderDisplayPreferences) {
-        context.readerPrefsDataStore.edit { prefs ->
+        dataStore.edit { prefs ->
             val next = transform(prefs.toPrefs())
             prefs[Keys.FONT_SCALE] = next.fontScale
             prefs[Keys.THEME] = next.theme.name
@@ -138,7 +141,21 @@ class ReaderPreferencesStore @Inject constructor(
         comicSmartZoom = this[Keys.COMIC_SMART_ZOOM] ?: false,
         comicRightToLeft = this[Keys.COMIC_RIGHT_TO_LEFT] ?: false,
     )
+
+    private companion object {
+        /** Same reasoning as [SyncStateStore]'s own `dataStores` cache. */
+        private val dataStores = mutableMapOf<String, DataStore<Preferences>>()
+
+        private fun dataStoreFor(path: String): DataStore<Preferences> =
+            dataStores.getOrPut(path) {
+                PreferenceDataStoreFactory.createWithPath(produceFile = { path.toPath() })
+            }
+    }
 }
 
 private inline fun <reified T : Enum<T>> enumOrNull(name: String): T? =
     runCatching { enumValueOf<T>(name) }.getOrNull()
+
+/** Opaque per-platform handle [readerPreferencesFilePath] needs to locate the preferences
+ * file — see [PlatformStorageContext] (shared with [SyncStateStore]/[AppPreferencesStore]). */
+expect fun readerPreferencesFilePath(context: PlatformStorageContext): String

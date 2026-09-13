@@ -1,9 +1,9 @@
 package net.dexxicon.reader.feature.reader.epub
 
-import net.dexxicon.reader.core.reader.ReaderDisplayPreferences
-import net.dexxicon.reader.core.reader.ReaderFitMode
-import net.dexxicon.reader.core.reader.ReaderPageLayout
-import net.dexxicon.reader.core.reader.ReaderTheme
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.datastore.ReaderFitMode
+import net.dexxicon.reader.core.datastore.ReaderPageLayout
+import net.dexxicon.reader.core.datastore.ReaderTheme
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Color
 import org.readium.r2.navigator.preferences.ColumnCount
