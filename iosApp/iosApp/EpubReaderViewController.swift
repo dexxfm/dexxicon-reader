@@ -110,15 +110,20 @@ final class EpubReaderViewController: UIViewController {
             )
         )
 
-        guard case let .success(asset) = await assetRetriever.retrieve(url: resolvedURL) else {
+        let assetResult = await assetRetriever.retrieve(url: resolvedURL)
+        guard case let .success(asset) = assetResult else {
+            if case let .failure(retrieveError) = assetResult {
+                NSLog("[EpubReader] assetRetriever.retrieve failed: \(retrieveError)")
+            }
             showError("Couldn't open this book.")
             return
         }
 
-        guard case let .success(publication) = await publicationOpener.open(
-            asset: asset,
-            allowUserInteraction: true
-        ) else {
+        let openResult = await publicationOpener.open(asset: asset, allowUserInteraction: true)
+        guard case let .success(publication) = openResult else {
+            if case let .failure(openError) = openResult {
+                NSLog("[EpubReader] publicationOpener.open failed: \(openError)")
+            }
             showError("Couldn't open this book.")
             return
         }
@@ -138,6 +143,7 @@ final class EpubReaderViewController: UIViewController {
             navigator.delegate = self
             embed(navigator)
         } catch {
+            NSLog("[EpubReader] EPUBNavigatorViewController init threw: \(error)")
             showError("Couldn't open this book.")
         }
     }
