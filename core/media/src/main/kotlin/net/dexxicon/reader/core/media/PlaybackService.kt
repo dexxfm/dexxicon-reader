@@ -630,11 +630,19 @@ private class AutoLibraryCallback(
                 .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK)
                 .setTitle(card.title)
                 .setArtist(card.author)
+                // issue #118: the completion extras below already draw a progress bar under
+                // the tile, but a text line reads at a glance without parsing a thin bar —
+                // only Continue listening/Downloaded cards carry a known progress today, so
+                // the plain library grid stays title+author.
+                .setSubtitle(card.progress?.takeIf { it > 0.0 }?.let(::listenedLabel))
                 .setArtworkUri(card.artworkUri?.let(browseArtworkUri))
                 .setExtras(completionExtras(card.progress))
                 .build(),
         )
         .build()
+
+    private fun listenedLabel(progress: Double): String =
+        "${(progress.coerceIn(0.0, 1.0) * 100).toInt()}% listened"
 
     private suspend fun playableItem(p: PlayableAudiobook): MediaItem {
         val art = p.artworkUri?.let { url -> artworkFor(url) }
