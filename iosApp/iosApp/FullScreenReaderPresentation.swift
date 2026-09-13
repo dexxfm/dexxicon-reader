@@ -1,7 +1,7 @@
 import UIKit
 
 /// Presents a reader (EPUB, comic, PDF, audiobook player) as a genuine full-screen screen,
-/// dismissed by swiping in from the left edge (issue #176).
+/// dismissed by swiping in from either edge (issue #176).
 ///
 /// Every reader used to just `present()` a plain `UINavigationController`, which defaults to
 /// UIKit's `.pageSheet` style — a partial-height "pullup" card with its own pull-down-to-dismiss
@@ -13,7 +13,7 @@ import UIKit
 /// `present()`/`dismiss()` pair instead.
 enum FullScreenReaderPresentation {
     /// Wraps `content` in a `UINavigationController` presented full-screen — dismissed by
-    /// swiping in from the left edge, plus a real native back button as a guaranteed fallback
+    /// swiping in from either edge, plus a real native back button as a guaranteed fallback
     /// (issue #176 follow-up: on a real device the swipe works, but it's unreliable enough in
     /// the Simulator specifically — mouse-driven touches don't reproduce a true off-screen-edge
     /// touch the way a finger does — that a screen with *no* tap-to-exit control is a genuine
@@ -83,6 +83,11 @@ private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransi
     private var interactionInProgress = false
     private let percentDriven = UIPercentDrivenInteractiveTransition()
     private let edgeWidth: CGFloat = 56
+    /// +1 for a swipe that started at the left edge (dismiss slides the screen off to the
+    /// right, dragging the same way the finger moved); -1 for the right edge (slides off to
+    /// the left). Set at `.began`; left alone for a non-interactive dismiss (e.g. the back
+    /// button), which just reuses whichever direction was last recorded.
+    private var dismissDirection: CGFloat = 1
 
     init(presentedViewController: UIViewController) {
         self.presentedViewController = presentedViewController
@@ -94,11 +99,13 @@ private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransi
     }
 
     /// Only let the gesture start tracking at all if the touch itself began within [edgeWidth]
-    /// of the left edge — this is what makes it an "edge" gesture despite using a plain pan
-    /// recognizer, which otherwise has no edge concept.
+    /// of the left *or* right edge — this is what makes it an "edge" gesture despite using a
+    /// plain pan recognizer, which otherwise has no edge concept. Both edges dismiss (issue
+    /// #176 follow-up: users expect either side to work, not just one).
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
         guard let view = presentedViewController?.view else { return false }
-        return touch.location(in: view).x <= edgeWidth
+        let x = touch.location(in: view).x
+        return x <= edgeWidth || x >= view.bounds.width - edgeWidth
     }
 
     func gestureRecognizer(
@@ -111,8 +118,18 @@ private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransi
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         guard let view = presentedViewController?.view else { return }
         let translation = gesture.translation(in: view)
-        let progress = min(max(translation.x / view.bounds.width, 0), 1)
-        NSLog("[EdgeSwipe] state=\(gesture.state.rawValue) translationX=\(translation.x) progress=\(progress)")
+
+        if gesture.state == .began {
+            // Where this touch started (translation is 0 at .began, but reading it here keeps
+            // this self-contained rather than needing a separate touch-down callback): a
+            // left-edge swipe drags rightward (positive x), a right-edge swipe drags leftward
+            // (negative x) — dismissDirection normalizes either into a positive "progress".
+            let startX = gesture.location(in: view).x - translation.x
+            dismissDirection = startX <= edgeWidth ? 1 : -1
+        }
+
+        let signedTranslation = translation.x * dismissDirection
+        let progress = min(max(signedTranslation / view.bounds.width, 0), 1)
 
         switch gesture.state {
         case .began:
@@ -122,7 +139,7 @@ private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransi
             percentDriven.update(progress)
         case .ended, .cancelled, .failed:
             interactionInProgress = false
-            let isQuickFlick = gesture.velocity(in: view).x > 500
+            let isQuickFlick = gesture.velocity(in: view).x * dismissDirection > 500
             if progress > 0.35 || isQuickFlick {
                 percentDriven.finish()
             } else {
@@ -134,7 +151,7 @@ private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransi
     }
 
     func animationController(forDismissed dismissed: UIViewController) -> UIViewControllerAnimatedTransitioning? {
-        EdgeSwipeDismissAnimator()
+        EdgeSwipeDismissAnimator(direction: dismissDirection)
     }
 
     func interactionControllerForDismissal(using animator: UIViewControllerAnimatedTransitioning) -> UIViewControllerInteractiveTransitioning? {
@@ -142,9 +159,16 @@ private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransi
     }
 }
 
-/// Slides the presented reader off to the right — the direction a left-edge swipe implies —
-/// instead of UIKit's default `.fullScreen` dismiss (an instant cut with no animation).
+/// Slides the presented reader off in [direction] (+1 right, -1 left) — the way the swipe that
+/// triggered it was dragging — instead of UIKit's default `.fullScreen` dismiss (an instant cut
+/// with no animation).
 private final class EdgeSwipeDismissAnimator: NSObject, UIViewControllerAnimatedTransitioning {
+    private let direction: CGFloat
+
+    init(direction: CGFloat) {
+        self.direction = direction
+    }
+
     func transitionDuration(using transitionContext: UIViewControllerContextTransitioning?) -> TimeInterval {
         0.3
     }
@@ -162,7 +186,7 @@ private final class EdgeSwipeDismissAnimator: NSObject, UIViewControllerAnimated
             delay: 0,
             options: .curveEaseOut,
             animations: {
-                fromView.frame = fromView.frame.offsetBy(dx: container.bounds.width, dy: 0)
+                fromView.frame = fromView.frame.offsetBy(dx: container.bounds.width * self.direction, dy: 0)
             },
             completion: { finished in
                 transitionContext.completeTransition(finished && !transitionContext.transitionWasCancelled)
