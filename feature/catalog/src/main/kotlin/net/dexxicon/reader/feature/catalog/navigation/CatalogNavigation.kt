@@ -11,7 +11,7 @@ import net.dexxicon.reader.feature.catalog.BookDetailScreen
 import net.dexxicon.reader.feature.catalog.CatalogScreen
 
 @Serializable
-data class CatalogRoute(val serverId: String, val serverName: String)
+data class CatalogRoute(val serverId: String)
 
 /**
  * @param serverId / bookId the copy whose metadata to load.
@@ -25,8 +25,8 @@ data class BookDetailRoute(
     val copies: String = "",
 )
 
-fun NavController.navigateToCatalog(serverId: String, serverName: String) =
-    navigate(CatalogRoute(serverId, serverName))
+fun NavController.navigateToCatalog(serverId: String) =
+    navigate(CatalogRoute(serverId))
 
 fun NavController.navigateToBookDetail(serverId: String, bookId: String) =
     navigate(BookDetailRoute(serverId, bookId))
@@ -44,8 +44,10 @@ fun NavGraphBuilder.catalogSection(
     navController: NavController,
     onOpenReader: (serverId: String, bookId: String, format: ContentFormat) -> Unit = { _, _, _ -> },
 ) {
-    composable<CatalogRoute> {
+    composable<CatalogRoute> { entry ->
+        val route = entry.toRoute<CatalogRoute>()
         CatalogScreen(
+            serverId = route.serverId,
             onBack = { navController.popBackStack() },
             onOpenBook = { serverId, bookId ->
                 navController.navigate(BookDetailRoute(serverId, bookId))

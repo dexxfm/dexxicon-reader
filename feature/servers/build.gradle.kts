@@ -19,6 +19,10 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:data"))
     implementation(project(":core:serverapi"))
+    // Phase 4 Stage G (issue #144): ServersScreen/AddEditServerScreen are thin wrappers over
+    // :shared's ServersScreen/AddServerScreen now, same pattern as :feature:library/:feature:catalog.
+    implementation(project(":shared"))
+    implementation(project(":feature:catalog"))
 
     implementation(libs.appauth)
     implementation(libs.androidx.browser)
