@@ -6,9 +6,9 @@ import Unrar
 /// iOS sibling of `core/reader/ComicArchiveNormalizer.kt` (issue #107, following #106/#108's
 /// CBZ + manga RTL + edge-tap work). Readium Swift's format sniffing is ZIP-only, same as the
 /// Kotlin toolkit — it can open CBZ but not CBR (RAR) — so a CBR comic needs unpacking and
-/// repacking as a real ZIP/CBZ before `EpubReaderViewController` ever sees it. Same shape as
-/// the Kotlin version, same two real dependencies it needed too, just named differently per
-/// platform:
+/// repacking as a real ZIP/CBZ before `ComicPagerViewController` (issue #179) ever reads its
+/// pages. Same shape as the Kotlin version, same two real dependencies it needed too, just
+/// named differently per platform:
 ///
 /// - **Reading the RAR**: [Unrar](https://github.com/mtgto/Unrar.swift) — wraps the same
 ///   official RARLAB unrar source UnrarKit does (real RAR5 support), the SPM-compatible
@@ -30,14 +30,14 @@ import Unrar
 ///   because unpacking itself needs to be.
 ///
 /// Every comic — CBZ and CBR alike — goes through `normalize(url:authHeader:)`, called from
-/// `EpubReaderViewController`. The extension/media-type the server advertises turned out not to
+/// `ComicPagerViewController`. The extension/media-type the server advertises turned out not to
 /// be trustworthy (issue #170/#171: a book requested as a comic downloaded to real "Rar!" magic
 /// bytes despite a .cbz-shaped request), so this always downloads first and checks the real
 /// bytes via `isRar(_:)` below rather than deciding from the URL alone. RAR can't be
 /// range-streamed anyway, so — same as Android's `fromUrl` — fetching in full up front was
-/// already required for CBR; a genuine CBZ pays the same download cost since #170/#171 needed
-/// it too (see `RemoteFileCache`'s doc comment), so there's no streaming path left to preserve
-/// by special-casing the extension.
+/// already required for CBR; a genuine CBZ pays the same download cost regardless (comics are
+/// never streamed on iOS — see `ComicPagerViewController`'s doc comment), so there's no
+/// streaming path left to preserve by special-casing the extension.
 enum ComicArchiveNormalizer {
     enum NormalizeError: Error {
         case download(status: Int)

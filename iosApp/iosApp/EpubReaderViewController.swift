@@ -5,12 +5,16 @@ import ReadiumNavigator
 
 /// Real Readium Swift Toolkit EPUB reader (issue #101, following #99's plumbing) — also the
 /// reader for MOBI/AZW3/FB2 (server-converted to EPUB before either client requests bytes,
-/// see `ReaderLaunch.kt`) and for CBZ/CBR comics (issue #106: Readium's own changelog, 3.8.0,
-/// deprecated a separate `CBZNavigatorViewController` in favor of this exact reuse — kept
-/// this class's name regardless, matching Readium's own precedent of keeping
-/// `EPUBNavigatorViewController`'s name even once it also opens comics). CBR specifically
-/// (issue #107) is normalized to a real ZIP/CBZ by `ComicArchiveNormalizer` before it ever
-/// reaches Readium — see `openPublication()`.
+/// see `ReaderLaunch.kt`).
+///
+/// Comics (CBZ/CBR) do **not** go through this class (issue #179): Readium's own changelog
+/// (3.8.0) documents reusing `EPUBNavigatorViewController` for CBZ via its fixed-layout/Divina
+/// support, but that path never actually painted anything on a real device here — the page
+/// image decoded successfully (confirmed via WebKit's own JPEG-decode logging) and the
+/// navigator's view had a correct, non-zero frame, yet the screen stayed blank/white with no
+/// further signal. Rather than keep chasing that third-party rendering pipeline, comics get
+/// their own dedicated `ComicPagerViewController` — mirroring Android's own architecture, which
+/// never reused its EPUB reader for comics either (a from-scratch Compose pager).
 ///
 /// Opens `url` — already an absolute, resolved acquisition URL — with `authHeader` — already
 /// resolved by `:shared`'s `AppContainer.authHeaderProvider` — attached to every request.
@@ -19,34 +23,24 @@ import ReadiumNavigator
 ///
 /// `isManga` (issue #108) drives two things, both real Readium Swift extension points, not
 /// custom rendering: the `ReadingProgression` preference (right-to-left page order) and
-/// which edge of [EdgeTapNavigator]'s tap zones means "next page". Deliberately **not**
-/// included this pass — see the "iOS Reading Support" proposal's Comics feature-parity
-/// section: Android's `ComicPanelDetector`/`PanelSteppingNavigator` "smart zoom" (a from-
-/// scratch pixel-analysis algorithm with zero Readium involvement even on Android — real new
-/// work, deferred until there's a real device to judge its output on) and its custom
-/// drag-page-turn-with-live-peel-preview gesture (Readium's own built-in paginated-mode swipe
-/// already turns pages for free, same as it already does for EPUB — the custom peel visual on
-/// top of that is a cosmetic addition, not a functional gap, and wasn't sized accurately in
-/// the original feasibility report).
+/// which edge of [EdgeTapNavigator]'s tap zones means "next page".
 ///
 /// Verified live on a real Mac/simulator against a real BookOrbit server (issues #169-#171):
-/// EPUB, CBZ, and CBR all open successfully. EPUB/CBZ/MOBI/AZW3/FB2 are downloaded in full
-/// before opening — see `RemoteFileCache`'s doc comment for why streaming them doesn't work
-/// with this Readium Swift Toolkit version.
+/// EPUB opens and displays correctly. EPUB/MOBI/AZW3/FB2 are downloaded in full before opening
+/// — see `RemoteFileCache`'s doc comment for why streaming them doesn't work with this Readium
+/// Swift Toolkit version.
 final class EpubReaderViewController: UIViewController {
     private let url: URL
     private let authHeader: String?
     private let isManga: Bool
-    private let isComic: Bool
 
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
     private var navigatorViewController: EPUBNavigatorViewController?
 
-    init(url: URL, authHeader: String?, isManga: Bool, isComic: Bool) {
+    init(url: URL, authHeader: String?, isManga: Bool) {
         self.url = url
         self.authHeader = authHeader
         self.isManga = isManga
-        self.isComic = isComic
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -72,44 +66,21 @@ final class EpubReaderViewController: UIViewController {
 
     @MainActor
     private func openPublication() async {
-        let resolvedURL: any AbsoluteURL
-        if isComic {
-            // issue #106/#107: a comic might be CBZ (real ZIP) or CBR (RAR) — the URL/media-type
-            // extension the server advertises is only ever a heuristic, confirmed wrong live: a
-            // book routed here as a comic downloaded to real "Rar!" magic bytes despite a
-            // .cbz-shaped request, and got fed to Readium's ZIP reader as-is, which failed with
-            // missingEndOfCentralDirectoryRecord (a RAR file has no ZIP central directory at
-            // all). ComicArchiveNormalizer.normalize always downloads first and checks the real
-            // magic bytes rather than trusting the extension — unpacking+repacking as CBZ only
-            // when the bytes actually are RAR, and copying straight through otherwise — so it's
-            // now the single entry point for every comic, not just ones that look like CBR by
-            // extension.
-            guard let cbzURL = try? await ComicArchiveNormalizer.normalize(url: url, authHeader: authHeader),
-                  let fileURL = FileURL(url: cbzURL) else {
-                showError("Couldn't open this comic.")
-                return
-            }
-            resolvedURL = fileURL
-        } else {
-            // issue #170/#171: EPUB (and MOBI/AZW3/FB2, server-converted to EPUB) is a ZIP
-            // container, and Readium Swift Toolkit 3.11.0's ZIP-over-HTTP range streaming
-            // requests a fixed ~6 MiB look-ahead window without ever clamping it to the file's
-            // real length — see RemoteFileCache's doc comment for the confirmed root cause.
-            // Downloading the whole file up front (same workaround comics need above, for a
-            // different reason) sidesteps ranged reads entirely. No RAR ambiguity here — unlike
-            // comics, these formats are never anything but ZIP — so a plain download is enough.
-            guard let localURL = try? await RemoteFileCache.download(url: url, authHeader: authHeader, extension: "epub"),
-                  let fileURL = FileURL(url: localURL) else {
-                showError("Couldn't open this book.")
-                return
-            }
-            resolvedURL = fileURL
+        // issue #170/#171: EPUB (and MOBI/AZW3/FB2, server-converted to EPUB) is a ZIP
+        // container, and Readium Swift Toolkit 3.11.0's ZIP-over-HTTP range streaming requests
+        // a fixed ~6 MiB look-ahead window without ever clamping it to the file's real length —
+        // see RemoteFileCache's doc comment for the confirmed root cause. Downloading the whole
+        // file up front sidesteps ranged reads entirely.
+        guard let localURL = try? await RemoteFileCache.download(url: url, authHeader: authHeader, extension: "epub"),
+              let resolvedURL = FileURL(url: localURL) else {
+            showError("Couldn't open this book.")
+            return
         }
 
-        // `resolvedURL` is always a local file:// URL by this point (every branch above
-        // downloads first) — this client's `additionalHeaders` is defensive plumbing for
-        // whatever Readium might still fetch on its own, not something the normal open path
-        // relies on; the auth header was already spent downloading the file.
+        // `resolvedURL` is always a local file:// URL by this point — this client's
+        // `additionalHeaders` is defensive plumbing for whatever Readium might still fetch on
+        // its own, not something the normal open path relies on; the auth header was already
+        // spent downloading the file.
         let httpClient = DefaultHTTPClient(
             additionalHeaders: authHeader.map { ["Authorization": $0] }
         )
@@ -123,13 +94,11 @@ final class EpubReaderViewController: UIViewController {
         )
 
         // issue #170/#171: sniffing purely from the network stream (no hint at all) was
-        // failing outright with formatNotSupported for both EPUB and CBZ — confirmed live via
-        // NSLog on a real device, not guessed. We already know the format from our own catalog
-        // metadata (that's the whole reason this file exists as a distinct case in
-        // ContentView.swift's switch), so hand it to Readium directly instead of asking it to
-        // guess over HTTP. A normalized CBR is a real CBZ by this point too.
-        let expectedMediaType: MediaType = isComic ? .cbz : .epub
-        let assetResult = await assetRetriever.retrieve(url: resolvedURL, mediaType: expectedMediaType)
+        // failing outright with formatNotSupported — confirmed live via NSLog on a real device,
+        // not guessed. We already know the format from our own catalog metadata (that's the
+        // whole reason this file exists as a distinct case in ContentView.swift's switch), so
+        // hand it to Readium directly instead of asking it to guess over HTTP.
+        let assetResult = await assetRetriever.retrieve(url: resolvedURL, mediaType: .epub)
         guard case let .success(asset) = assetResult else {
             if case let .failure(retrieveError) = assetResult {
                 NSLog("[EpubReader] assetRetriever.retrieve failed: \(retrieveError)")
@@ -145,14 +114,6 @@ final class EpubReaderViewController: UIViewController {
             }
             showError("Couldn't open this book.")
             return
-        }
-        if isComic {
-            // issue #179: diagnosing a blank/white screen for comics that otherwise open with
-            // no error — checking whether the synthesized fixed-layout publication actually
-            // carries a layout + per-page width/height, which Readium's fixed-layout renderer
-            // may need to size each page's viewport.
-            let firstLink = publication.readingOrder.first
-            NSLog("[EpubReader] comic publication: layout=\(String(describing: publication.metadata.layout)) readingOrder.count=\(publication.readingOrder.count) firstLink.width=\(String(describing: firstLink?.width)) firstLink.height=\(String(describing: firstLink?.height)) firstLink.href=\(String(describing: firstLink?.href))")
         }
 
         do {
@@ -185,10 +146,6 @@ final class EpubReaderViewController: UIViewController {
         navigator.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(navigator.view)
         navigator.didMove(toParent: self)
-        // issue #179: checking whether the container ever has a real, non-zero frame to embed
-        // the navigator into — a blank/white fixed-layout page can happen if the navigator's
-        // view is laid out with zero size at embed time.
-        NSLog("[EpubReader] embedded navigator: view.bounds=\(self.view.bounds) navigator.view.frame=\(navigator.view.frame)")
     }
 
     private func showError(_ message: String) {
@@ -214,8 +171,8 @@ extension EpubReaderViewController {
     /// Wraps the reader in its own `UINavigationController` with a "Done" button, ready to
     /// present modally from any view controller — no dependency on the app having its own
     /// root navigation controller (it doesn't, today).
-    static func presentable(url: URL, authHeader: String?, isManga: Bool, isComic: Bool = false) -> UIViewController {
-        let reader = EpubReaderViewController(url: url, authHeader: authHeader, isManga: isManga, isComic: isComic)
+    static func presentable(url: URL, authHeader: String?, isManga: Bool) -> UIViewController {
+        let reader = EpubReaderViewController(url: url, authHeader: authHeader, isManga: isManga)
         reader.title = "Reading"
         reader.navigationItem.rightBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .done,

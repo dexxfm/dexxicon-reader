@@ -5,9 +5,9 @@ import Foundation
 /// string.
 ///
 /// Issue #170/#171: Readium Swift Toolkit 3.11.0's HTTP range-streaming for ZIP-based formats
-/// (EPUB and CBZ are both ZIP containers) goes through `ZIPFoundationArchiveFactory`, which
-/// wraps the remote resource in a `BufferingResource` with a fixed 6 MiB look-ahead window —
-/// confirmed against its real source, not guessed. `BufferingResource.stream(range:)` computes
+/// (EPUB is a ZIP container) goes through `ZIPFoundationArchiveFactory`, which wraps the remote
+/// resource in a `BufferingResource` with a fixed 6 MiB look-ahead window — confirmed against
+/// its real source, not guessed. `BufferingResource.stream(range:)` computes
 /// `readRange = requestedRange.lowerBound ..< (requestedRange.lowerBound + 6 MiB)` and requests
 /// exactly that range over HTTP, **without ever clamping it to the resource's known
 /// `estimatedLength()`**. `ZIPFoundationArchiveFactory` reads the ZIP's end-of-central-directory
@@ -16,8 +16,9 @@ import Foundation
 /// multiple of 6 MiB past that seek point) — confirmed live via NSLog against
 /// books.ballhome.me: two different books both failed with HTTP 416 (Range Not Satisfiable) on
 /// a range whose span was exactly 6 MiB − 1 byte. Downloading the whole file up front sidesteps
-/// ranged reads entirely — the same workaround `ComicArchiveNormalizer` already needed for CBR
-/// (which can't be range-streamed at all), just for a different underlying reason.
+/// ranged reads entirely — the same workaround `ComicArchiveNormalizer` needs for a different
+/// reason (RAR-based comics can't be range-streamed at all; see issue #179 for why comics don't
+/// use this cache directly).
 enum RemoteFileCache {
     enum DownloadError: Error {
         case badStatus(Int)

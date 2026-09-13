@@ -36,15 +36,15 @@ struct ComposeView: UIViewControllerRepresentable {
                 let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue)
                 hostVC.present(reader, animated: true)
             case .comic:
-                // issue #106/#108/#107: CBZ and CBR both open through the same EPUB Navigator
-                // — Readium's own changelog (3.8.0) deprecated CBZNavigatorViewController in
-                // favor of this exact reuse, and it's the same reader that also carries manga
-                // reading direction + edge-tap page turning. CBR needs one extra step first —
-                // ComicArchiveNormalizer unpacks + repacks it as a real ZIP, since Readium's
-                // format sniffing is ZIP-only — but that happens inside
-                // EpubReaderViewController's own async open, transparently to this switch;
-                // there's nothing format-specific left to do here.
-                let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue, isComic: true)
+                // issue #106/#108/#107/#179: CBZ and CBR both open through
+                // ComicPagerViewController, a dedicated native pager — Readium's own
+                // fixed-layout/Divina reuse of EPUBNavigatorViewController (per its 3.8.0
+                // changelog) never actually painted a comic page on a real device, so comics
+                // get their own reader instead, mirroring Android's own from-scratch comic
+                // reader. CBR needs one extra step first — ComicArchiveNormalizer unpacks +
+                // repacks it as a real ZIP, since format sniffing is ZIP-only — but that
+                // happens inside the pager's own async load, transparently to this switch.
+                let reader = ComicPagerViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue)
                 hostVC.present(reader, animated: true)
             case .pdf:
                 // issue #112: backed by Apple's own PDFKit via Readium's
