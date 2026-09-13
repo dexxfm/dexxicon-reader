@@ -92,6 +92,14 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ReaderActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:resizeableActivity="true"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|keyboardHidden"
+            android:theme="@style/Theme.Dexxicon" />
+
     </application>
 
 </manifest>

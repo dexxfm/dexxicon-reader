@@ -42,6 +42,7 @@ import kotlin.math.round
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.designsystem.component.FormatLegend
+import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.relativeTime
@@ -131,7 +132,9 @@ fun SettingsScreen(
             Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                // issue #132 — bottom clears the floating nav, which now overlays content
+                // instead of reserving space for it.
+                .padding(start = 16.dp, end = 16.dp, top = 16.dp, bottom = FloatingNavClearance),
             verticalArrangement = Arrangement.spacedBy(20.dp),
         ) {
             Text("Settings", style = MaterialTheme.typography.headlineSmall)

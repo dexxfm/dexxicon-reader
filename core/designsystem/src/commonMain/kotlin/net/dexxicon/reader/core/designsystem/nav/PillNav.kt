@@ -34,6 +34,15 @@ import androidx.compose.ui.unit.dp
 import net.dexxicon.reader.core.designsystem.theme.Pill
 
 /**
+ * Bottom padding a screen's own scrollable content should reserve when the floating nav
+ * pill (and, on top of it, the mini-player — see `MiniPlayer`'s own doc comment) can appear
+ * over it (issue #132). Sized generously above the pill's own ~68dp visual height (52dp row +
+ * 16dp bottom margin) plus a mini-player allowance, rather than exactly matching it — a little
+ * extra breathing room above the pill reads better than content stopping flush against it.
+ */
+val FloatingNavClearance = 96.dp
+
+/**
  * Phase 4 (issue #115) — the floating pill bottom nav from the Claude Design mockup, replacing
  * [androidx.compose.material3.NavigationBar]. Icon-only (no labels — the mockup's phone frame
  * never shows one), translucent tonal pill, selected/unselected states are a color swap only
@@ -51,12 +60,15 @@ import net.dexxicon.reader.core.designsystem.theme.Pill
  * real string resources (native) can use `stringResource` inline; one that doesn't (`:shared`)
  * just returns a plain string.
  *
- * True floating (overlaying content with a scrim behind it, rather than reserving space below
- * it like [androidx.compose.material3.Scaffold]'s `bottomBar` slot) is deliberately not
- * attempted — this renders inside that slot like the bar it's replacing, just pill-shaped and
- * translucent. Real backdrop blur needs a `RenderEffect` (Android 12+ only, and no direct
- * multiplatform equivalent for the iOS build), so this approximates the mockup's blurred glass
- * look with a semi-transparent tonal surface instead of literally blurring content behind it.
+ * Phase 4 Stage I (issue #132) — both call sites now render this as a `Box` overlay positioned
+ * over live content instead of inside a [androidx.compose.material3.Scaffold] `bottomBar` slot
+ * (which reserved its own layout space below the content) — true floating, per the mockup's
+ * own translucent-pill intent, no longer deferred. [FloatingNavClearance] is the bottom
+ * clearance a screen's own scrollable content should reserve so its last item can still scroll
+ * fully clear of the pill rather than staying permanently hidden behind it. Real backdrop blur
+ * still needs a `RenderEffect` (Android 12+ only, and no direct multiplatform equivalent for the
+ * iOS build), so this still approximates the mockup's blurred glass look with a semi-transparent
+ * tonal surface instead of literally blurring content behind it.
  *
  * Press feedback (both here and in [PillNavigationRail]) is a hand-rolled fade, not
  * `Modifier.indication` + a ripple factory: `androidx.compose.material3.ripple.ripple()`

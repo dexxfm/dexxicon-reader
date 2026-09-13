@@ -1,70 +1,58 @@
 package net.dexxicon.reader.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import net.dexxicon.reader.core.designsystem.nav.FloatingPillNavBar
-import net.dexxicon.reader.core.designsystem.nav.PillNavigationRail
+import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.datastore.AppPreferences
+import net.dexxicon.reader.core.datastore.AppTheme
+import net.dexxicon.reader.core.designsystem.theme.DexxiconTheme
 import net.dexxicon.reader.crash.CrashReportSheet
 import net.dexxicon.reader.crash.shareCrashReport
-import androidx.navigation.NavDestination
-import androidx.navigation.NavDestination.Companion.hasRoute
-import androidx.navigation.NavDestination.Companion.hierarchy
-import androidx.navigation.NavGraph.Companion.findStartDestination
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
-import net.dexxicon.reader.feature.player.navigation.PlayerRoute
-import net.dexxicon.reader.feature.player.navigation.navigateToPlayer
-import net.dexxicon.reader.feature.servers.navigation.navigateToReauthServer
-import net.dexxicon.reader.navigation.DexxiconNavHost
-import net.dexxicon.reader.navigation.TopLevelDestination
+import net.dexxicon.reader.shared.App
+import net.dexxicon.reader.shared.OnOpenReader
+import net.dexxicon.reader.shared.di.AppContainer
 
 /**
- * At or above this width the side navigation rail replaces the bottom bar — Material's
- * "medium" window-width class, which covers most phones in landscape plus tablets and
- * unfolded foldables.
+ * Phase 4 Stage I (issue #146) — trimmed to exactly what [AppShellViewModel]'s own doc comment
+ * describes: a thin native overlay around `:shared`'s [App], not a second Scaffold/NavHost/
+ * bottom-nav/mini-player parallel to it. `:shared`'s `App()` is now the *only* Compose UI tree
+ * `:app` renders — same shape as iOS's `MainViewController`, which has never had a native shell
+ * of its own to begin with (see `ContentView.swift`).
  */
-private val RAIL_BREAKPOINT = 600.dp
-
 @Composable
-fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
-    val navController = rememberNavController()
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val currentDestination: NavDestination? = backStackEntry?.destination
-    val playback by shellViewModel.playback.collectAsStateWithLifecycle()
+fun DexxiconApp(
+    container: AppContainer,
+    onOpenReader: OnOpenReader,
+    shellViewModel: AppShellViewModel = hiltViewModel(),
+) {
     val signInPrompts by shellViewModel.signInPrompts.collectAsStateWithLifecycle()
     val pendingCrash by shellViewModel.pendingCrash.collectAsStateWithLifecycle()
 
@@ -88,95 +76,33 @@ fun DexxiconApp(shellViewModel: AppShellViewModel = hiltViewModel()) {
     }
 
     LaunchedEffect(Unit) {
-        shellViewModel.reauthRequests.collect { serverId ->
-            navController.navigateToReauthServer(serverId)
-        }
-    }
-    LaunchedEffect(Unit) {
         shellViewModel.messages.collect { snackbarHostState.showSnackbar(it) }
     }
 
-    val currentTopLevel = TopLevelDestination.entries.firstOrNull { destination ->
-        currentDestination.isOn(destination)
+    // :shared's own App() wraps its content in DexxiconTheme internally, but the overlay
+    // pieces below (crash sheet, sign-in banner, snackbar) render as its siblings, not inside
+    // it — without applying the same theme out here too, they'd fall back to Compose's
+    // default MaterialTheme instead of matching the app's actual light/dark/system choice.
+    val theme by container.appPreferences.preferences.collectAsState(initial = AppPreferences())
+    val darkTheme = when (theme.theme) {
+        AppTheme.LIGHT -> false
+        AppTheme.DARK -> true
+        AppTheme.SYSTEM -> isSystemInDarkTheme()
     }
-    val onPlayerScreen = currentDestination?.hasRoute(PlayerRoute::class) == true
-    val miniPlayerVisible = playback.audiobook != null && !onPlayerScreen
+    DexxiconTheme(darkTheme = darkTheme) {
+        Box(Modifier.fillMaxSize()) {
+            App(container = container, onOpenReader = onOpenReader, reauthRequests = shellViewModel.reauthRequests)
 
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val wide = maxWidth >= RAIL_BREAKPOINT
-        val showRail = wide && currentTopLevel != null
-        val showBottomBar = !wide && currentTopLevel != null
-
-        Scaffold(
-            // Each destination has its own Scaffold + TopAppBar that consumes the status-bar
-            // inset; without this the shell would add it a second time above every screen.
-            contentWindowInsets = WindowInsets(0, 0, 0, 0),
-            snackbarHost = { SnackbarHost(snackbarHostState) },
-            bottomBar = {
-                // Phase 4 (issue #115): the floating pill nav only shows in the compact
-                // (bottom-bar) layout — at >=600dp the destinations move into
-                // [PillNavigationRail] on the side instead. The mini-player stays the
-                // floating pill at every width (see MiniPlayer's own doc comment for why
-                // that's an override of the mockup's own full-width-at-wide behavior).
-                //
-                // navigationBarsPadding() here is load-bearing, not decorative: this
-                // Scaffold's contentWindowInsets is zeroed (each screen's own TopAppBar/
-                // Scaffold already consumes the status-bar inset itself — see the comment
-                // above), which also zeroes the bottom system-gesture inset the bottomBar
-                // would otherwise get automatically. Without this, the mini-player/nav pill
-                // sits flush against the very bottom edge, with the system's gesture swipe
-                // indicator drawn on top of it instead of below it (PR #120 feedback).
-                Column(Modifier.navigationBarsPadding()) {
-                    if (miniPlayerVisible) {
-                        MiniPlayer(
-                            playback = playback,
-                            onOpen = { serverId, bookId -> navController.navigateToPlayer(serverId, bookId) },
-                            onPlayPause = shellViewModel::playPause,
-                            onDismiss = shellViewModel::dismiss,
-                        )
-                    }
-                    if (showBottomBar) {
-                        FloatingPillNavBar(
-                            destinations = TopLevelDestination.entries,
-                            current = currentTopLevel,
-                            icon = { it.icon },
-                            label = { stringResource(it.labelRes) },
-                            onSelect = { navController.switchTopLevel(it) },
-                        )
-                    }
-                }
-            },
-        ) { innerPadding ->
-            Row(Modifier.fillMaxSize().padding(innerPadding)) {
-                if (showRail) {
-                    PillNavigationRail(
-                        destinations = TopLevelDestination.entries,
-                        current = currentTopLevel,
-                        icon = { it.icon },
-                        label = { stringResource(it.labelRes) },
-                        onSelect = { navController.switchTopLevel(it) },
-                    )
-                }
-                Column(Modifier.weight(1f).fillMaxSize()) {
-                    signInPrompts.forEach { prompt ->
-                        SignInBanner(
-                            displayName = prompt.displayName,
-                            onClick = { navController.navigateToReauthServer(prompt.serverId) },
-                        )
-                    }
-                    // The banner already sits below the status bar; without this the screen
-                    // under it would add the status-bar inset a second time.
-                    val hostModifier = if (signInPrompts.isEmpty()) {
-                        Modifier
-                    } else {
-                        Modifier.consumeWindowInsets(WindowInsets.statusBars)
-                    }
-                    DexxiconNavHost(
-                        navController = navController,
-                        modifier = hostModifier.weight(1f).fillMaxSize(),
+            Column(Modifier.fillMaxWidth()) {
+                signInPrompts.forEach { prompt ->
+                    SignInBanner(
+                        displayName = prompt.displayName,
+                        onClick = { shellViewModel.requestReauth(prompt.serverId) },
                     )
                 }
             }
+
+            SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
         }
     }
 }
@@ -204,14 +130,3 @@ private fun SignInBanner(displayName: String, onClick: () -> Unit) {
         }
     }
 }
-
-private fun NavHostController.switchTopLevel(destination: TopLevelDestination) {
-    navigate(destination.route) {
-        popUpTo(graph.findStartDestination().id) { saveState = true }
-        launchSingleTop = true
-        restoreState = true
-    }
-}
-
-private fun NavDestination?.isOn(destination: TopLevelDestination): Boolean =
-    this?.hierarchy?.any { it.hasRoute(destination.route::class) } == true

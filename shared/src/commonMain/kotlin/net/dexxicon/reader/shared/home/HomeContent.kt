@@ -26,11 +26,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -45,13 +43,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import net.dexxicon.reader.core.data.sync.ServerSyncFailure
 import net.dexxicon.reader.core.data.sync.SyncFailureReason
 import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.CoverImage
+import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
@@ -116,13 +114,50 @@ fun HomeContent(
         )
     }
 
+    val syncVisible = !uiState.loading &&
+        (uiState.refreshing || uiState.lastSyncedAt != null || uiState.syncFailures.isNotEmpty())
+    val syncHasFailure = uiState.syncFailures.isNotEmpty() && !uiState.refreshing
+
     Scaffold(
         modifier = modifier,
         topBar = {
-            TopAppBar(title = { Text("Home") })
+            TopAppBar(
+                title = {
+                    Column {
+                        Text("Home")
+                        // issue #132 — this used to be its own full-width bar docked above the
+                        // bottom nav; moved into the app bar once the nav started floating over
+                        // content instead of reserving space for a strip like this to sit in.
+                        if (syncVisible) {
+                            val color = if (syncHasFailure) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            }
+                            Text(
+                                text = when {
+                                    uiState.refreshing -> "Updating…"
+                                    syncHasFailure -> syncFailureText(uiState.syncFailures) + " · Retry"
+                                    uiState.lastSyncedAt != null -> "Updated ${relativeTime(uiState.lastSyncedAt!!)}"
+                                    else -> "Not synced yet"
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                color = color,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = if (syncHasFailure) {
+                                    Modifier.clickable { state.refresh() }
+                                } else {
+                                    Modifier
+                                },
+                            )
+                        }
+                    }
+                },
+            )
         },
-        // The app shell already accounts for the bottom nav / system inset; without this
-        // the Scaffold reserves it again and leaves a dead strip under the status bar.
+        // The app shell already accounts for the top status-bar inset; without this the
+        // Scaffold reserves it again and leaves a dead strip above the title.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
         val empty = uiState.downloads.isEmpty() &&
@@ -155,7 +190,15 @@ fun HomeContent(
                     else -> LazyVerticalGrid(
                         columns = GridCells.Adaptive(112.dp),
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(12.dp),
+                        // issue #132 — bottom padding clears the floating nav (and mini-player,
+                        // when showing) now that it overlays content instead of reserving its
+                        // own Scaffold space.
+                        contentPadding = PaddingValues(
+                            start = 12.dp,
+                            end = 12.dp,
+                            top = 12.dp,
+                            bottom = FloatingNavClearance,
+                        ),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
@@ -175,72 +218,6 @@ fun HomeContent(
                             }
                         }
                     }
-                }
-            }
-            SyncStatusBar(
-                lastSyncedAt = uiState.lastSyncedAt,
-                failures = uiState.syncFailures,
-                refreshing = uiState.refreshing,
-                visible = !uiState.loading &&
-                    (uiState.refreshing || uiState.lastSyncedAt != null || uiState.syncFailures.isNotEmpty()),
-                onRetry = { state.refresh() },
-            )
-        }
-    }
-}
-
-@Composable
-private fun SyncStatusBar(
-    lastSyncedAt: Long?,
-    failures: List<ServerSyncFailure>,
-    refreshing: Boolean,
-    visible: Boolean,
-    onRetry: () -> Unit,
-) {
-    if (!visible) return
-    val hasFailure = failures.isNotEmpty() && !refreshing
-    val container = if (hasFailure) {
-        MaterialTheme.colorScheme.errorContainer
-    } else {
-        MaterialTheme.colorScheme.surface
-    }
-    val content = if (hasFailure) {
-        MaterialTheme.colorScheme.onErrorContainer
-    } else {
-        MaterialTheme.colorScheme.onSurfaceVariant
-    }
-    Surface(color = container) {
-        Column {
-            HorizontalDivider()
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = when {
-                        refreshing -> "Updating…"
-                        hasFailure -> syncFailureText(failures)
-                        lastSyncedAt != null -> "Updated ${relativeTime(lastSyncedAt)}"
-                        else -> "Not synced yet"
-                    },
-                    style = MaterialTheme.typography.labelMedium,
-                    color = content,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f),
-                )
-                if (hasFailure) {
-                    Text(
-                        "Retry",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = content,
-                        textDecoration = TextDecoration.Underline,
-                        modifier = Modifier
-                            .clickable(onClick = onRetry)
-                            .padding(start = 12.dp, top = 2.dp, bottom = 2.dp),
-                    )
                 }
             }
         }

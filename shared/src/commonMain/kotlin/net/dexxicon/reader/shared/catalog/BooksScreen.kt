@@ -53,6 +53,7 @@ import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.ContentFilterChips
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.component.ViewModeToggle
+import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.BookViewMode
@@ -198,7 +199,9 @@ private fun BooksGrid(
         state.viewMode == BookViewMode.GRID -> LazyVerticalGrid(
             columns = GridCells.Adaptive(112.dp),
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(12.dp),
+            // issue #132 — clears the floating mini-player, which can overlay any screen
+            // (not just the top-level ones with the full nav pill) while a book is playing.
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = FloatingNavClearance),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -215,7 +218,7 @@ private fun BooksGrid(
         }
         else -> LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(vertical = 4.dp),
+            contentPadding = PaddingValues(top = 4.dp, bottom = FloatingNavClearance),
         ) {
             items(state.books, key = { it.id }) { book ->
                 BookRow(

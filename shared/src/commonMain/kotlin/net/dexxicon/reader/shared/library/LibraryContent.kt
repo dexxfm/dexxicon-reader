@@ -56,6 +56,7 @@ import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.ContentFilterChips
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.component.ViewModeToggle
+import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.BookSort
@@ -203,7 +204,14 @@ fun LibraryContent(
                         columns = GridCells.Adaptive(112.dp),
                         state = gridState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(12.dp),
+                        // issue #132 — clears the floating nav (and mini-player, when
+                        // showing), which now overlays content instead of reserving space.
+                        contentPadding = PaddingValues(
+                            start = 12.dp,
+                            end = 12.dp,
+                            top = 12.dp,
+                            bottom = FloatingNavClearance,
+                        ),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
@@ -220,7 +228,7 @@ fun LibraryContent(
                     else -> LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(vertical = 4.dp),
+                        contentPadding = PaddingValues(top = 4.dp, bottom = FloatingNavClearance),
                     ) {
                         items(uiState.books, key = { it.key }) { book ->
                             LibraryRow(

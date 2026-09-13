@@ -10,6 +10,9 @@ import io.ktor.http.Url
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import net.dexxicon.reader.core.data.BookActions
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ProgressSeeder
@@ -43,6 +46,7 @@ import net.dexxicon.reader.core.serverapi.oidc.OidcApi
 import net.dexxicon.reader.core.serverapi.oidc.OidcClient
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import net.dexxicon.reader.core.serverapi.user.NativeUserApi
+import net.dexxicon.reader.shared.player.NowPlaying
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
 
 /**
@@ -241,6 +245,35 @@ class AppContainer(
         progressDao = database.readingProgressDao(),
         scope = scope,
     )
+
+    /** Phase 4 Stage I (issue #146) — see [NowPlaying]'s own doc comment for the full design.
+     * Each platform's native player engine calls [updateNowPlaying] on every state change;
+     * `:shared`'s `MiniPlayer` just collects this. */
+    private val _nowPlaying = MutableStateFlow<NowPlaying?>(null)
+    val nowPlaying: StateFlow<NowPlaying?> = _nowPlaying.asStateFlow()
+
+    fun updateNowPlaying(value: NowPlaying?) {
+        _nowPlaying.value = value
+    }
+
+    /**
+     * Deliberately mutable `var`s, not constructor params: unlike everything else this class
+     * builds itself, the real play/pause/dismiss actions live inside each platform's native
+     * player singleton (Android's Hilt-provided `AudiobookPlayer`, iOS's
+     * `AudiobookPlaybackController.shared`) — a genuine composition-order cycle, the same shape
+     * [realAuthHeaderProvider] already works around above: the platform constructs its player
+     * *after* this container exists (it needs a `Context`/needs nothing extra respectively, but
+     * either way the wiring happens post-construction), then points these at it. Defaulted to
+     * no-ops so `:shared`'s `MiniPlayer` never needs to null-check them.
+     */
+    var onMiniPlayerPlayPause: () -> Unit = {}
+    var onMiniPlayerDismiss: () -> Unit = {}
+
+    /** Tapping the mini-player to reopen the full player screen — the platform re-presents its
+     * native player UI over the already-running engine (both engines already short-circuit a
+     * reload when the requested book is already loaded), rather than this needing a fresh
+     * [net.dexxicon.reader.shared.OnOpenReader] call with a re-resolved stream URL. */
+    var onMiniPlayerReopen: () -> Unit = {}
 
     init {
         realAuthHeaderProvider =

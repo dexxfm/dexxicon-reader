@@ -60,7 +60,10 @@ final class AudiobookPlaybackController: NSObject {
     }
 
     private(set) var state = State() {
-        didSet { onUpdate?(state) }
+        didSet {
+            onUpdate?(state)
+            pushNowPlaying()
+        }
     }
 
     /// Set by whichever `AudiobookPlayerViewController` is currently visible; cleared (not
@@ -206,6 +209,23 @@ final class AudiobookPlaybackController: NSObject {
         let restartCurrent = state.positionMs - book.chapters[idx].startMs > 3_000
         let target = restartCurrent ? idx : max(0, idx - 1)
         seek(toMs: book.chapters[target].startMs)
+    }
+
+    /// Phase 4 Stage I (issue #146) — the mini-player's "X" tap, mirroring Android's
+    /// `AudiobookPlayer.stop()`: unlike every other method here, this is a genuine teardown —
+    /// playback stops, the lock-screen Now Playing card clears, and [state] resets to empty
+    /// (which `pushNowPlaying()`'s `didSet` observer turns into a `nil` push, hiding
+    /// `:shared`'s mini-player). Nothing else in this controller tears playback down by design
+    /// (see its own doc comment) — this is the one deliberate exception.
+    func stop() {
+        if let token = timeObserverToken {
+            player?.removeTimeObserver(token)
+            timeObserverToken = nil
+        }
+        player?.pause()
+        player?.replaceCurrentItem(with: nil)
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        state = State()
     }
 
     func setSpeed(_ speed: Float) {
@@ -371,6 +391,29 @@ final class AudiobookPlaybackController: NSObject {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: coverImage.size) { _ in coverImage }
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+
+    // MARK: :shared mini-player bridge (issue #146)
+
+    /// Pushed on every [state] change (see the `didSet` observer above) — the always-on half
+    /// of the bridge, independent of whether an `AudiobookPlayerViewController` is even
+    /// visible, matching Android's `DexxiconApplication.wireMiniPlayer()` collecting
+    /// `AudiobookPlayer.state` the same way.
+    private func pushNowPlaying() {
+        guard let book = state.book else {
+            MainViewControllerKt.updateNowPlaying(nowPlaying: nil)
+            return
+        }
+        MainViewControllerKt.updateNowPlaying(nowPlaying: NowPlaying(
+            serverId: book.serverId,
+            bookId: book.bookId,
+            title: book.title,
+            coverUrl: book.coverUrl,
+            currentChapterTitle: state.currentChapterTitle,
+            isPlaying: state.isPlaying,
+            positionMs: state.positionMs,
+            durationMs: state.durationMs
+        ))
     }
 
     private func loadCoverIfNeeded(_ coverUrl: String?, authHeader: String?) {
