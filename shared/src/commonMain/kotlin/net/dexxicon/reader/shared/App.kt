@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -57,6 +58,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -696,6 +699,17 @@ fun AddServerScreen(
                     onValueChange = state::onUsernameChange,
                     label = { Text("Username") },
                     singleLine = true,
+                    // issue #177: without this, Compose Multiplatform's iOS text field fell back
+                    // to the platform's default autocorrect/smart-punctuation behavior — a
+                    // straight `'` silently became a curly `'` as you typed, so a username or
+                    // password containing one no longer matched what the server had on file,
+                    // even though the field visually looked identical to what was typed. Never
+                    // an issue on Android, whose default IME doesn't silently substitute
+                    // characters the same way.
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrectEnabled = false,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
@@ -704,6 +718,11 @@ fun AddServerScreen(
                     label = { Text(if (state.isEditing) "Password (leave blank to keep current)" else "Password") },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Password,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -852,6 +871,13 @@ private fun KoReaderSheet(
             onValueChange = onUsernameChange,
             label = { Text("Sync username") },
             singleLine = true,
+            // issue #177: same fix as the main login form's credential fields — without this,
+            // iOS's default autocorrect/smart-punctuation silently mangled characters like `'`
+            // as they were typed.
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+            ),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(12.dp))
@@ -861,6 +887,11 @@ private fun KoReaderSheet(
             label = { Text("Sync password") },
             visualTransformation = PasswordVisualTransformation(),
             singleLine = true,
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Password,
+            ),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(20.dp))

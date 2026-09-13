@@ -6,9 +6,9 @@ import Unrar
 /// iOS sibling of `core/reader/ComicArchiveNormalizer.kt` (issue #107, following #106/#108's
 /// CBZ + manga RTL + edge-tap work). Readium Swift's format sniffing is ZIP-only, same as the
 /// Kotlin toolkit — it can open CBZ but not CBR (RAR) — so a CBR comic needs unpacking and
-/// repacking as a real ZIP/CBZ before `EpubReaderViewController` ever sees it. Same shape as
-/// the Kotlin version, same two real dependencies it needed too, just named differently per
-/// platform:
+/// repacking as a real ZIP/CBZ before `ComicPagerViewController` (issue #179) ever reads its
+/// pages. Same shape as the Kotlin version, same two real dependencies it needed too, just
+/// named differently per platform:
 ///
 /// - **Reading the RAR**: [Unrar](https://github.com/mtgto/Unrar.swift) — wraps the same
 ///   official RARLAB unrar source UnrarKit does (real RAR5 support), the SPM-compatible
@@ -29,11 +29,15 @@ import Unrar
 ///   the upstream project it forked from) — `rarToCbz` below is `async` because of this, not
 ///   because unpacking itself needs to be.
 ///
-/// ZIP inputs (CBZ) never reach this type at all — `ContentView.swift` only calls
-/// `normalize(url:authHeader:)` once it already knows the comic looks like a CBR via
-/// `looksLikeRar`, exactly mirroring how Android's `ComicReaderViewModel` only calls its
-/// normalizer for RAR-shaped sources. RAR can't be range-streamed, so — same as Android's
-/// `fromUrl` — a remote CBR is always fetched in full before extraction can even begin.
+/// Every comic — CBZ and CBR alike — goes through `normalize(url:authHeader:)`, called from
+/// `ComicPagerViewController`. The extension/media-type the server advertises turned out not to
+/// be trustworthy (issue #170/#171: a book requested as a comic downloaded to real "Rar!" magic
+/// bytes despite a .cbz-shaped request), so this always downloads first and checks the real
+/// bytes via `isRar(_:)` below rather than deciding from the URL alone. RAR can't be
+/// range-streamed anyway, so — same as Android's `fromUrl` — fetching in full up front was
+/// already required for CBR; a genuine CBZ pays the same download cost regardless (comics are
+/// never streamed on iOS — see `ComicPagerViewController`'s doc comment), so there's no
+/// streaming path left to preserve by special-casing the extension.
 enum ComicArchiveNormalizer {
     enum NormalizeError: Error {
         case download(status: Int)
@@ -55,15 +59,6 @@ enum ComicArchiveNormalizer {
     fileprivate static let imageExtensions: Set<String> = [
         "jpg", "jpeg", "png", "gif", "webp", "bmp", "avif", "jxl",
     ]
-
-    /// True when `url`/`mediaType` name a RAR-based comic archive — same href/media-type sniff
-    /// Android's `comicSourceLooksLikeRar` uses, since a real magic-byte check needs the whole
-    /// file downloaded first either way, and the caller wants to know before paying for that.
-    static func looksLikeRar(url: URL, mediaType: String?) -> Bool {
-        let ext = url.pathExtension.lowercased()
-        let mt = mediaType?.lowercased() ?? ""
-        return ext == "cbr" || ext == "rar" || mt.contains("rar") || mt.contains("cbr")
-    }
 
     /// Downloads `url` in full (with `authHeader` attached, the same resolved header every
     /// other reader call in this app already carries) and returns a local file URL to a
@@ -87,10 +82,9 @@ enum ComicArchiveNormalizer {
             throw NormalizeError.download(status: status)
         }
 
-        // `looksLikeRar` is only an extension/media-type heuristic used to decide *whether* to
-        // pay for a full download at all — the real, authoritative check is the file's own
-        // magic bytes, same as Android's `isRar`. A mislabeled file that turns out to already
-        // be a ZIP is copied straight through rather than fed to Unrar, which would just throw.
+        // The real, authoritative format check is the file's own magic bytes, same as
+        // Android's `isRar` — a comic that turns out to already be a ZIP is copied straight
+        // through rather than fed to Unrar, which would just throw.
         if try isRar(downloaded) {
             try await rarToCbz(rar: downloaded, out: cached)
         } else {
