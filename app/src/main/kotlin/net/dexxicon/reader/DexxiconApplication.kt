@@ -19,6 +19,7 @@ import net.dexxicon.reader.core.common.di.ApplicationScope
 import net.dexxicon.reader.core.data.auth.SessionRefreshWorker
 import net.dexxicon.reader.core.data.auth.SignInNotifier
 import net.dexxicon.reader.core.data.download.CoreDataWorkerFactory
+import net.dexxicon.reader.core.database.DexxiconDatabase
 import net.dexxicon.reader.core.media.AudiobookPlayer
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.network.DexxiconHttpClient
@@ -58,6 +59,12 @@ class DexxiconApplication :
     @ApplicationScope
     lateinit var applicationScope: CoroutineScope
 
+    /** issue #156 — handed to [AndroidAppContainer.get] so it reuses `:app`'s Hilt-provided
+     * `RoomDatabase` instance instead of opening a second one on the same file; see that
+     * accessor's doc comment for why a second instance broke live download-progress updates. */
+    @Inject
+    lateinit var database: DexxiconDatabase
+
     override fun onCreate() {
         super.onCreate()
         crashReporter.install()
@@ -84,7 +91,7 @@ class DexxiconApplication :
      * it more than once is still safe regardless).
      */
     private fun wireMiniPlayer() {
-        val container = AndroidAppContainer.get(this)
+        val container = AndroidAppContainer.get(this, database)
         container.onMiniPlayerPlayPause = audiobookPlayer::playPause
         container.onMiniPlayerDismiss = audiobookPlayer::stop
         container.onMiniPlayerReopen = {
