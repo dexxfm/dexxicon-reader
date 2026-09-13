@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.13.2 — 2026-09-13
+
+- **Fixed: the download progress indicator got stuck on "Queued"** the whole time a download
+  ran, even though the download itself completed fine — it only showed as downloaded after
+  leaving the page and coming back. It now updates live.
+- **The back arrow inside the audiobook player and the EPUB/PDF/comic readers** now matches
+  the pill-shaped back button used everywhere else in the app.
+- Home now syncs your reading progress across books faster, especially with a large library —
+  it used to check one book at a time.
+
 ## 0.13.1 — 2026-09-13
 
 - **Fixed: the back arrow inside the audiobook player and the EPUB/PDF/comic readers did
