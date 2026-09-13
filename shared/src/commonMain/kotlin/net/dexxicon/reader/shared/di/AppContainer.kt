@@ -47,6 +47,8 @@ import net.dexxicon.reader.core.serverapi.oidc.OidcClient
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import net.dexxicon.reader.core.serverapi.user.NativeUserApi
 import net.dexxicon.reader.shared.player.NowPlaying
+import net.dexxicon.reader.shared.player.PlayerActions
+import net.dexxicon.reader.shared.player.PlayerUiSnapshot
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
 
 /**
@@ -274,6 +276,24 @@ class AppContainer(
      * reload when the requested book is already loaded), rather than this needing a fresh
      * [net.dexxicon.reader.shared.OnOpenReader] call with a re-resolved stream URL. */
     var onMiniPlayerReopen: () -> Unit = {}
+
+    /** Phase 1 of the shared-reader-chrome redesign (issue #183) — the full player screen's own
+     * richer state, alongside (not replacing) [nowPlaying]'s narrower mini-player slice. Same
+     * bridge shape: each platform's native engine pushes a fresh [PlayerUiSnapshot] on every
+     * state change. */
+    private val _playerState = MutableStateFlow<PlayerUiSnapshot?>(null)
+    val playerState: StateFlow<PlayerUiSnapshot?> = _playerState.asStateFlow()
+
+    fun updatePlayerState(value: PlayerUiSnapshot?) {
+        _playerState.value = value
+    }
+
+    /** Same "platform points this at its real native player after construction" shape as
+     * [onMiniPlayerPlayPause] and friends, bundled into one object since the full player screen
+     * needs many more commands than the mini-player ever did. Null until a platform wires it up;
+     * [net.dexxicon.reader.shared.player.PlayerScreen]'s caller is expected to only render once
+     * [playerState] is non-null, by which point this is always set too. */
+    var playerActions: PlayerActions? = null
 
     init {
         realAuthHeaderProvider =

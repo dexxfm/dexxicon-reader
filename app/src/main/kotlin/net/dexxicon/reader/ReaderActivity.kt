@@ -10,14 +10,20 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.fragment.app.FragmentActivity
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dagger.hilt.android.AndroidEntryPoint
+import net.dexxicon.reader.core.database.DexxiconDatabase
 import net.dexxicon.reader.core.datastore.AppPreferences
 import net.dexxicon.reader.core.datastore.AppPreferencesStore
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.theme.DexxiconTheme
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.network.DexxiconHttpClient
+import net.dexxicon.reader.feature.player.PlayerViewModel
 import net.dexxicon.reader.feature.reader.comic.navigation.ComicReaderRoute
 import net.dexxicon.reader.feature.reader.comic.navigation.comicReaderSection
 import net.dexxicon.reader.feature.reader.epub.navigation.EpubReaderRoute
@@ -25,7 +31,9 @@ import net.dexxicon.reader.feature.reader.epub.navigation.epubReaderSection
 import net.dexxicon.reader.feature.reader.pdf.navigation.PdfReaderRoute
 import net.dexxicon.reader.feature.reader.pdf.navigation.pdfReaderSection
 import net.dexxicon.reader.feature.player.navigation.PlayerRoute
-import net.dexxicon.reader.feature.player.navigation.playerSection
+import net.dexxicon.reader.shared.di.AndroidAppContainer
+import net.dexxicon.reader.shared.player.PlayerScreen
+import okhttp3.OkHttpClient
 import javax.inject.Inject
 
 /**
@@ -49,6 +57,18 @@ class ReaderActivity : FragmentActivity() {
 
     @Inject
     lateinit var appPreferences: AppPreferencesStore
+
+    /** Phase 1 of the shared-reader-chrome redesign (issue #183) — same pair [MainActivity]
+     * already injects to resolve the one process-lifetime [AndroidAppContainer], now needed
+     * here too so the player destination can read/command [net.dexxicon.reader.shared.player.PlayerScreen]'s
+     * state from the same container the mini-player uses, instead of `feature/player`'s own
+     * (now superseded) Compose UI. */
+    @Inject
+    lateinit var database: DexxiconDatabase
+
+    @Inject
+    @DexxiconHttpClient
+    lateinit var okHttpClient: OkHttpClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -78,7 +98,28 @@ class ReaderActivity : FragmentActivity() {
                     epubReaderSection(navController, onExit = ::finish)
                     comicReaderSection(navController, onExit = ::finish)
                     pdfReaderSection(navController, onExit = ::finish)
-                    playerSection(navController, onExit = ::finish)
+                    // issue #183: renders the shared PlayerScreen instead of feature/player's
+                    // own (now superseded) Compose UI. PlayerViewModel is still injected purely
+                    // for its side effect — its init{} block resolves the book and starts
+                    // playback on the real AudiobookPlayer, exactly as before — but its own
+                    // screen/playback StateFlows are no longer read for rendering; the shared
+                    // screen reads AndroidAppContainer's playerState/playerActions instead,
+                    // the same bridge DexxiconApplication.wireMiniPlayer() already populates.
+                    composable<PlayerRoute> {
+                        @Suppress("UNUSED_EXPRESSION") hiltViewModel<PlayerViewModel>()
+                        val container = remember {
+                            AndroidAppContainer.get(applicationContext, database, okHttpClient)
+                        }
+                        val state by container.playerState.collectAsStateWithLifecycle()
+                        val actions = container.playerActions
+                        if (actions != null) {
+                            PlayerScreen(
+                                state = state,
+                                actions = actions,
+                                onBack = { if (!navController.popBackStack()) finish() },
+                            )
+                        }
+                    }
                 }
             }
         }
