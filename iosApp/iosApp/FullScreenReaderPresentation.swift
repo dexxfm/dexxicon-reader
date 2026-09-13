@@ -34,7 +34,7 @@ private final class FullScreenReaderNavigationController: UINavigationController
 }
 
 /// Recognizes a left-edge pan and interactively dismisses the presented reader.
-private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransitioningDelegate {
+private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransitioningDelegate, UIGestureRecognizerDelegate {
     private weak var presentedViewController: UIViewController?
     private var interactionInProgress = false
     private let percentDriven = UIPercentDrivenInteractiveTransition()
@@ -45,7 +45,21 @@ private final class EdgeSwipeDismissInteractor: NSObject, UIViewControllerTransi
 
         let edgePan = UIScreenEdgePanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         edgePan.edges = .left
+        // Without this, the presented content's own touch handling — Compose Multiplatform's
+        // root view runs its own low-level pointer-input dispatch for the player screen; the
+        // comic pager's UIPageViewController/zoom UIScrollView do the same via their own pan
+        // recognizers — can claim the touch first and this edge-pan never even reaches
+        // `.began`, since UIKit's default conflict resolution only lets one recognizer win a
+        // touch sequence. Explicitly allowing simultaneous recognition is the standard fix.
+        edgePan.delegate = self
         presentedViewController.view.addGestureRecognizer(edgePan)
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        true
     }
 
     @objc private func handlePan(_ gesture: UIScreenEdgePanGestureRecognizer) {
