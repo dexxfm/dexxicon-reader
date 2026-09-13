@@ -18,8 +18,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items as rowItems
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
@@ -138,18 +136,18 @@ fun CatalogScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             SearchField(state.query, viewModel::onQueryChange)
-            ShelfRow(
-                shelves = state.shelves.map { it.id to it.title },
-                selectedShelfId = state.selectedShelfId,
-                sort = state.sort,
-                onShelf = viewModel::onShelfSelected,
-                onSort = viewModel::onSortSelected,
-            )
+            ContentFilterChips(state.filter, viewModel::onFilterSelected)
             Row(
-                Modifier.fillMaxWidth().padding(end = 4.dp),
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ContentFilterChips(state.filter, viewModel::onFilterSelected, Modifier.weight(1f))
+                val next = BookSort.entries[(state.sort.ordinal + 1) % BookSort.entries.size]
+                FilterChip(
+                    selected = false,
+                    onClick = { viewModel.onSortSelected(next) },
+                    label = { Text("Sort: ${state.sort.name.lowercase()}") },
+                )
                 ViewModeToggle(state.viewMode, viewModel::toggleViewMode)
             }
 
@@ -223,43 +221,6 @@ private fun SearchField(query: String, onChange: (String) -> Unit) {
         ),
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
     )
-}
-
-@Composable
-private fun ShelfRow(
-    shelves: List<Pair<String, String>>,
-    selectedShelfId: String?,
-    sort: BookSort,
-    onShelf: (String?) -> Unit,
-    onSort: (BookSort) -> Unit,
-) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        item {
-            FilterChip(
-                selected = selectedShelfId == null,
-                onClick = { onShelf(null) },
-                label = { Text("All") },
-            )
-        }
-        rowItems(shelves) { (id, title) ->
-            FilterChip(
-                selected = selectedShelfId == id,
-                onClick = { onShelf(id) },
-                label = { Text(title) },
-            )
-        }
-        item {
-            val next = BookSort.entries[(sort.ordinal + 1) % BookSort.entries.size]
-            FilterChip(
-                selected = false,
-                onClick = { onSort(next) },
-                label = { Text("Sort: ${sort.name.lowercase()}") },
-            )
-        }
-    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

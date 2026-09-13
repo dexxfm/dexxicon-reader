@@ -30,7 +30,6 @@ import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.BookViewMode
-import net.dexxicon.reader.core.model.CatalogShelf
 import net.dexxicon.reader.core.model.ContentFilter
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingStatus
@@ -45,8 +44,6 @@ data class BookOverlays(
 
 data class CatalogUiState(
     val serverName: String = "",
-    val shelves: List<CatalogShelf> = emptyList(),
-    val selectedShelfId: String? = null,
     val query: String = "",
     val sort: BookSort = BookSort.RECENT,
     val filter: ContentFilter = ContentFilter.ALL,
@@ -101,7 +98,6 @@ class CatalogViewModel @Inject constructor(
     private var nextPage = 0
 
     init {
-        loadShelves()
         reload()
         viewModelScope.launch {
             appPreferences.preferences.map { it.catalogView }.distinctUntilChanged().collect { mode ->
@@ -122,19 +118,7 @@ class CatalogViewModel @Inject constructor(
         }
     }
 
-    private fun loadShelves() = viewModelScope.launch {
-        (catalogRepository.shelves(serverId) as? Outcome.Success)?.let { result ->
-            _uiState.update { it.copy(shelves = result.value) }
-        }
-    }
-
     fun onQueryChange(value: String) = _uiState.update { it.copy(query = value) }
-
-    fun onShelfSelected(shelfId: String?) {
-        if (shelfId == _uiState.value.selectedShelfId) return
-        _uiState.update { it.copy(selectedShelfId = shelfId) }
-        reload()
-    }
 
     fun onSortSelected(sort: BookSort) {
         if (sort == _uiState.value.sort) return
@@ -168,13 +152,12 @@ class CatalogViewModel @Inject constructor(
         fetchPage(replace = true)
     }
 
-    /** Pull-to-refresh: re-fetch shelves and the first page without blanking the grid. */
+    /** Pull-to-refresh: re-fetch the first page without blanking the grid. */
     fun refresh() {
         if (_uiState.value.refreshing) return
         nextPage = 0
         autoPagesLeft = MAX_AUTO_PAGES
         _uiState.update { it.copy(refreshing = true, error = null, endReached = false) }
-        loadShelves()
         fetchPage(replace = true)
     }
 
@@ -194,7 +177,7 @@ class CatalogViewModel @Inject constructor(
         when (
             val result = catalogRepository.books(
                 serverId = serverId,
-                shelfId = state.selectedShelfId,
+                shelfId = null,
                 query = state.query.takeIf { it.isNotBlank() },
                 sort = state.sort,
                 page = nextPage,

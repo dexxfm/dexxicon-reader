@@ -1,11 +1,12 @@
 # Dexxicon Reader — style guide
 
 Phase 4 (issue [#115](https://github.com/dexxfm/dexxicon-reader/issues/115)) redesign,
-implemented from a Claude Design mockup (`Dexxicon Reader.dc.html`). Applies to both the
-native Android app (`core/designsystem`) and the Compose Multiplatform `:shared` module (its
-own `theme/` package, kept in lockstep — see the doc comments in each file for "ported
-verbatim from" cross-references). This document describes what's actually implemented, not
-the full mockup — see "Known gaps" at the end for what's deliberately deferred.
+implemented from a Claude Design mockup (`Dexxicon Reader.dc.html`). Lives in
+`core/designsystem/theme/`, a single Kotlin Multiplatform module (converted from
+Android-only in the Phase 4 restructure's Stage A, issue #126) used directly by both the
+native Android app and the Compose Multiplatform `:shared` module — one implementation, not
+two copies kept in sync. This document describes what's actually implemented, not the full
+mockup — see "Known gaps" at the end for what's deliberately deferred.
 
 ## Direction
 
@@ -23,7 +24,7 @@ Two roles: a fixed **ground** (navy dark / slate light — the app's own brand p
 unchanged by this redesign) and a swappable **accent**. The mockup ships 4 accent options;
 **Aqua** is the one implemented.
 
-### Ground (native `theme/Color.kt`; ported verbatim in `:shared`)
+### Ground (`theme/Color.kt`)
 
 | Token | Dark | Light |
 |---|---|---|
@@ -47,7 +48,7 @@ the confirmed pick, there's no in-app accent switcher.
 Format badges (EPUB/PDF/COMIC/AUDIO/etc., `core/designsystem/component/FormatBadge.kt`) keep
 their own fixed, theme-independent colors — they're a legend, not part of the accent system.
 
-## Shape (`theme/Shape.kt`, native and `:shared`)
+## Shape (`theme/Shape.kt`)
 
 | Token | Value | Used for |
 |---|---|---|
@@ -62,10 +63,19 @@ true stadium regardless of its own height.
 
 ## Typography
 
-Still the system sans-serif stack (`core/designsystem/theme/Type.kt`) — the mockup's Archivo
-display face was not adopted; see "Known gaps."
+Archivo (`core/designsystem/theme/Type.kt`) — the mockup's own display/body face, bundled as
+static weights (Regular 400, SemiBold 600, ExtraBold 800) rather than Android's Downloadable
+Fonts API (which needs Google Play Services and isn't available to iOS at all); loaded via
+Compose Multiplatform resources so the same font files and loading code serve both platforms.
+License: `docs/licenses/ARCHIVO_OFL.txt`.
 
-## Navigation shell (`app/ui/PillNav.kt` native, `shared/nav/PillNav.kt` KMP)
+Applied to every M3 type-scale slot (one face for both heading and body, matching the
+mockup), keeping each slot's own size/spacing; weights Archivo doesn't declare fall back to
+Compose's normal nearest-match font synthesis. Three slots additionally pick up a heavier
+weight or extra tracking on top of the base swap: `headlineMedium` and `titleLarge` merge in
+SemiBold, and `labelLarge` gets 0.1sp of letter-spacing.
+
+## Navigation shell (`core/designsystem/nav/PillNav.kt`)
 
 Three top-level destinations — Home, Library, Settings — presented one of two ways depending
 on width, at the same 600dp breakpoint the app already used for its Material3 rail before
@@ -115,10 +125,5 @@ document doesn't imply more is done than actually is:
 - EPUB reader display-settings sheet + two-column tablet/fold layout — issue [#117](https://github.com/dexxfm/dexxicon-reader/issues/117).
 - Android Auto screens — issue [#118](https://github.com/dexxfm/dexxicon-reader/issues/118).
 - CarPlay (new scene, doesn't exist today) — issue [#119](https://github.com/dexxfm/dexxicon-reader/issues/119).
-- Archivo display typeface — the mockup's chosen face isn't bundled or wired in; the app
-  still renders its type scale in the system sans-serif.
 - Real backdrop blur on the floating nav/mini-player — approximated with a translucent tonal
   surface instead (see `PillNav.kt`'s doc comment for why).
-- `:shared`'s Home tab is `BrowseScreen` (on-deck shelf + merged cross-server grid), not a
-  true continue-reading/downloaded-shelf screen like native's `LibraryScreen.kt` — no
-  `:shared`-side equivalent of that data layer exists yet.
