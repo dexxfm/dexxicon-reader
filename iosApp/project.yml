@@ -49,6 +49,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: net.dexxicon.reader
         INFOPLIST_FILE: iosApp/Info.plist
         ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        DEVELOPMENT_TEAM: XG622A3783
+        CODE_SIGN_STYLE: Automatic
         FRAMEWORK_SEARCH_PATHS:
           - $(inherited)
           - $(SRCROOT)/../shared/build/xcode-frameworks/$(CONFIGURATION)/$(SDK_NAME)
