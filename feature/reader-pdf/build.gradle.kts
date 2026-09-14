@@ -19,6 +19,8 @@ dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:data"))
     implementation(project(":core:reader"))
+    implementation(project(":core:datastore"))
+    implementation(project(":shared"))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.runtime)
