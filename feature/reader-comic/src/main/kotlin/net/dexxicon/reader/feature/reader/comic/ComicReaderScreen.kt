@@ -6,32 +6,16 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import net.dexxicon.reader.core.designsystem.component.BackPill
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -43,14 +27,9 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -62,13 +41,15 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.viewpager.widget.ViewPager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
 import net.dexxicon.reader.core.designsystem.component.pageSnapshot
 import net.dexxicon.reader.core.designsystem.component.pageTurnGesture
 import net.dexxicon.reader.core.designsystem.component.rememberPageTurnState
 import net.dexxicon.reader.core.reader.ComicPanelDetector
 import net.dexxicon.reader.core.reader.EdgeTapNavigator
 import net.dexxicon.reader.core.reader.PanelSteppingNavigator
-import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
+import net.dexxicon.reader.shared.reader.comic.ComicReaderScreen as SharedComicReaderScreen
+import net.dexxicon.reader.shared.reader.comic.ComicReaderUiState
 import org.readium.r2.navigator.image.ImageNavigatorFragment
 import org.readium.r2.shared.publication.Locator
 
@@ -86,7 +67,14 @@ private const val PANEL_DETECTION_SETTLE_DELAY_MS = 120L
  */
 private const val COMIC_PAGE_PREFETCH_LIMIT = 4
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * The comic reader's native embed point (Phase 4 of #183) — everything genuinely tied to
+ * Readium's `ImageNavigatorFragment` and Android internals (the fragment itself, the page-turn
+ * drag gesture, Smart Zoom's `Bitmap`-based panel detection and its `PhotoView`-reflection
+ * zoom-lock) lives here; the chrome itself (top bar, page slider, settings sheet minus Smart
+ * Zoom) is the shared `ComicReaderScreen` this composable wraps. Smart Zoom stays Android-only
+ * — see that shared screen's own doc comment for why — appended via its `extraSettings` slot.
+ */
 @Composable
 fun ComicReaderScreen(
     onBack: () -> Unit,
@@ -99,15 +87,8 @@ fun ComicReaderScreen(
     val rightToLeft by viewModel.rightToLeft.collectAsStateWithLifecycle()
 
     when (val s = state) {
-        is ComicReaderState.Loading -> Center { CircularProgressIndicator() }
-        is ComicReaderState.Error -> Center {
-            Text(
-                s.message,
-                color = MaterialTheme.colorScheme.error,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(32.dp),
-            )
-        }
+        is ComicReaderState.Loading -> SharedComicReaderScreen(ComicReaderUiState.Loading, onBack)
+        is ComicReaderState.Error -> SharedComicReaderScreen(ComicReaderUiState.Error(s.message), onBack)
         is ComicReaderState.Ready -> ReaderContent(
             state = s,
             onBack = onBack,
@@ -124,7 +105,6 @@ fun ComicReaderScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReaderContent(
     state: ComicReaderState.Ready,
@@ -141,14 +121,17 @@ private fun ReaderContent(
 ) {
     val activity = LocalActivity.current as? FragmentActivity
     if (activity == null) {
-        Center { Text("The reader needs a FragmentActivity host") }
+        Surface(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize(), Alignment.Center) {
+                Text("The reader needs a FragmentActivity host")
+            }
+        }
         return
     }
     val fragmentManager = activity.supportFragmentManager
     var navigator by remember { mutableStateOf<ImageNavigatorFragment?>(null) }
     var pageView by remember { mutableStateOf<View?>(null) }
     var chromeVisible by remember { mutableStateOf(true) }
-    var showSettings by remember { mutableStateOf(false) }
     var page by remember { mutableIntStateOf(1) }
     val tapNavEnabled by rememberUpdatedState(tapNavigation)
     val smartZoomEnabled by rememberUpdatedState(smartZoom)
@@ -264,142 +247,109 @@ private fun ReaderContent(
         onDispose { }
     }
 
-    Scaffold(
-        containerColor = Color.Black,
-        topBar = {
-            if (chromeVisible) {
-                TopAppBar(
-                    title = { Text(state.title, maxLines = 1) },
-                    navigationIcon = { BackPill(onBack) },
-                    actions = {
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(Icons.Filled.Tune, contentDescription = "Reading settings")
+    fun goToPage(target: Int) {
+        // Optimistic local update — same reason PDF's own goToPage does this: the slider
+        // should track the drag instantly, not wait on the navigator's currentLocator flow.
+        page = target
+        navigator?.let { nav ->
+            state.publication.readingOrder.getOrNull(target - 1)?.let { link -> nav.go(link, false) }
+        }
+    }
+
+    val targetPanel = panels.getOrNull(panelIndex)
+    val (targetScale, targetTx, targetTy) = remember(targetPanel, boxSize) {
+        panelZoomTransform(targetPanel, boxSize)
+    }
+    val zoomScale by animateFloatAsState(targetScale, label = "comicPanelZoomScale")
+    val zoomTx by animateFloatAsState(targetTx, label = "comicPanelZoomTranslationX")
+    val zoomTy by animateFloatAsState(targetTy, label = "comicPanelZoomTranslationY")
+
+    SharedComicReaderScreen(
+        state = ComicReaderUiState.Ready(title = state.title, pageCount = state.pageCount),
+        onBack = onBack,
+        chromeVisible = chromeVisible,
+        swipeSensitivity = swipeSensitivity,
+        onSwipeSensitivity = onSwipeSensitivity,
+        tapNavigation = tapNavigation,
+        onToggleTapNavigation = onToggleTapNavigation,
+        tapNavigationEnabled = !smartZoom,
+        tapNavigationDisabledReason = if (smartZoom) {
+            "Off while Smart zoom is on — swipe to step through panels instead."
+        } else {
+            null
+        },
+        rightToLeft = rightToLeft,
+        onToggleRightToLeft = onToggleRightToLeft,
+        currentPage = page,
+        onGoToPage = ::goToPage,
+        extraSettings = { SmartZoomSetting(smartZoom, onToggleSmartZoom) },
+        readerContent = {
+            val pageTurn = rememberPageTurnState()
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .onSizeChanged { boxSize = it }
+                    // Drag the page with your finger; release past the sensitivity threshold to
+                    // turn it, a shorter drag slides back. Readium's image pager can't paginate
+                    // itself embedded in Compose, so the gesture drives the navigator directly.
+                    .pageTurnGesture(
+                        state = pageTurn,
+                        enabled = true,
+                        commitFraction = swipeSensitivity.commitFraction,
+                        snapshot = { pageView?.pageSnapshot() },
+                        onTurn = { forward ->
+                            // goForward()/goBackward() pick +1 vs -1 from the system locale, not
+                            // this book's own reading direction — flip which one a physically
+                            // "forward" gesture calls so manga (right-to-left) actually turns the
+                            // right way instead of just running Readium's (always-LTR-here) default.
+                            val actuallyForward = forward != rtlEnabled
+                            (
+                                if (actuallyForward) panelNavigator?.goForward(false)
+                                else panelNavigator?.goBackward(false)
+                                ) == true
+                        },
+                        canTurn = { forward, touchX, touchY ->
+                            pageView?.let { canTurnPastZoom(it, forward, touchX, touchY) } ?: true
+                        },
+                        atBoundary = { forward ->
+                            // Same RTL inversion as onTurn — "forward" here is the raw physical
+                            // gesture, not yet translated to reading-order direction.
+                            val actuallyForward = forward != rtlEnabled
+                            if (actuallyForward) page >= state.pageCount else page <= 1
+                        },
+                    ),
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        val container = FragmentContainerView(ctx).apply {
+                            id = View.generateViewId()
+                            layoutParams = FrameLayout.LayoutParams(
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                                FrameLayout.LayoutParams.MATCH_PARENT,
+                            )
                         }
+                        if (fragmentManager.findFragmentByTag(NAV_FRAGMENT_TAG) == null &&
+                            !fragmentManager.isStateSaved
+                        ) {
+                            fragmentManager.commit {
+                                setReorderingAllowed(true)
+                                add(container.id, ImageNavigatorFragment::class.java, null, NAV_FRAGMENT_TAG)
+                            }
+                        }
+                        container.also { pageView = it }
                     },
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = zoomScale
+                            scaleY = zoomScale
+                            translationX = zoomTx
+                            translationY = zoomTy
+                        },
                 )
             }
         },
-        bottomBar = {
-            if (chromeVisible && state.pageCount > 1) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text(
-                        "Page $page of ${state.pageCount}",
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                    Slider(
-                        value = page.coerceIn(1, state.pageCount).toFloat(),
-                        onValueChange = { v ->
-                            val target = v.toInt().coerceIn(1, state.pageCount)
-                            page = target
-                            navigator?.let { nav ->
-                                state.publication.readingOrder.getOrNull(target - 1)?.let { link ->
-                                    nav.go(link, false)
-                                }
-                            }
-                        },
-                        valueRange = 1f..state.pageCount.toFloat(),
-                        modifier = Modifier.semantics {
-                            contentDescription = "Page slider"
-                            stateDescription = "Page $page of ${state.pageCount}"
-                        },
-                    )
-                }
-            }
-        },
-    ) { padding ->
-        val pageTurn = rememberPageTurnState()
-
-        // Smart-zoom transform: scale + centre on the framed panel, or identity for the
-        // whole page. Computed from the *previous* frame's box size, which is fine — it
-        // only changes on rotation/fold, and the transform re-settles the next frame.
-        val targetPanel = panels.getOrNull(panelIndex)
-        val (targetScale, targetTx, targetTy) = remember(targetPanel, boxSize) {
-            panelZoomTransform(targetPanel, boxSize)
-        }
-        val zoomScale by animateFloatAsState(targetScale, label = "comicPanelZoomScale")
-        val zoomTx by animateFloatAsState(targetTx, label = "comicPanelZoomTranslationX")
-        val zoomTy by animateFloatAsState(targetTy, label = "comicPanelZoomTranslationY")
-
-        Box(
-            Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .onSizeChanged { boxSize = it }
-                // Drag the page with your finger; release past the sensitivity threshold to
-                // turn it, a shorter drag slides back. Readium's image pager can't paginate
-                // itself embedded in Compose, so the gesture drives the navigator directly.
-                .pageTurnGesture(
-                    state = pageTurn,
-                    enabled = true,
-                    commitFraction = swipeSensitivity.commitFraction,
-                    snapshot = { pageView?.pageSnapshot() },
-                    onTurn = { forward ->
-                        // goForward()/goBackward() pick +1 vs -1 from the system locale, not
-                        // this book's own reading direction — flip which one a physically
-                        // "forward" gesture calls so manga (right-to-left) actually turns the
-                        // right way instead of just running Readium's (always-LTR-here) default.
-                        val actuallyForward = forward != rtlEnabled
-                        (
-                            if (actuallyForward) panelNavigator?.goForward(false)
-                            else panelNavigator?.goBackward(false)
-                            ) == true
-                    },
-                    canTurn = { forward, touchX, touchY ->
-                        pageView?.let { canTurnPastZoom(it, forward, touchX, touchY) } ?: true
-                    },
-                    atBoundary = { forward ->
-                        // Same RTL inversion as onTurn — "forward" here is the raw physical
-                        // gesture, not yet translated to reading-order direction.
-                        val actuallyForward = forward != rtlEnabled
-                        if (actuallyForward) page >= state.pageCount else page <= 1
-                    },
-                ),
-        ) {
-            AndroidView(
-                factory = { ctx ->
-                    val container = FragmentContainerView(ctx).apply {
-                        id = View.generateViewId()
-                        layoutParams = FrameLayout.LayoutParams(
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                            FrameLayout.LayoutParams.MATCH_PARENT,
-                        )
-                    }
-                    if (fragmentManager.findFragmentByTag(NAV_FRAGMENT_TAG) == null &&
-                        !fragmentManager.isStateSaved
-                    ) {
-                        fragmentManager.commit {
-                            setReorderingAllowed(true)
-                            add(container.id, ImageNavigatorFragment::class.java, null, NAV_FRAGMENT_TAG)
-                        }
-                    }
-                    container.also { pageView = it }
-                },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        scaleX = zoomScale
-                        scaleY = zoomScale
-                        translationX = zoomTx
-                        translationY = zoomTy
-                    },
-            )
-        }
-    }
-
-    if (showSettings) {
-        ModalBottomSheet(onDismissRequest = { showSettings = false }) {
-            ComicSettings(
-                tapNavigation = tapNavigation,
-                onToggleTapNavigation = onToggleTapNavigation,
-                swipeSensitivity = swipeSensitivity,
-                onSwipeSensitivity = onSwipeSensitivity,
-                smartZoom = smartZoom,
-                onToggleSmartZoom = onToggleSmartZoom,
-                rightToLeft = rightToLeft,
-                onToggleRightToLeft = onToggleRightToLeft,
-            )
-        }
-    }
+    )
 }
 
 /** Scale + translation (in px, about the view's own centre) that frames [panel] — a
@@ -420,84 +370,24 @@ private fun panelZoomTransform(panel: RectF?, boxSize: IntSize): Triple<Float, F
     return Triple(scale, translationX, translationY)
 }
 
-@OptIn(ExperimentalLayoutApi::class)
+/** Android's one settings row the shared chrome doesn't know about — see
+ * [SharedComicReaderScreen]'s doc comment for why Smart Zoom stays out of `:shared`. */
 @Composable
-private fun ComicSettings(
-    tapNavigation: Boolean,
-    onToggleTapNavigation: (Boolean) -> Unit,
-    swipeSensitivity: ReaderSwipeSensitivity,
-    onSwipeSensitivity: (ReaderSwipeSensitivity) -> Unit,
-    smartZoom: Boolean,
-    onToggleSmartZoom: (Boolean) -> Unit,
-    rightToLeft: Boolean,
-    onToggleRightToLeft: (Boolean) -> Unit,
-) {
-    Column(Modifier.fillMaxWidth().padding(24.dp).navigationBarsPadding()) {
-        Text("Page-turn swipe", style = MaterialTheme.typography.titleSmall)
-        FlowRow(
-            Modifier.fillMaxWidth().padding(top = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ReaderSwipeSensitivity.entries.forEach { s ->
-                FilterChip(
-                    selected = swipeSensitivity == s,
-                    onClick = { onSwipeSensitivity(s) },
-                    label = { Text(s.label) },
-                )
-            }
+private fun SmartZoomSetting(smartZoom: Boolean, onToggleSmartZoom: (Boolean) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 20.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text("Smart zoom")
+            Text(
+                "Step through each panel in order. Falls back to the full page when " +
+                    "panels can't be detected.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-        Row(
-            Modifier.fillMaxWidth().padding(top = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "Tap edges to turn pages",
-                    color = if (smartZoom) {
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                    } else {
-                        MaterialTheme.colorScheme.onSurface
-                    },
-                )
-                if (smartZoom) {
-                    Text(
-                        "Off while Smart zoom is on — swipe to step through panels instead.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Switch(checked = tapNavigation && !smartZoom, onCheckedChange = onToggleTapNavigation, enabled = !smartZoom)
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(top = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("Smart zoom")
-                Text(
-                    "Step through each panel in order. Falls back to the full page when " +
-                        "panels can't be detected.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(checked = smartZoom, onCheckedChange = onToggleSmartZoom)
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(top = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text("Right-to-left (manga)")
-                Text(
-                    "On automatically for this book's genre — override just for now",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Switch(checked = rightToLeft, onCheckedChange = onToggleRightToLeft)
-        }
+        Switch(checked = smartZoom, onCheckedChange = onToggleSmartZoom)
     }
 }
 
@@ -578,11 +468,4 @@ private fun View.localBoundsIn(ancestor: View): RectF {
     val left = (loc[0] - ancestorLoc[0]).toFloat()
     val top = (loc[1] - ancestorLoc[1]).toFloat()
     return RectF(left, top, left + width, top + height)
-}
-
-@Composable
-private fun Center(content: @Composable () -> Unit) {
-    Surface(Modifier.fillMaxSize()) {
-        Box(Modifier.fillMaxSize(), Alignment.Center) { content() }
-    }
 }
