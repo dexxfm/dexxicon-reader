@@ -247,6 +247,20 @@ private fun NowPlayingContent(
 
         val controls: @Composable ColumnScope.(centered: Boolean) -> Unit = { centered ->
             TrackInfo(state, centered = centered)
+            // issue #190 — a playback-time failure (bad stream, network, unsupported format)
+            // used to be entirely silent: this book's own cover/title/transport controls all
+            // render regardless (see PlayerUiSnapshot.playbackError's own doc comment for why),
+            // so the error shows alongside them rather than replacing the whole screen the way
+            // PlayerScreen's own top-level `error` param does for a load failure.
+            state.playbackError?.let { message ->
+                Text(
+                    message,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
             Scrubber(state, onSeek)
             TransportControls(state, onPlayPause, onSkipForward, onSkipBack, onNextChapter, onPrevChapter)
             SecondaryControls(state, onSpeed, onSleep)
