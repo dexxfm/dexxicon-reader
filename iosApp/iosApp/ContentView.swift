@@ -20,7 +20,7 @@ struct ComposeView: UIViewControllerRepresentable {
         // `isManga` (a primitive Kotlin Boolean) now arrives boxed as `KotlinBoolean` instead
         // of a native `Bool`, confirmed via a real ios-ci compile error, not guessed. `.boolValue`
         // unwraps it at each use below.
-        hostVC = MainViewControllerKt.MainViewController(onOpenReader: { serverId, bookId, format, url, authHeader, isManga, audiobook in
+        hostVC = MainViewControllerKt.MainViewController(onOpenReader: { serverId, bookId, format, url, authHeader, isManga, title, audiobook in
             guard let bookUrl = URL(string: url) else { return }
             let notYetSupported = { (message: String) in
                 let alert = UIAlertController(title: "Not yet supported", message: message, preferredStyle: .alert)
@@ -50,7 +50,14 @@ struct ComposeView: UIViewControllerRepresentable {
                 // reader. CBR needs one extra step first — ComicArchiveNormalizer unpacks +
                 // repacks it as a real ZIP, since format sniffing is ZIP-only — but that
                 // happens inside the pager's own async load, transparently to this switch.
-                let reader = ComicPagerViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue)
+                // issue #183: serverId/bookId/digestUrl mirror the EPUB/PDF cases — position
+                // save/restore is new for this reader too. `title` is new for every case, but
+                // only the comic reader actually needs it — see OnOpenReader's own doc comment
+                // for why a CBZ has no embedded title of its own to fall back on.
+                let reader = ComicPagerViewController.presentable(
+                    url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue, title: title,
+                    serverId: serverId, bookId: bookId, digestUrl: url
+                )
                 hostVC.present(reader, animated: true)
             case .pdf:
                 // issue #112: backed by Apple's own PDFKit via Readium's

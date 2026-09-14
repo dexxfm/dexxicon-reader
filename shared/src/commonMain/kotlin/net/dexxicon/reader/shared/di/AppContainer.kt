@@ -56,6 +56,9 @@ import net.dexxicon.reader.shared.player.NowPlaying
 import net.dexxicon.reader.shared.player.PlayerActions
 import net.dexxicon.reader.shared.player.PlayerUiSnapshot
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
+import net.dexxicon.reader.shared.reader.comic.ComicProgressBridge
+import net.dexxicon.reader.shared.reader.comic.ComicReaderActions
+import net.dexxicon.reader.shared.reader.comic.ComicReaderNativeState
 import net.dexxicon.reader.shared.reader.epub.EpubProgressBridge
 import net.dexxicon.reader.shared.reader.epub.EpubReaderActions
 import net.dexxicon.reader.shared.reader.epub.EpubReaderNativeState
@@ -396,6 +399,29 @@ class AppContainer(
     var pdfReaderActions: PdfReaderActions? = null
 
     val pdfProgressBridge: PdfProgressBridge = PdfProgressBridge(progressRepository, scope)
+
+    /** Phase 4 of the shared-reader-chrome redesign (issue #183) — the iOS comic reader's own
+     * bridge; narrower still than PDF's (no locator string at all — see
+     * [ComicReaderNativeState]'s own doc comment) but chrome-hide-on-tap comes back (comics
+     * are full-bleed images, same reasoning as EPUB's), hence [comicChromeVisible] here and
+     * not on the PDF block above. */
+    private val _comicReaderState = MutableStateFlow<ComicReaderNativeState?>(null)
+    val comicReaderState: StateFlow<ComicReaderNativeState?> = _comicReaderState.asStateFlow()
+
+    fun updateComicReaderState(value: ComicReaderNativeState?) {
+        _comicReaderState.value = value
+    }
+
+    var comicReaderActions: ComicReaderActions? = null
+
+    val comicProgressBridge: ComicProgressBridge = ComicProgressBridge(progressRepository, scope)
+
+    private val _comicChromeVisible = MutableStateFlow(true)
+    val comicChromeVisible: StateFlow<Boolean> = _comicChromeVisible.asStateFlow()
+
+    fun toggleComicChrome() {
+        _comicChromeVisible.value = !_comicChromeVisible.value
+    }
 
     init {
         realAuthHeaderProvider =

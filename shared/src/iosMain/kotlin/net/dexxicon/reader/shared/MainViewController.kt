@@ -22,6 +22,11 @@ import net.dexxicon.reader.shared.player.PlayerActions
 import net.dexxicon.reader.shared.player.PlayerScreen
 import net.dexxicon.reader.shared.player.PlayerUiSnapshot
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
+import net.dexxicon.reader.shared.reader.comic.ComicProgressBridge
+import net.dexxicon.reader.shared.reader.comic.ComicReaderActions
+import net.dexxicon.reader.shared.reader.comic.ComicReaderNativeState
+import net.dexxicon.reader.shared.reader.comic.ComicReaderScreen
+import net.dexxicon.reader.shared.reader.comic.ComicReaderUiState
 import net.dexxicon.reader.shared.reader.epub.EpubProgressBridge
 import net.dexxicon.reader.shared.reader.epub.EpubReaderActions
 import net.dexxicon.reader.shared.reader.epub.EpubReaderNativeState
@@ -421,6 +426,80 @@ fun PdfReaderViewController(
                 if (page != null) actions.goToPage(page) else actions.goToLocatorJson(b.locatorJson)
             },
             onGoToToc = actions.goToToc,
+            onGoToPage = actions.goToPage,
+            onUpdatePreferences = { transform -> appContainer.readerPreferences.update(transform) },
+            readerContent = {
+                UIKitViewController(
+                    factory = { navigatorViewController },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
+        )
+    }
+}
+
+/**
+ * Phase 4 of the shared-reader-chrome redesign (issue #183) — lets Swift's
+ * `ComicPagerViewController` resolve/save reading position, same shape as [pdfProgressBridge].
+ * Comics had no iOS position save/resume at all before this phase.
+ */
+fun comicProgressBridge(): ComicProgressBridge = appContainer.comicProgressBridge
+
+/** Swift's pager calls this on every page change/on open, same shape as
+ * [updatePdfReaderState]. */
+fun updateComicReaderState(state: ComicReaderNativeState?) {
+    appContainer.updateComicReaderState(state)
+}
+
+/** A native centre tap toggles the chrome, same convention as [epubReaderToggleChrome] — see
+ * that function's own doc comment. */
+fun comicReaderToggleChrome() {
+    appContainer.toggleComicChrome()
+}
+
+/** Wires the shared comic chrome's page/preference commands back to the real Swift pager,
+ * same convention as [setPdfReaderActions]. */
+fun setComicReaderActions(
+    goToPage: (Int) -> Unit,
+    submitPreferences: (ReaderDisplayPreferences) -> Unit,
+) {
+    appContainer.comicReaderActions = ComicReaderActions(
+        goToPage = goToPage,
+        submitPreferences = submitPreferences,
+    )
+}
+
+/**
+ * Fifth Compose root for iOS (issue #183) — narrower than [PdfReaderViewController]: no
+ * bookmarks/TOC at all (see [ComicReaderUiState]'s own doc comment), but chrome-hide-on-tap
+ * comes back (comics are full-bleed images, same reasoning as EPUB's) — see
+ * [comicReaderToggleChrome].
+ */
+fun ComicReaderViewController(
+    onBack: () -> Unit,
+    navigatorViewController: UIViewController,
+    serverId: String,
+    bookId: String,
+): UIViewController = ComposeUIViewController {
+    val native by appContainer.comicReaderState.collectAsState()
+    val chromeVisible by appContainer.comicChromeVisible.collectAsState()
+    val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
+    val actions = appContainer.comicReaderActions
+
+    val screenState = native?.screenState ?: ComicReaderUiState.Loading
+    val currentPage = native?.currentPage ?: 1
+
+    LaunchedEffect(preferences) {
+        actions?.submitPreferences?.invoke(preferences)
+    }
+
+    if (actions != null) {
+        ComicReaderScreen(
+            state = screenState,
+            onBack = onBack,
+            chromeVisible = chromeVisible,
+            preferences = preferences,
+            currentPage = currentPage,
             onGoToPage = actions.goToPage,
             onUpdatePreferences = { transform -> appContainer.readerPreferences.update(transform) },
             readerContent = {
