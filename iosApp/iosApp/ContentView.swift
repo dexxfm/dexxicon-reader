@@ -33,7 +33,13 @@ struct ComposeView: UIViewControllerRepresentable {
                 // the server already converts MOBI/AZW3/FB2 to EPUB before either client
                 // requests bytes (see ReaderLaunch.kt's doc comment), so there's no
                 // format-specific branching needed here.
-                let reader = EpubReaderViewController.presentable(url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue)
+                // issue #183: serverId/bookId (position save/restore, bookmarks/highlights)
+                // and digestUrl (the acquisition URL itself, same "remote file reference"
+                // Android's readers keep) are new — no iOS reader recorded any of this before.
+                let reader = EpubReaderViewController.presentable(
+                    url: bookUrl, authHeader: authHeader, isManga: isManga.boolValue,
+                    serverId: serverId, bookId: bookId, digestUrl: url
+                )
                 hostVC.present(reader, animated: true)
             case .comic:
                 // issue #106/#108/#107/#179: CBZ and CBR both open through

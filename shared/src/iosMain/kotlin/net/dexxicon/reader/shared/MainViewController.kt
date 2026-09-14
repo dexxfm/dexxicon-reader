@@ -244,6 +244,16 @@ fun EpubReaderViewController(
     val actions = appContainer.epubReaderActions
     val scope = rememberCoroutineScope()
 
+    // issue #183: pulls server-side bookmarks/highlights into the local DB (and pushes any
+    // locally-pending ones) on open — the same two calls Android's EpubReaderViewModel.init{}
+    // already makes. Missing this meant iOS could only ever see bookmarks/highlights created
+    // on that same device, never ones synced from elsewhere (confirmed live: bookmarks made on
+    // Android never showed up here without it).
+    LaunchedEffect(serverId, bookId) {
+        runCatching { appContainer.bookmarkRepository.syncFromServer(serverId, bookId) }
+        runCatching { appContainer.highlightRepository.syncFromServer(serverId, bookId) }
+    }
+
     val screenState = native?.screenState ?: EpubReaderUiState.Loading
     val currentLocatorJson = native?.currentLocatorJson
     val currentProgression = currentLocatorJson?.let(::progressionFromLocatorJson)
