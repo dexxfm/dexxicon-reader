@@ -12,12 +12,16 @@ import net.dexxicon.reader.core.database.entity.ReadingProgressEntity
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
+import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.progress.BookOrbitAudioProgressUpdate
+import net.dexxicon.reader.core.serverapi.progress.BookOrbitPlaybackStateUpdate
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryFileProgress
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryUpdateProgress
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 /**
  * Audiobook position sync — issue #114, following
@@ -49,9 +53,10 @@ import kotlin.time.ExperimentalTime
  * `ReadingStatusActions`) — a position push started right before the user backgrounds the app
  * or closes the reader should still land.
  */
-@OptIn(ExperimentalTime::class)
+@OptIn(ExperimentalTime::class, ExperimentalUuidApi::class)
 class AudiobookProgressSync(
     private val api: NativeProgressApi,
+    private val bookOrbitBrowseApi: BookOrbitBrowseApi,
     private val serverRepository: ServerRepository,
     private val progressDao: ReadingProgressDao,
     private val scope: CoroutineScope,
@@ -89,10 +94,11 @@ class AudiobookProgressSync(
      * listening" shelf without a catalog round-trip — pass whatever the player already has on
      * hand; a null leaves the existing stored value alone. [digestUrl] is the acquisition's
      * own stream URL, already resolved by the caller (same data `ReaderLaunch.kt`'s
-     * `OnOpenReader` hands every reader) — needed for BookOrbit's save call, which (unlike its
-     * GET) still requires the underlying file's id; there's no dedicated "get the audio file
-     * id" endpoint, so the id is parsed from the URL exactly the way the native app's
-     * `NativeProgressSync.fileIdFrom` already does.
+     * `OnOpenReader` hands every reader) — needed for a pre-2.10 BookOrbit server's save call
+     * (issue #192), which (unlike its GET) still requires the underlying file's id; there's no
+     * dedicated "get the audio file id" endpoint on those servers, so the id is parsed from the
+     * URL exactly the way the native app's `NativeProgressSync.fileIdFrom` already does. A
+     * 2.10+ server's save call needs a manifest `assetId` instead, fetched directly.
      */
     fun notePosition(
         serverId: String,
@@ -168,10 +174,18 @@ class AudiobookProgressSync(
 
     private suspend fun pull(server: Server, bookId: String, durationMs: Long): Long? = when (server.type) {
         ServerType.BOOKORBIT -> {
-            val dto = api.bookOrbitAudioProgress(server.resolve("/api/v1/books/$bookId/audio-progress"))
-                .takeIf { it.isSuccessful }?.body()
-            dto?.positionSeconds?.let { (it * 1000).toLong() }
-                ?: dto?.percentage?.let { (it / 100.0).coerceIn(0.0, 1.0) * durationMs }?.toLong()
+            val manifest = bookOrbitBrowseApi.audiobookManifestOrNull(server.resolve("/api/v1/audiobooks/$bookId/manifest"))
+            if (manifest != null) {
+                val dto = api.bookOrbitPlaybackState(server.resolve("/api/v1/audiobooks/$bookId/playback-state"))
+                    .takeIf { it.isSuccessful }?.body()
+                dto?.positionMs ?: dto?.percentage?.let { (it / 100.0).coerceIn(0.0, 1.0) * durationMs }?.toLong()
+            } else {
+                // <=2.9 — see NativeProgressApi's doc comment.
+                val dto = api.bookOrbitAudioProgress(server.resolve("/api/v1/books/$bookId/audio-progress"))
+                    .takeIf { it.isSuccessful }?.body()
+                dto?.positionSeconds?.let { (it * 1000).toLong() }
+                    ?: dto?.percentage?.let { (it / 100.0).coerceIn(0.0, 1.0) * durationMs }?.toLong()
+            }
         }
         ServerType.GRIMMORY -> {
             val dto = api.grimmoryProgress(server.resolve("/api/v1/app/books/$bookId/progress"))
@@ -207,13 +221,32 @@ class AudiobookProgressSync(
         percent: Double,
         positionMs: Long,
     ) {
-        val fileId = fileIdFrom(digestUrl) ?: return
-        api.bookOrbitSaveAudioProgress(
-            server.resolve("/api/v1/books/$bookId/audio-progress"),
-            BookOrbitAudioProgressUpdate(
-                percentage = percent * 100.0,
-                currentFileId = fileId,
-                positionSeconds = positionMs / 1000.0,
+        val manifest = bookOrbitBrowseApi.audiobookManifestOrNull(server.resolve("/api/v1/audiobooks/$bookId/manifest"))
+        if (manifest == null) {
+            // <=2.9 — see NativeProgressApi's doc comment.
+            val fileId = fileIdFrom(digestUrl) ?: return
+            api.bookOrbitSaveAudioProgress(
+                server.resolve("/api/v1/books/$bookId/audio-progress"),
+                BookOrbitAudioProgressUpdate(
+                    percentage = percent * 100.0,
+                    currentFileId = fileId,
+                    positionSeconds = positionMs / 1000.0,
+                ),
+            )
+            return
+        }
+        val assetId = manifest.assets.minByOrNull { it.sequence }?.assetId ?: return
+        val current = api.bookOrbitPlaybackState(server.resolve("/api/v1/audiobooks/$bookId/playback-state"))
+            .takeIf { it.isSuccessful }?.body()
+        api.bookOrbitSavePlaybackState(
+            server.resolve("/api/v1/audiobooks/$bookId/playback-state"),
+            BookOrbitPlaybackStateUpdate(
+                assetId = assetId,
+                positionMs = positionMs,
+                capturedAt = Clock.System.now().toString(),
+                operationId = Uuid.random().toString(),
+                baseRevision = current?.revision ?: 0,
+                manifestRevision = manifest.revision,
             ),
         )
     }

@@ -56,6 +56,25 @@ class NativeProgressApiTest {
     }
 
     @Test
+    fun bookOrbitPlaybackStateTakesALiteralNullBody() = runTest {
+        val response = mockApi("null").bookOrbitPlaybackState("https://example.test/x")
+        assertTrue(response.isSuccessful)
+        assertNull(response.body())
+    }
+
+    @Test
+    fun bookOrbitPlaybackStateParsesAPopulatedBody() = runTest {
+        val dto = mockApi(
+            """{"assetId":"aud_1","positionMs":123500,"percentage":12.3,"revision":3,"manifestRevision":"abc"}""",
+        ).bookOrbitPlaybackState("https://example.test/x").body()
+        assertEquals("aud_1", dto?.assetId)
+        assertEquals(123500L, dto?.positionMs)
+        assertEquals(12.3, dto?.percentage)
+        assertEquals(3, dto?.revision)
+        assertEquals("abc", dto?.manifestRevision)
+    }
+
+    @Test
     fun grimmoryProgressParsesTheNestedAudiobookShape() = runTest {
         val dto = mockApi(
             """

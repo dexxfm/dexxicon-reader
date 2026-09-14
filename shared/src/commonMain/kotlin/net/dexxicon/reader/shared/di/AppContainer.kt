@@ -209,7 +209,7 @@ class AppContainer(
         io = io,
     )
 
-    private val nativeProgressSync = NativeProgressSync(nativeProgressApi, syncStateStore, io)
+    private val nativeProgressSync = NativeProgressSync(nativeProgressApi, bookOrbitBrowseApi, syncStateStore, io)
     private val librarySeeder = LibrarySeeder(grimmoryBrowseApi, bookOrbitBrowseApi, io)
     /** Phase 4 Stage H (issue #145) — public so Settings' Reading sync section can call
      * [KoSyncRepository.verify] directly, the same shape [progressRepository] already has. */
@@ -274,6 +274,7 @@ class AppContainer(
     )
     val audiobookProgressSync: AudiobookProgressSync = AudiobookProgressSync(
         api = nativeProgressApi,
+        bookOrbitBrowseApi = bookOrbitBrowseApi,
         serverRepository = serverRepository,
         progressDao = database.readingProgressDao(),
         scope = scope,

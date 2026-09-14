@@ -5,14 +5,21 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.datetime.Instant
+import kotlin.time.Clock
+import kotlin.time.ExperimentalTime
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 import net.dexxicon.reader.core.common.Logger
 import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
+import net.dexxicon.reader.core.serverapi.browse.BookOrbitAudiobookManifest
+import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.progress.BookOrbitAudioProgressUpdate
 import net.dexxicon.reader.core.serverapi.progress.BookOrbitFileProgress
+import net.dexxicon.reader.core.serverapi.progress.BookOrbitPlaybackStateUpdate
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryFileProgress
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryUpdateProgress
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
@@ -41,8 +48,10 @@ data class NativeProgress(
  * explicitly for Hilt, the same pattern `ServerAuthModule` already established for
  * `TokenManager`/`ServerProber`.
  */
+@OptIn(ExperimentalTime::class, ExperimentalUuidApi::class)
 class NativeProgressSync(
     private val api: NativeProgressApi,
+    private val bookOrbitBrowseApi: BookOrbitBrowseApi,
     private val syncStateStore: SyncStateStore,
     private val io: CoroutineDispatcher,
 ) {
@@ -52,6 +61,13 @@ class NativeProgressSync(
      * portable) is simpler than reaching for a lock-free structure. */
     private val bookFileIdCacheMutex = Mutex()
     private val bookFileIdCache = mutableMapOf<String, Long>()
+
+    /** Whether a server has the 2.10+ `/audiobooks` controller at all, per `server.id` — a
+     * pre-2.10 server always 404s [BookOrbitBrowseApi.audiobookManifestOrNull], so without this
+     * every pull/push on an old server would re-probe (and re-404) forever. Same shape as
+     * [bookFileIdCache] above. */
+    private val audiobookApiSupportCacheMutex = Mutex()
+    private val audiobookApiSupportCache = mutableMapOf<String, Boolean>()
 
     fun supports(server: Server): Boolean =
         server.type == ServerType.BOOKORBIT || server.type == ServerType.GRIMMORY
@@ -129,14 +145,23 @@ class NativeProgressSync(
         digestUrl: String?,
     ): NativeProgress? {
         if (format == ContentFormat.AUDIOBOOK) {
-            val dto = api.bookOrbitAudioProgress(
-                server.resolve("/api/v1/books/$bookId/audio-progress"),
-            ).takeIf { it.isSuccessful }?.body() ?: return null
-            val pct = dto.percentage ?: return null
-            return NativeProgress(
-                percent = (pct / 100.0).coerceIn(0.0, 1.0),
-                positionMs = dto.positionSeconds?.let { (it * 1000).toLong() },
-            )
+            return if (bookOrbitAudiobookManifest(server, bookId) != null) {
+                val dto = api.bookOrbitPlaybackState(
+                    server.resolve("/api/v1/audiobooks/$bookId/playback-state"),
+                ).takeIf { it.isSuccessful }?.body() ?: return null
+                val pct = dto.percentage ?: return null
+                NativeProgress(percent = (pct / 100.0).coerceIn(0.0, 1.0), positionMs = dto.positionMs)
+            } else {
+                // <=2.9 — see NativeProgressApi's doc comment.
+                val dto = api.bookOrbitAudioProgress(
+                    server.resolve("/api/v1/books/$bookId/audio-progress"),
+                ).takeIf { it.isSuccessful }?.body() ?: return null
+                val pct = dto.percentage ?: return null
+                NativeProgress(
+                    percent = (pct / 100.0).coerceIn(0.0, 1.0),
+                    positionMs = dto.positionSeconds?.let { (it * 1000).toLong() },
+                )
+            }
         }
         val fileId = fileIdFrom(digestUrl) ?: return null
         val dto = api.bookOrbitFileProgress(
@@ -158,31 +183,105 @@ class NativeProgressSync(
         positionMs: Long?,
         position: String?,
     ) {
+        if (format == ContentFormat.AUDIOBOOK) {
+            pushBookOrbitAudiobook(server, bookId, digestUrl, percent, positionMs ?: 0L)
+            return
+        }
         val fileId = fileIdFrom(digestUrl) ?: return
         val pct100 = (percent.coerceIn(0.0, 1.0) * 100.0)
-        val response = if (format == ContentFormat.AUDIOBOOK) {
-            api.bookOrbitSaveAudioProgress(
-                server.resolve("/api/v1/books/$bookId/audio-progress"),
-                BookOrbitAudioProgressUpdate(
-                    percentage = pct100,
-                    currentFileId = fileId,
-                    positionSeconds = (positionMs ?: 0L) / 1000.0,
-                ),
-            )
-        } else {
-            api.bookOrbitSaveFileProgress(
-                server.resolve("/api/v1/books/files/$fileId/progress"),
-                BookOrbitFileProgress(
-                    cfi = position?.takeIf { format != ContentFormat.PDF && format != ContentFormat.COMIC },
-                    pageNumber = position?.toIntOrNull(),
-                    percentage = pct100,
-                ),
-            )
-        }
+        val response = api.bookOrbitSaveFileProgress(
+            server.resolve("/api/v1/books/files/$fileId/progress"),
+            BookOrbitFileProgress(
+                cfi = position?.takeIf { format != ContentFormat.PDF && format != ContentFormat.COMIC },
+                pageNumber = position?.toIntOrNull(),
+                percentage = pct100,
+            ),
+        )
         if (!response.isSuccessful) {
             val err = response.errorBody()
             error("BookOrbit progress save HTTP ${response.code()}: $err")
         }
+    }
+
+    /** issue #192 — the new `playback-state` route is revision-tracked: every write must echo
+     * the manifest's current `revision` (`manifestRevision`) and the row's last-seen `revision`
+     * (`baseRevision`), and 409s/412s a write that raced another writer or targeted a manifest
+     * that has since changed. One retry with freshly re-fetched state covers both — pushes are
+     * infrequent (periodic progress saves, not per-frame), so the extra round-trip is cheap.
+     * Falls back to the <=2.9 flat audio-progress route on a server without the new controller. */
+    private suspend fun pushBookOrbitAudiobook(
+        server: Server,
+        bookId: String,
+        digestUrl: String?,
+        percent: Double,
+        positionMs: Long,
+    ) {
+        var lastError = "no attempt made"
+        repeat(2) {
+            val manifest = bookOrbitAudiobookManifest(server, bookId)
+            if (manifest == null) {
+                if (it == 0) pushBookOrbitLegacyAudioProgress(server, bookId, digestUrl, percent, positionMs)
+                return
+            }
+            val assetId = manifest.assets.minByOrNull { asset -> asset.sequence }?.assetId ?: return
+            val current = api.bookOrbitPlaybackState(
+                server.resolve("/api/v1/audiobooks/$bookId/playback-state"),
+            ).takeIf { r -> r.isSuccessful }?.body()
+            val response = api.bookOrbitSavePlaybackState(
+                server.resolve("/api/v1/audiobooks/$bookId/playback-state"),
+                BookOrbitPlaybackStateUpdate(
+                    assetId = assetId,
+                    positionMs = positionMs,
+                    capturedAt = Clock.System.now().toString(),
+                    operationId = Uuid.random().toString(),
+                    baseRevision = current?.revision ?: 0,
+                    manifestRevision = manifest.revision,
+                ),
+            )
+            if (response.isSuccessful) return
+            lastError = "HTTP ${response.code()}: ${response.errorBody()}"
+            if (response.code() != 409 && response.code() != 412) {
+                error("BookOrbit playback-state save $lastError")
+            }
+        }
+        error("BookOrbit playback-state save failed after retry: $lastError")
+    }
+
+    /** <=2.9 — see NativeProgressApi's doc comment. Unlike the 2.10+ route this needs the
+     * underlying file's numeric id, parsed from the stream URL the same way the non-audiobook
+     * branch below does — there's no dedicated "get the audio file id" endpoint on old servers. */
+    private suspend fun pushBookOrbitLegacyAudioProgress(
+        server: Server,
+        bookId: String,
+        digestUrl: String?,
+        percent: Double,
+        positionMs: Long,
+    ) {
+        val fileId = fileIdFrom(digestUrl) ?: return
+        val response = api.bookOrbitSaveAudioProgress(
+            server.resolve("/api/v1/books/$bookId/audio-progress"),
+            BookOrbitAudioProgressUpdate(
+                percentage = percent.coerceIn(0.0, 1.0) * 100.0,
+                currentFileId = fileId,
+                positionSeconds = positionMs / 1000.0,
+            ),
+        )
+        if (!response.isSuccessful) {
+            error("BookOrbit progress save HTTP ${response.code()}: ${response.errorBody()}")
+        }
+    }
+
+    /** Null on a server without the 2.10+ `/audiobooks` controller — cached per [Server.id]
+     * (see [audiobookApiSupportCache]) so an old server isn't re-probed on every call. A
+     * "supported" answer is never cached as the manifest content itself (only as the boolean),
+     * since callers need the manifest's current `revision`/`assets` fresh each time. */
+    private suspend fun bookOrbitAudiobookManifest(server: Server, bookId: String): BookOrbitAudiobookManifest? {
+        if (audiobookApiSupportCacheMutex.withLock { audiobookApiSupportCache[server.id] } == false) {
+            return null
+        }
+        val manifest = bookOrbitBrowseApi.audiobookManifestOrNull(server.resolve("/api/v1/audiobooks/$bookId/manifest"))
+        audiobookApiSupportCacheMutex.withLock { audiobookApiSupportCache[server.id] = manifest != null }
+        return manifest
     }
 
     // ---- Grimmory / BookLore ----

@@ -17,6 +17,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.BookSort
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
@@ -74,5 +75,72 @@ class BookOrbitCatalogSourceTest {
     fun `recent and title sorts send their own valid fields`() {
         assertThat(sortFieldsFor(BookSort.RECENT)).containsExactly("addedAt")
         assertThat(sortFieldsFor(BookSort.TITLE)).containsExactly("title")
+    }
+
+    /** issue #192 — the manifest route only exists on server 2.10+; [manifestJson] null means
+     * it 404s, simulating a pre-2.10 server. */
+    private fun detailSourceFor(bookJson: String, manifestJson: String?): BookOrbitCatalogSource {
+        val engine = MockEngine { request ->
+            if (request.url.encodedPath.contains("/manifest")) {
+                if (manifestJson != null) {
+                    respond(
+                        content = manifestJson,
+                        status = HttpStatusCode.OK,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                } else {
+                    respond(
+                        content = """{"message":"not found"}""",
+                        status = HttpStatusCode.NotFound,
+                        headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                    )
+                }
+            } else {
+                respond(
+                    content = bookJson,
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentType, "application/json"),
+                )
+            }
+        }
+        val client = HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+        return BookOrbitCatalogSource(BookOrbitBrowseApi(client))
+    }
+
+    private val audiobookJson = """
+        {"id":42,"title":"A Book","files":[{"id":999,"format":"m4b","sizeBytes":12345}]}
+    """.trimIndent()
+
+    @Test
+    fun `detail streams audiobooks from the 2_10+ manifest asset, not the deprecated file route`() = runBlocking {
+        val manifestJson = """
+            {"revision":"abc123","assets":[{"assetId":"aud_11111111-1111-1111-1111-111111111111","sequence":0}]}
+        """.trimIndent()
+        val source = detailSourceFor(audiobookJson, manifestJson)
+
+        val outcome = source.detail(testServer(), "42")
+
+        assertThat(outcome).isInstanceOf(Outcome.Success::class.java)
+        val detail = (outcome as Outcome.Success).value
+        assertThat(detail.summary.format).isEqualTo(ContentFormat.AUDIOBOOK)
+        assertThat(detail.acquisitions).hasSize(1)
+        assertThat(detail.acquisitions.single().href).isEqualTo(
+            "https://bookorbit.example.test/api/v1/audiobooks/42/assets/aud_11111111-1111-1111-1111-111111111111/content",
+        )
+    }
+
+    @Test
+    fun `detail falls back to the deprecated file route when the manifest 404s (pre-2_10 server)`() = runBlocking {
+        val source = detailSourceFor(audiobookJson, manifestJson = null)
+
+        val outcome = source.detail(testServer(), "42")
+
+        assertThat(outcome).isInstanceOf(Outcome.Success::class.java)
+        val detail = (outcome as Outcome.Success).value
+        assertThat(detail.acquisitions.single().href)
+            .isEqualTo("https://bookorbit.example.test/api/v1/books/files/999/serve")
     }
 }

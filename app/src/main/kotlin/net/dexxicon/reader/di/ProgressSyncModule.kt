@@ -59,9 +59,10 @@ object ProgressSyncModule {
     @Singleton
     fun provideNativeProgressSync(
         api: NativeProgressApi,
+        bookOrbitBrowseApi: BookOrbitBrowseApi,
         syncStateStore: SyncStateStore,
         @Dispatcher(DexxiconDispatcher.IO) io: CoroutineDispatcher,
-    ): NativeProgressSync = NativeProgressSync(api, syncStateStore, io)
+    ): NativeProgressSync = NativeProgressSync(api, bookOrbitBrowseApi, syncStateStore, io)
 
     @Provides
     @Singleton

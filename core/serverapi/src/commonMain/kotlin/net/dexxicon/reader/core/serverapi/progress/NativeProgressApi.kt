@@ -16,12 +16,24 @@ import net.dexxicon.reader.core.network.apiResponse
  * round-trips with the website (unlike the KOReader `kosync` silo).
  *
  *  BookOrbit  file (epub/pdf/comic):  GET/POST `/api/v1/books/files/{fileId}/progress`
- *  BookOrbit  audiobook:              GET      `/api/v1/books/{bookId}/audio-progress`
+ *  BookOrbit  audiobook (<=2.9):      GET      `/api/v1/books/{bookId}/audio-progress`
  *                                     PATCH    `/api/v1/books/{bookId}/audio-progress`
+ *  BookOrbit  audiobook (2.10+):      GET      `/api/v1/audiobooks/{bookId}/playback-state`
+ *                                     PUT      `/api/v1/audiobooks/{bookId}/playback-state`
  *  Grimmory   all types:             GET/PUT  `/api/v1/app/books/{bookId}/progress`
  *  Grimmory   book-file lookup:       GET      `/api/v1/app/books/{bookId}`  (for bookFileId)
  *
  * Percentages are 0–100 on the wire.
+ *
+ * issue #192 — server 2.10.0 replaced the flat `GET/PATCH
+ * /api/v1/books/{bookId}/audio-progress` with a revision-tracked `playback-state` route
+ * (optimistic concurrency: every write echoes back the manifest's current `revision`, as
+ * `manifestRevision` — see [net.dexxicon.reader.core.serverapi.browse.BookOrbitAudiobookManifest]
+ * — and the last-seen `revision` of the playback-state row itself, as `baseRevision`; the
+ * server 409s/412s a write that raced or targeted a stale manifest). The old route is still
+ * used against servers older than 2.10 (detected by the new manifest endpoint 404ing — see
+ * [net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi.audiobookManifestOrNull]), so
+ * both sets of methods/DTOs below stay live rather than one replacing the other.
  */
 class NativeProgressApi(private val client: HttpClient) {
 
@@ -39,12 +51,26 @@ class NativeProgressApi(private val client: HttpClient) {
             setBody(body)
         }
 
+    /** <=2.9 only — see [NativeProgressApi]'s doc comment. */
     suspend fun bookOrbitAudioProgress(url: String): ApiResponse<BookOrbitAudioProgress> =
         client.apiResponse(url) { method = HttpMethod.Get }
 
+    /** <=2.9 only — see [NativeProgressApi]'s doc comment. */
     suspend fun bookOrbitSaveAudioProgress(url: String, body: BookOrbitAudioProgressUpdate): ApiResponse<Unit> =
         client.apiResponse(url) {
             method = HttpMethod.Patch
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+
+    /** 2.10+ only — see [NativeProgressApi]'s doc comment. */
+    suspend fun bookOrbitPlaybackState(url: String): ApiResponse<BookOrbitPlaybackState> =
+        client.apiResponse(url) { method = HttpMethod.Get }
+
+    /** 2.10+ only — see [NativeProgressApi]'s doc comment. */
+    suspend fun bookOrbitSavePlaybackState(url: String, body: BookOrbitPlaybackStateUpdate): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Put
             contentType(ContentType.Application.Json)
             setBody(body)
         }
@@ -93,6 +119,7 @@ data class BookOrbitFileProgress(
     val koreaderProgress: String? = null,
 )
 
+/** <=2.9 servers only (issue #192) — the route this backs was removed in 2.10. */
 @Serializable
 data class BookOrbitAudioProgress(
     val currentFileId: Long? = null,
@@ -100,11 +127,34 @@ data class BookOrbitAudioProgress(
     val percentage: Double? = null,
 )
 
+/** <=2.9 servers only (issue #192) — the route this backs was removed in 2.10. */
 @Serializable
 data class BookOrbitAudioProgressUpdate(
     val percentage: Double,
     val currentFileId: Long,
     val positionSeconds: Double,
+)
+
+/** `GET /api/v1/audiobooks/{bookId}/playback-state` response (2.10+, issue #192) —
+ * `revision`/`manifestRevision` must be echoed back on the next write (see
+ * [NativeProgressApi]'s doc comment). */
+@Serializable
+data class BookOrbitPlaybackState(
+    val assetId: String? = null,
+    val positionMs: Long? = null,
+    val percentage: Double? = null,
+    val revision: Int? = null,
+    val manifestRevision: String? = null,
+)
+
+@Serializable
+data class BookOrbitPlaybackStateUpdate(
+    val assetId: String,
+    val positionMs: Long,
+    val capturedAt: String,
+    val operationId: String,
+    val baseRevision: Int,
+    val manifestRevision: String,
 )
 
 // ---- Grimmory / BookLore ----
