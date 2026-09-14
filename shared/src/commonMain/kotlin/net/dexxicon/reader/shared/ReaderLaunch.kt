@@ -82,6 +82,7 @@ fun AppContainer.openReader(
     val acquisition = detail.acquisitions.firstOrNull { it.format == detail.summary.format }
         ?: detail.primaryAcquisition
         ?: return
+    bookActions.noteOpened(serverId, bookId, detail)
     val header = authHeaderProvider.authHeader(Url(acquisition.href))
     // issue #108 — same genre-tag check as Android's ComicReaderViewModel.mangaGenre.
     val isManga = detail.categories.any { it.contains("manga", ignoreCase = true) }

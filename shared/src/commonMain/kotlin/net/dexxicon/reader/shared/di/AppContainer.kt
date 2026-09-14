@@ -13,8 +13,12 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.data.BookActions
+import net.dexxicon.reader.core.data.BookmarkRepository
 import net.dexxicon.reader.core.data.CatalogRepository
+import net.dexxicon.reader.core.data.HighlightRepository
+import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.core.data.ProgressSeeder
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.ServerProber
@@ -37,8 +41,10 @@ import net.dexxicon.reader.core.datastore.SyncStateStore
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.createHttpClient
 import net.dexxicon.reader.core.security.CredentialStore
+import net.dexxicon.reader.core.serverapi.annotation.AnnotationApi
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthApi
 import net.dexxicon.reader.core.serverapi.auth.NativeAuthClient
+import net.dexxicon.reader.core.serverapi.bookmark.BookmarkApi
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
@@ -50,6 +56,9 @@ import net.dexxicon.reader.shared.player.NowPlaying
 import net.dexxicon.reader.shared.player.PlayerActions
 import net.dexxicon.reader.shared.player.PlayerUiSnapshot
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
+import net.dexxicon.reader.shared.reader.epub.EpubProgressBridge
+import net.dexxicon.reader.shared.reader.epub.EpubReaderActions
+import net.dexxicon.reader.shared.reader.epub.EpubReaderNativeState
 
 /**
  * Manual (non-Hilt) composition root for `:shared`'s commonMain UI. Every `:core:*` module
@@ -218,6 +227,22 @@ class AppContainer(
         appScope = scope,
         io = io,
     )
+    /** Phase 2 of the shared-reader-chrome redesign (issue #183) — moved to commonMain
+     * alongside [progressRepository] (same [BookmarkRepository]/[HighlightRepository] doc
+     * comment reasoning); built by hand here for the same reason as everything else in
+     * this class. */
+    val bookmarkRepository: BookmarkRepository = BookmarkRepository(
+        dao = database.bookmarkDao(),
+        api = BookmarkApi(httpClient),
+        serverRepository = serverRepository,
+        io = io,
+    )
+    val highlightRepository: HighlightRepository = HighlightRepository(
+        dao = database.highlightDao(),
+        api = AnnotationApi(httpClient),
+        serverRepository = serverRepository,
+        io = io,
+    )
 
     val oidcAuthenticator: OidcAuthenticator = OidcAuthenticator(
         oidcClient = oidcClient,
@@ -294,6 +319,66 @@ class AppContainer(
      * [net.dexxicon.reader.shared.player.PlayerScreen]'s caller is expected to only render once
      * [playerState] is non-null, by which point this is always set too. */
     var playerActions: PlayerActions? = null
+
+    /** Phase 2 of the shared-reader-chrome redesign (issue #183) — the iOS EPUB reader's own
+     * bridge; see [EpubReaderNativeState]/[EpubReaderActions]'s own doc comments for why this
+     * exists only for iOS (Android's native embed is Kotlin, so it needs no push at all). */
+    private val _epubReaderState = MutableStateFlow<EpubReaderNativeState?>(null)
+    val epubReaderState: StateFlow<EpubReaderNativeState?> = _epubReaderState.asStateFlow()
+
+    fun updateEpubReaderState(value: EpubReaderNativeState?) {
+        _epubReaderState.value = value
+    }
+
+    var epubReaderActions: EpubReaderActions? = null
+
+    val epubProgressBridge: EpubProgressBridge = EpubProgressBridge(progressRepository, scope)
+
+    /** Pure UI state the shared chrome owns — unlike [epubReaderState], a native *gesture*
+     * (an edge-tap-navigator centre tap, a decoration tap) is the only thing that needs to
+     * reach in and change these from outside Compose, so they're exposed as plain mutable
+     * state rather than folded into the native-authoritative snapshot above. */
+    private val _epubChromeVisible = MutableStateFlow(true)
+    val epubChromeVisible: StateFlow<Boolean> = _epubChromeVisible.asStateFlow()
+
+    fun toggleEpubChrome() {
+        _epubChromeVisible.value = !_epubChromeVisible.value
+    }
+
+    private val _epubActiveHighlightId = MutableStateFlow<String?>(null)
+    val epubActiveHighlightId: StateFlow<String?> = _epubActiveHighlightId.asStateFlow()
+
+    fun setEpubActiveHighlightId(value: String?) {
+        _epubActiveHighlightId.value = value
+    }
+
+    /**
+     * Fire-and-forget, non-`suspend` — the text-selection "Highlight" menu item's own action
+     * handler is native-only (Swift's `EditingAction`/Android's `HighlightSelectionCallback`,
+     * neither routed through the shared chrome at all), so it needs the same closure-based
+     * entry point [EpubProgressBridge] uses rather than calling
+     * [HighlightRepository.add] — a `suspend` function — directly.
+     */
+    fun addEpubHighlight(
+        serverId: String,
+        bookId: String,
+        locatorJson: String,
+        progression: Double,
+        text: String,
+        chapterTitle: String?,
+    ) {
+        scope.launch {
+            highlightRepository.add(
+                serverId = serverId,
+                bookId = bookId,
+                locatorJson = locatorJson,
+                progression = progression,
+                text = text,
+                color = HighlightColor.YELLOW,
+                chapterTitle = chapterTitle,
+            )
+        }
+    }
 
     init {
         realAuthHeaderProvider =
