@@ -457,6 +457,12 @@ fun comicReaderToggleChrome() {
     appContainer.toggleComicChrome()
 }
 
+/** issue #188 — see [net.dexxicon.reader.shared.di.AppContainer.comicIsDoubleSpread]'s own doc
+ *  comment for why this is push-based rather than read directly in [ComicReaderViewController]. */
+fun updateComicIsDoubleSpread(isDoubleSpread: Boolean) {
+    appContainer.updateComicIsDoubleSpread(isDoubleSpread)
+}
+
 /** Wires the shared comic chrome's page/preference commands back to the real Swift pager,
  * same convention as [setPdfReaderActions]. */
 fun setComicReaderActions(
@@ -484,6 +490,7 @@ fun ComicReaderViewController(
     val native by appContainer.comicReaderState.collectAsState()
     val chromeVisible by appContainer.comicChromeVisible.collectAsState()
     val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
+    val isDoubleSpread by appContainer.comicIsDoubleSpread.collectAsState()
     val actions = appContainer.comicReaderActions
 
     val screenState = native?.screenState ?: ComicReaderUiState.Loading
@@ -499,6 +506,15 @@ fun ComicReaderViewController(
             onBack = onBack,
             chromeVisible = chromeVisible,
             preferences = preferences,
+            // iOS has no Smart Zoom (Android-only — see the shared screen's own doc comment),
+            // so double-spread is the only reason tap-navigation is ever unavailable here.
+            tapNavigationEnabled = !isDoubleSpread,
+            tapNavigationDisabledReason = if (isDoubleSpread) {
+                "Off in Two-page layout — swipe to turn pages."
+            } else {
+                null
+            },
+            isDoubleSpread = isDoubleSpread,
             currentPage = currentPage,
             onGoToPage = actions.goToPage,
             onUpdatePreferences = { transform -> appContainer.readerPreferences.update(transform) },

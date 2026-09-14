@@ -424,6 +424,19 @@ class AppContainer(
         _comicChromeVisible.value = !_comicChromeVisible.value
     }
 
+    /** issue #188 — whether Swift's `ComicPagerViewController` is *actually* showing two pages
+     *  side by side right now. Pushed from Swift (a fresh preferences push, or the viewport
+     *  itself changing — rotation, Split View resize — since [ReaderPageLayout.AUTO] depends
+     *  on both), the same push-based convention as [comicReaderState] — Compose Multiplatform
+     *  iOS has no `LocalConfiguration`-equivalent this composable could read the viewport width
+     *  from itself, unlike Android's own `feature/reader-comic` embed. */
+    private val _comicIsDoubleSpread = MutableStateFlow(false)
+    val comicIsDoubleSpread: StateFlow<Boolean> = _comicIsDoubleSpread.asStateFlow()
+
+    fun updateComicIsDoubleSpread(value: Boolean) {
+        _comicIsDoubleSpread.value = value
+    }
+
     init {
         realAuthHeaderProvider =
             AuthHeaderProviderImpl(database.serverDao(), credentialStore, tokenManager, scope)

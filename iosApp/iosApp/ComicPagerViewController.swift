@@ -42,6 +42,11 @@ final class ComicPagerViewController: UIViewController {
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
     private var content: ComicPageContentViewController?
     private var saveTask: Task<Void, Never>?
+    /// issue #188 — the last preferences Swift received, cached so [updateIsDoubleSpread] can
+    /// re-derive the resolved double-spread state on a layout pass alone (rotation, Split View
+    /// resize) without waiting on a fresh preferences push, since [ReaderPageLayout.AUTO]
+    /// depends on the viewport too, not just the setting itself.
+    private var lastPreferences: DatastoreReaderDisplayPreferences?
 
     private static let imageExtensions: Set<String> = [
         "jpg", "jpeg", "png", "gif", "webp", "bmp",
@@ -76,6 +81,11 @@ final class ComicPagerViewController: UIViewController {
         loadingIndicator.startAnimating()
 
         Task { await loadPages() }
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateIsDoubleSpread()
     }
 
     @MainActor
@@ -191,10 +201,34 @@ final class ComicPagerViewController: UIViewController {
     }
 
     private func applyPreferences(_ prefs: DatastoreReaderDisplayPreferences) {
+        lastPreferences = prefs
         content?.rightToLeft = prefs.comicRightToLeft
         content?.tapNavigationEnabled = prefs.tapNavigation
         content?.commitFraction = CGFloat(prefs.swipeSensitivity.commitFraction)
         content?.fitWidth = prefs.fitMode == DatastoreReaderFitMode.pageWidth
+        updateIsDoubleSpread()
+    }
+
+    /// issue #188: two-page spread. `Auto` follows the same `>= 720pt` viewport threshold
+    /// EPUB's own "Page layout" setting already uses (see `EpubReaderViewController`'s own
+    /// `applyPreferences` and its comment on the `auto_`/`double_` Kotlin enum export names).
+    /// Re-derived on every layout pass, not just a fresh preferences push — only the viewport
+    /// can change afterward (rotation, Split View resize) with the preferences themselves
+    /// unchanged, and `Auto`'s resolved value depends on both.
+    private func updateIsDoubleSpread() {
+        guard let prefs = lastPreferences else { return }
+        let wideViewport = view.bounds.width >= 720
+        let isDoubleSpread: Bool
+        if prefs.pageLayout == DatastoreReaderPageLayout.auto_ {
+            isDoubleSpread = wideViewport
+        } else if prefs.pageLayout == DatastoreReaderPageLayout.double_ {
+            isDoubleSpread = true
+        } else {
+            isDoubleSpread = false
+        }
+        guard content?.isDoubleSpread != isDoubleSpread else { return }
+        content?.isDoubleSpread = isDoubleSpread
+        MainViewControllerKt.updateComicIsDoubleSpread(isDoubleSpread: isDoubleSpread)
     }
 
     private func loadImage(at index: Int) async -> UIImage? {
@@ -270,6 +304,14 @@ private extension Comparable {
 /// entirely (issue #183 Phase 4) — that gesture has no public API for a tunable commit
 /// threshold, so matching Android's Low/Medium/High swipe-sensitivity setting means owning
 /// the gesture outright rather than trying to tune a system one.
+///
+/// issue #188: two-page spread — [isDoubleSpread] switches this between one page
+/// ([currentPageVC], unchanged from before #188) and two ([leadingPageVC]/[trailingPageVC],
+/// side by side in [spreadContainer]), mirroring Android's `SingleSpreadReader`/
+/// `DoubleSpreadReader` split. Unlike Compose's declarative recomposition, there's no way to
+/// swap the `UIViewController` Compose Multiplatform's `UIKitViewController` embeds after
+/// first creating it, so both modes live inside this one persistent controller instead of two
+/// separate classes swapped at the call site.
 final class ComicPageContentViewController: UIViewController, UIGestureRecognizerDelegate {
     private let pageCount: Int
     private let loadImage: (Int) async -> UIImage?
@@ -281,12 +323,54 @@ final class ComicPageContentViewController: UIViewController, UIGestureRecognize
     /// original, only behavior), true fits to width and lets the scroll view pan vertically
     /// for the rest. Propagated straight to the current page on change (see `didSet`) — a new
     /// page picks it up itself, from this same property, when `showCurrentPage()` creates it.
+    /// Ignored in double-spread — see [isDoubleSpread]'s own doc comment.
     var fitWidth: Bool = false {
         didSet { currentPageVC?.fitWidth = fitWidth }
     }
 
+    /// issue #188 — "Page fit" is moot once double-spread is active: each container is sized
+    /// to its own page's real aspect ratio (see [layoutSpread]), so Readium's — well, this
+    /// reader's own — default whole-page fit already fills it edge-to-edge with no letterbox
+    /// to "Width" away. The shared chrome greys that setting out for the same reason (see
+    /// `ComicSettings`'s own `isDoubleSpread` param) once this is wired up there.
+    var isDoubleSpread: Bool = false {
+        didSet {
+            guard oldValue != isDoubleSpread else { return }
+            currentIndex = leadingIndex(for: currentIndex)
+            showCurrentPage()
+        }
+    }
+
+    /// The step a page-turn (swipe or edge-tap) advances by — a whole spread in double-spread,
+    /// same as Android's own `advanceSpread`.
+    private var stepSize: Int { isDoubleSpread ? 2 : 1 }
+
+    /// In double-spread, [currentIndex] always holds the *leading* (lower-numbered) page of the
+    /// currently visible pair — pages pair up sequentially, (0,1), (2,3), … (0-based; Android's
+    /// own (1,2), (3,4), … one-based), no cover-offset special case. [trailingIndex] shows
+    /// [currentIndex] again — rather than a stale page, or going blank — on a trailing book
+    /// with an odd page count, where the final pair has no second page.
+    private func leadingIndex(for index: Int) -> Int { (index / 2) * 2 }
+    private var trailingIndex: Int { min(currentIndex + 1, pageCount - 1) }
+
     private(set) var currentIndex: Int = 0
     private var currentPageVC: ComicPageViewController?
+
+    /// issue #188 — the two-page-spread pair, only non-nil while [isDoubleSpread] is true.
+    /// [spreadContainer] holds both, sized/positioned by [layoutSpread] — never autoresized,
+    /// since centring a pair whose combined width may be less than the full screen (margin on
+    /// the *outer* edges only, never a gap between the two pages) needs an exact frame, not
+    /// Auto Layout/autoresizing.
+    private var leadingPageVC: ComicPageViewController?
+    private var trailingPageVC: ComicPageViewController?
+    private var spreadContainer: UIView?
+    /// Each page's own width/height ratio, read off its real decoded image the moment it loads
+    /// (see `ComicPageViewController.onAspectKnown`) — seeded to a typical portrait comic/manga
+    /// page ratio so the very first layout pass isn't zero-width, corrected (and
+    /// [layoutSpread] re-run) the moment each side's real image is known. Same reasoning as
+    /// Android's own `pageAspectA`/`pageAspectB`.
+    private var leadingAspect: CGFloat = 0.7071
+    private var trailingAspect: CGFloat = 0.7071
 
     private var panGesture: UIPanGestureRecognizer!
     private var dragClaimed = false
@@ -326,22 +410,49 @@ final class ComicPageContentViewController: UIViewController, UIGestureRecognize
         view.addGestureRecognizer(panGesture)
     }
 
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if isDoubleSpread {
+            layoutSpread()
+        } else {
+            currentPageVC?.view.frame = view.bounds
+        }
+    }
+
     /// Jumps straight to [index] with no drag/animation — the shared chrome's page slider and
     /// the initial-position resolve both go through this.
     func jump(to index: Int, animated: Bool) {
         let clamped = index.clamped(to: 0...max(pageCount - 1, 0))
-        guard clamped != currentIndex || currentPageVC == nil else { return }
-        currentIndex = clamped
+        let target = isDoubleSpread ? leadingIndex(for: clamped) : clamped
+        guard target != currentIndex || (currentPageVC == nil && leadingPageVC == nil) else { return }
+        currentIndex = target
         showCurrentPage()
         onPageChanged?(currentIndex)
     }
 
     private func showCurrentPage() {
-        if let old = currentPageVC {
-            old.willMove(toParent: nil)
-            old.view.removeFromSuperview()
-            old.removeFromParent()
+        removeCurrentChildren()
+        if isDoubleSpread {
+            showSpread()
+        } else {
+            showSinglePage()
         }
+    }
+
+    private func removeCurrentChildren() {
+        for vc in [currentPageVC, leadingPageVC, trailingPageVC].compactMap({ $0 }) {
+            vc.willMove(toParent: nil)
+            vc.view.removeFromSuperview()
+            vc.removeFromParent()
+        }
+        currentPageVC = nil
+        leadingPageVC = nil
+        trailingPageVC = nil
+        spreadContainer?.removeFromSuperview()
+        spreadContainer = nil
+    }
+
+    private func showSinglePage() {
         // Captured eagerly rather than re-reading `self.currentIndex` inside the closure — a
         // page turn that lands before this async load finishes must not retarget it at
         // whatever the *new* current page happens to be.
@@ -358,24 +469,117 @@ final class ComicPageContentViewController: UIViewController, UIGestureRecognize
         currentPageVC = vc
     }
 
+    private func showSpread() {
+        let leadingIdx = currentIndex
+        let trailingIdx = trailingIndex
+
+        let container = UIView()
+        view.addSubview(container)
+        spreadContainer = container
+
+        let leading = ComicPageViewController(index: leadingIdx, pager: self) { [weak self] in
+            await self?.loadImage(leadingIdx)
+        }
+        leading.fitWidth = false
+        leading.onAspectKnown = { [weak self] aspect in
+            self?.leadingAspect = aspect
+            self?.layoutSpread()
+        }
+        addChild(leading)
+        container.addSubview(leading.view)
+        leading.didMove(toParent: self)
+        leadingPageVC = leading
+
+        let trailing = ComicPageViewController(index: trailingIdx, pager: self) { [weak self] in
+            await self?.loadImage(trailingIdx)
+        }
+        trailing.fitWidth = false
+        trailing.onAspectKnown = { [weak self] aspect in
+            self?.trailingAspect = aspect
+            self?.layoutSpread()
+        }
+        addChild(trailing)
+        container.addSubview(trailing.view)
+        trailing.didMove(toParent: self)
+        trailingPageVC = trailing
+
+        layoutSpread()
+    }
+
+    /// Sizes/positions [spreadContainer] and its two page views: fills the available height if
+    /// the pair then fits the width, otherwise shrinks to fit width instead (still no seam,
+    /// just letterboxed top/bottom) — same algorithm as Android's `DoubleSpreadReader`. The
+    /// leading page sits on the reading direction's own leading side — left for LTR, right for
+    /// RTL/manga.
+    private func layoutSpread() {
+        guard let container = spreadContainer, let leading = leadingPageVC, let trailing = trailingPageVC else { return }
+        let boxW = view.bounds.width
+        let boxH = view.bounds.height
+        guard boxW > 0, boxH > 0 else { return }
+
+        let combinedAspect = max(leadingAspect + trailingAspect, 0.01)
+        let spreadHeight = min(boxH, boxW / combinedAspect)
+        let leadingWidth = spreadHeight * leadingAspect
+        let trailingWidth = spreadHeight * trailingAspect
+        let totalWidth = leadingWidth + trailingWidth
+
+        container.frame = CGRect(
+            x: (boxW - totalWidth) / 2,
+            y: (boxH - spreadHeight) / 2,
+            width: totalWidth,
+            height: spreadHeight
+        )
+
+        if rightToLeft {
+            trailing.view.frame = CGRect(x: 0, y: 0, width: trailingWidth, height: spreadHeight)
+            leading.view.frame = CGRect(x: trailingWidth, y: 0, width: leadingWidth, height: spreadHeight)
+        } else {
+            leading.view.frame = CGRect(x: 0, y: 0, width: leadingWidth, height: spreadHeight)
+            trailing.view.frame = CGRect(x: leadingWidth, y: 0, width: trailingWidth, height: spreadHeight)
+        }
+    }
+
     /// Called by a page's edge-tap gesture (see `ComicPageViewController`) — this content
     /// controller owns navigation since it alone knows the current index and page count.
+    /// issue #188: never called with a meaningful edge while double-spread is active —
+    /// [ComicPageViewController.handleSingleTap] checks [effectiveTapNavigationEnabled] itself
+    /// and routes straight to [centerTapped] instead, the same "any tap toggles chrome"
+    /// fallback Android's `EdgeTapNavigator` gets from `enabled: { false }`.
     fileprivate func turnPage(physicallyForward: Bool) {
         guard tapNavigationEnabled else { return }
         let actuallyForward = physicallyForward != rightToLeft
-        let nextIndex = actuallyForward ? currentIndex + 1 : currentIndex - 1
+        let nextIndex = actuallyForward ? currentIndex + stepSize : currentIndex - stepSize
         guard (0..<pageCount).contains(nextIndex) else { return }
         currentIndex = nextIndex
         showCurrentPage()
         onPageChanged?(currentIndex)
     }
 
+    /// Off in double-spread regardless of the user's own toggle — edge taps don't cleanly map
+    /// onto two independent page view controllers' touch targets, same reasoning as Android's
+    /// `EdgeTapNavigator(enabled: { false })`. Checked by `ComicPageViewController` itself.
+    fileprivate var effectiveTapNavigationEnabled: Bool { tapNavigationEnabled && !isDoubleSpread }
+
     fileprivate func centerTapped() {
         onCenterTap?()
     }
 
+    private var isZoomedIn: Bool {
+        if isDoubleSpread {
+            let leadingZoomed = leadingPageVC.map {
+                $0.scrollView.zoomScale > $0.scrollView.minimumZoomScale + 0.001
+            } ?? false
+            let trailingZoomed = trailingPageVC.map {
+                $0.scrollView.zoomScale > $0.scrollView.minimumZoomScale + 0.001
+            } ?? false
+            return leadingZoomed || trailingZoomed
+        }
+        guard let current = currentPageVC else { return false }
+        return current.scrollView.zoomScale > current.scrollView.minimumZoomScale + 0.001
+    }
+
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        guard let current = currentPageVC else { return }
+        guard currentPageVC != nil || (leadingPageVC != nil && trailingPageVC != nil) else { return }
         let width = max(view.bounds.width, 1)
         let translation = gesture.translation(in: view)
         let velocity = gesture.velocity(in: view)
@@ -389,7 +593,7 @@ final class ComicPageContentViewController: UIViewController, UIGestureRecognize
                 // shorter or more-vertical drag is left alone (the page's own pinch-zoom pan,
                 // or nothing at all).
                 guard abs(translation.x) > 6, abs(translation.x) > abs(translation.y) * 1.4 else { return }
-                guard current.scrollView.zoomScale <= current.scrollView.minimumZoomScale + 0.001 else { return }
+                guard !isZoomedIn else { return }
                 dragClaimed = true
                 beginDrag(physicallyForward: translation.x < 0)
             }
@@ -404,27 +608,42 @@ final class ComicPageContentViewController: UIViewController, UIGestureRecognize
         }
     }
 
+    /// Whether another turn in [actuallyForward]'s direction — already stepping by [stepSize]
+    /// — would go past the book's own bounds. Same shape as Android's own `atBoundary` check
+    /// (`pageTurnGesture`'s own parameter) in both modes.
+    private func isAtBoundary(actuallyForward: Bool) -> Bool {
+        if isDoubleSpread {
+            return actuallyForward ? currentIndex > pageCount - 3 : currentIndex <= 0
+        }
+        return actuallyForward ? currentIndex >= pageCount - 1 : currentIndex <= 0
+    }
+
     private func beginDrag(physicallyForward: Bool) {
         let actuallyForward = physicallyForward != rightToLeft
-        let atBoundary = actuallyForward ? currentIndex >= pageCount - 1 : currentIndex <= 0
 
-        if atBoundary {
+        if isAtBoundary(actuallyForward: actuallyForward) {
             dragTurnedForward = nil
             dragOverlay = nil
             return
         }
 
-        // Snapshot the current (outgoing) page and cover the screen with it *before* swapping
-        // in the real next page underneath — so the reveal, as the snapshot lifts away, shows
-        // the actual next page from the very first frame, not a placeholder.
-        let snapshot = currentPageVC?.view.snapshotView(afterScreenUpdates: false)
-        snapshot?.frame = view.bounds
+        // Snapshot the current (outgoing) page(s) and cover the screen with it *before*
+        // swapping in the real next page(s) underneath — so the reveal, as the snapshot lifts
+        // away, shows the actual next page from the very first frame, not a placeholder.
+        let snapshot: UIView?
+        if isDoubleSpread, let container = spreadContainer {
+            snapshot = container.snapshotView(afterScreenUpdates: false)
+            snapshot?.frame = container.frame
+        } else {
+            snapshot = currentPageVC?.view.snapshotView(afterScreenUpdates: false)
+            snapshot?.frame = view.bounds
+        }
         if let snapshot {
             view.addSubview(snapshot)
         }
         dragOverlay = snapshot
 
-        currentIndex = actuallyForward ? currentIndex + 1 : currentIndex - 1
+        currentIndex = actuallyForward ? currentIndex + stepSize : currentIndex - stepSize
         showCurrentPage()
         onPageChanged?(currentIndex)
         dragTurnedForward = actuallyForward
@@ -436,7 +655,8 @@ final class ComicPageContentViewController: UIViewController, UIGestureRecognize
             overlay.transform = CGAffineTransform(translationX: offset, y: 0)
         } else {
             let damped = Self.rubberBand(tx, max: 72)
-            currentPageVC?.view.transform = CGAffineTransform(translationX: damped, y: 0)
+            let target: UIView? = isDoubleSpread ? spreadContainer : currentPageVC?.view
+            target?.transform = CGAffineTransform(translationX: damped, y: 0)
         }
     }
 
@@ -445,8 +665,9 @@ final class ComicPageContentViewController: UIViewController, UIGestureRecognize
 
         guard let overlay = dragOverlay, let forward = dragTurnedForward else {
             // Elastic pull at a boundary — always springs back, nothing to undo.
+            let target: UIView? = isDoubleSpread ? spreadContainer : currentPageVC?.view
             UIView.animate(withDuration: 0.2) {
-                self.currentPageVC?.view.transform = .identity
+                target?.transform = .identity
             }
             return
         }
@@ -466,7 +687,7 @@ final class ComicPageContentViewController: UIViewController, UIGestureRecognize
                 overlay.transform = .identity
             }, completion: { _ in
                 overlay.removeFromSuperview()
-                self.currentIndex = forward ? self.currentIndex - 1 : self.currentIndex + 1
+                self.currentIndex = forward ? self.currentIndex - self.stepSize : self.currentIndex + self.stepSize
                 self.showCurrentPage()
                 self.onPageChanged?(self.currentIndex)
             })
@@ -495,8 +716,9 @@ final class ComicPageContentViewController: UIViewController, UIGestureRecognize
 
 /// One page of a `ComicPageContentViewController` — a pinch-zoomable image loaded lazily from
 /// the parent's already-open CBZ archive. Unchanged from before Phase 4 except its `pager`
-/// type and the single-tap handler's new centre-tap wiring (issue #183 — comics now hide/show
-/// chrome on tap, same as EPUB's reader).
+/// type, the single-tap handler's centre-tap wiring (issue #183 — comics now hide/show chrome
+/// on tap, same as EPUB's reader), and [onAspectKnown] (issue #188 — lets
+/// `ComicPageContentViewController` size a two-page spread to each page's own real shape).
 private final class ComicPageViewController: UIViewController, UIScrollViewDelegate {
     let index: Int
     private weak var pager: ComicPageContentViewController?
@@ -517,6 +739,11 @@ private final class ComicPageViewController: UIViewController, UIScrollViewDeleg
             layoutImage()
         }
     }
+    /// issue #188 — fires once, the moment this page's real image finishes loading, with its
+    /// own width/height ratio. `ComicPageContentViewController` uses this to size a two-page
+    /// spread's containers to each page's real shape rather than a flat 50/50 split — see
+    /// that type's own `layoutSpread`.
+    var onAspectKnown: ((CGFloat) -> Void)?
     /// The scroll view's own bounds size the last time `layoutImage()` actually fit the image
     /// to it, or `.zero` before the first real layout. Compared against *size*, never against
     /// the scroll view's live `zoomScale` — comparing zoom risked a feedback loop (setting
@@ -587,6 +814,9 @@ private final class ComicPageViewController: UIViewController, UIScrollViewDeleg
             imageView.image = image
             loadingIndicator.stopAnimating()
             loadingIndicator.removeFromSuperview()
+            if image.size.width > 0, image.size.height > 0 {
+                onAspectKnown?(image.size.width / image.size.height)
+            }
             layoutImage()
         }
     }
@@ -660,8 +890,15 @@ private final class ComicPageViewController: UIViewController, UIScrollViewDeleg
         // Edge-tap page turning (issue #108), same shape as EpubReaderViewController's own —
         // only while not zoomed in, so a zoomed reader can still tap near an edge to pan there
         // instead of accidentally turning the page. issue #183: a centre tap now toggles the
-        // shared chrome, same as EPUB's reader.
+        // shared chrome, same as EPUB's reader. issue #188: any tap at all falls through to a
+        // centre tap once tap-navigation is off — double-spread's own reason, or (same as
+        // always) the user's own toggle — matching Android's `EdgeTapNavigator(enabled: false)`
+        // fallback rather than going dead.
         guard scrollView.zoomScale <= scrollView.minimumZoomScale else { return }
+        guard pager?.effectiveTapNavigationEnabled == true else {
+            pager?.centerTapped()
+            return
+        }
         let width = view.bounds.width
         let x = gesture.location(in: view).x
         let edgeFraction: CGFloat = 0.28
