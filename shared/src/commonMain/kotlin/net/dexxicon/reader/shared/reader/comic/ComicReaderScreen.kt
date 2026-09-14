@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.datastore.ReaderFitMode
+import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
 import net.dexxicon.reader.core.datastore.ReaderTheme
 import net.dexxicon.reader.core.designsystem.component.BackPill
@@ -82,6 +83,14 @@ fun ComicReaderScreen(
     preferences: ReaderDisplayPreferences = ReaderDisplayPreferences(),
     tapNavigationEnabled: Boolean = true,
     tapNavigationDisabledReason: String? = null,
+    /** Whether the native embed is *actually* showing two pages side by side right now —
+     *  resolved from [ReaderDisplayPreferences.pageLayout] plus (for [ReaderPageLayout.AUTO])
+     *  its own viewport-width check, the same `>= 720dp/pt` threshold EPUB's own "Page layout"
+     *  setting already uses. Affects the bottom bar's label and greys out "Page fit" (double-
+     *  spread always fills height edge-to-edge, no seam — see the native embed's own
+     *  `setPagePhotoViewsFitHeight`) here; pairing pages, syncing two navigators, and stepping
+     *  by a whole spread are all native-embed concerns. */
+    isDoubleSpread: Boolean = false,
     currentPage: Int = 1,
     onGoToPage: (Int) -> Unit = {},
     onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit = {},
@@ -105,6 +114,7 @@ fun ComicReaderScreen(
             preferences = preferences,
             tapNavigationEnabled = tapNavigationEnabled,
             tapNavigationDisabledReason = tapNavigationDisabledReason,
+            isDoubleSpread = isDoubleSpread,
             currentPage = currentPage,
             onGoToPage = onGoToPage,
             onUpdatePreferences = onUpdatePreferences,
@@ -123,6 +133,7 @@ private fun ReaderContent(
     preferences: ReaderDisplayPreferences,
     tapNavigationEnabled: Boolean,
     tapNavigationDisabledReason: String?,
+    isDoubleSpread: Boolean,
     currentPage: Int,
     onGoToPage: (Int) -> Unit,
     onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
@@ -150,18 +161,20 @@ private fun ReaderContent(
         },
         bottomBar = {
             if (chromeVisible && state.pageCount > 1) {
+                val pageLabel = if (isDoubleSpread && currentPage < state.pageCount) {
+                    "Page $currentPage–${currentPage + 1} of ${state.pageCount}"
+                } else {
+                    "Page $currentPage of ${state.pageCount}"
+                }
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
-                    Text(
-                        "Page $currentPage of ${state.pageCount}",
-                        style = MaterialTheme.typography.labelMedium,
-                    )
+                    Text(pageLabel, style = MaterialTheme.typography.labelMedium)
                     Slider(
                         value = currentPage.coerceIn(1, state.pageCount).toFloat(),
                         onValueChange = { v -> onGoToPage(v.toInt().coerceIn(1, state.pageCount)) },
                         valueRange = 1f..state.pageCount.toFloat(),
                         modifier = Modifier.semantics {
                             contentDescription = "Page slider"
-                            stateDescription = "Page $currentPage of ${state.pageCount}"
+                            stateDescription = pageLabel
                         },
                     )
                 }
@@ -180,6 +193,7 @@ private fun ReaderContent(
                 onChange = { transform -> scope.launch { onUpdatePreferences(transform) } },
                 tapNavigationEnabled = tapNavigationEnabled,
                 tapNavigationDisabledReason = tapNavigationDisabledReason,
+                isDoubleSpread = isDoubleSpread,
                 extraSettings = extraSettings,
             )
         }
@@ -193,6 +207,7 @@ private fun ComicSettings(
     onChange: ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
     tapNavigationEnabled: Boolean,
     tapNavigationDisabledReason: String?,
+    isDoubleSpread: Boolean,
     extraSettings: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -221,7 +236,16 @@ private fun ComicSettings(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        Text("Page fit", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
+        Text(
+            "Page fit",
+            style = MaterialTheme.typography.titleSmall,
+            color = if (isDoubleSpread) {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            modifier = Modifier.padding(top = 16.dp),
+        )
         FlowRow(
             Modifier.fillMaxWidth().padding(top = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -233,12 +257,35 @@ private fun ComicSettings(
                 selected = !fitWidth,
                 onClick = { onChange { it.copy(fitMode = ReaderFitMode.PAGE_FIT) } },
                 label = { Text("Fit") },
+                enabled = !isDoubleSpread,
             )
             FilterChip(
                 selected = fitWidth,
                 onClick = { onChange { it.copy(fitMode = ReaderFitMode.PAGE_WIDTH) } },
                 label = { Text("Width") },
+                enabled = !isDoubleSpread,
             )
+        }
+        if (isDoubleSpread) {
+            Text(
+                "Always fills height in Two-page layout, edge-to-edge with no seam.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+
+        Text("Page layout", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
+        FlowRow(
+            Modifier.fillMaxWidth().padding(top = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ReaderPageLayout.entries.forEach { layout ->
+                FilterChip(
+                    selected = preferences.pageLayout == layout,
+                    onClick = { onChange { it.copy(pageLayout = layout) } },
+                    label = { Text(comicPageLayoutLabel(layout)) },
+                )
+            }
         }
 
         Text("Page-turn swipe", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
@@ -300,6 +347,14 @@ private fun ComicSettings(
         }
         extraSettings()
     }
+}
+
+/** Same labels as EPUB's own `readerPageLayoutLabel` — duplicated per this file's own
+ * established convention (see [comicSurfaceColor]'s doc comment) rather than shared. */
+private fun comicPageLayoutLabel(layout: ReaderPageLayout): String = when (layout) {
+    ReaderPageLayout.AUTO -> "Auto"
+    ReaderPageLayout.SINGLE -> "Single"
+    ReaderPageLayout.DOUBLE -> "Two-page"
 }
 
 private fun comicThemeLabel(theme: ReaderTheme): String = when (theme) {
