@@ -56,7 +56,12 @@ struct ComposeView: UIViewControllerRepresentable {
                 // issue #112: backed by Apple's own PDFKit via Readium's
                 // PDFNavigatorViewController — no bundled native PDF library needed, unlike
                 // Android's PDFium-based reader.
-                let reader = PdfReaderViewController.presentable(url: bookUrl, authHeader: authHeader)
+                // issue #183: serverId/bookId/digestUrl mirror the EPUB case above — position
+                // save/restore and bookmarks are new for this reader too.
+                let reader = PdfReaderViewController.presentable(
+                    url: bookUrl, authHeader: authHeader,
+                    serverId: serverId, bookId: bookId, digestUrl: url
+                )
                 hostVC.present(reader, animated: true)
             case .audiobook:
                 // issue #114/#183: no Readium involvement at all — Android's own player bypasses
