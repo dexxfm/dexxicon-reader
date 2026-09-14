@@ -74,6 +74,16 @@ class BookOrbitCatalogSource(
         val book = api.book(server.resolve("/api/v1/books/$bookId"))
         val summary = book.toSummary(server)
         val file = book.primaryFile
+        // issue #192 — server 2.10.0 404s `files/{id}/serve` for audio formats; audiobooks
+        // stream from a dedicated per-asset route instead, discovered via the manifest. Null
+        // on a pre-2.10 server (no manifest at all) — falls through to the old `file`-based
+        // acquisition below, which still works there since only 2.10+ 404s it for audio.
+        val audiobookAsset = if (summary.format == ContentFormat.AUDIOBOOK) {
+            api.audiobookManifestOrNull(server.resolve("/api/v1/audiobooks/$bookId/manifest"))
+                ?.assets?.minByOrNull { it.sequence }
+        } else {
+            null
+        }
         BookDetail(
             summary = summary,
             description = book.description?.htmlToPlainText()?.takeIf { it.isNotBlank() },
@@ -96,14 +106,22 @@ class BookOrbitCatalogSource(
                 )
             },
             acquisitions = listOfNotNull(
-                file?.let {
-                    Acquisition(
-                        href = server.resolve("/api/v1/books/files/${it.id}/serve"),
+                when {
+                    audiobookAsset != null -> Acquisition(
+                        href = server.resolve("/api/v1/audiobooks/$bookId/assets/${audiobookAsset.assetId}/content"),
                         mediaType = summary.format.name,
                         format = summary.format,
                         relation = AcquisitionRelation.ACQUIRE,
-                        sizeBytes = it.sizeBytes,
+                        sizeBytes = file?.sizeBytes,
                     )
+                    file != null -> Acquisition(
+                        href = server.resolve("/api/v1/books/files/${file.id}/serve"),
+                        mediaType = summary.format.name,
+                        format = summary.format,
+                        relation = AcquisitionRelation.ACQUIRE,
+                        sizeBytes = file.sizeBytes,
+                    )
+                    else -> null
                 },
             ),
         )

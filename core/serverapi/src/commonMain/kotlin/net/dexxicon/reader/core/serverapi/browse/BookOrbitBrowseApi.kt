@@ -2,6 +2,7 @@ package net.dexxicon.reader.core.serverapi.browse
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.ResponseException
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -17,8 +18,17 @@ import kotlinx.serialization.Serializable
  *   POST /api/v1/libraries/{id}/books            → BookOrbitBookPage  (one library)
  *   GET  /api/v1/books/{id}                      → BookOrbitBook      (detail)
  * Covers:    GET /api/v1/books/{id}/cover        (image, bearer header)
- * Streaming: GET /api/v1/books/files/{fileId}/serve     (range-capable)
+ * Streaming: GET /api/v1/books/files/{fileId}/serve     (range-capable, non-audio only —
+ *            see [audiobookManifest] below for audio)
  * Download:  GET /api/v1/books/files/{fileId}/download  (whole file)
+ *
+ * Audiobooks (server 2.10.0+, issue #192): `files/{fileId}/serve` now 404s for audio
+ * formats — streaming moved to a dedicated controller keyed by `assetId`, not `fileId`:
+ *   GET /api/v1/audiobooks/{bookId}/manifest                    → [BookOrbitAudiobookManifest]
+ *   GET /api/v1/audiobooks/{bookId}/assets/{assetId}/content    → the stream (range-capable)
+ * Servers older than 2.10 don't have this controller at all — [audiobookManifestOrNull] is how
+ * callers detect that and fall back to the pre-2.10 `files/{fileId}/serve` /
+ * `books/{bookId}/audio-progress` routes instead.
  */
 class BookOrbitBrowseApi(private val client: HttpClient) {
 
@@ -34,6 +44,17 @@ class BookOrbitBrowseApi(private val client: HttpClient) {
 
     /** `GET /api/v1/dashboard/scrollers/{continue-reading|continue-listening}` → book cards. */
     suspend fun dashboardScroller(url: String): List<BookOrbitBook> = client.get(url).body()
+
+    /** Null on a server older than 2.10 (the whole `/audiobooks` controller 404s — there's no
+     * per-endpoint way to tell "no manifest for this book" apart from "no such controller",
+     * but a book already confirmed as an audiobook always has one on a 2.10+ server, so 404
+     * unambiguously means the pre-2.10 API is what's there instead). Any other failure
+     * (network, 401/403, a genuine 5xx) rethrows rather than being mistaken for that. */
+    suspend fun audiobookManifestOrNull(url: String): BookOrbitAudiobookManifest? = try {
+        client.get(url).body()
+    } catch (e: ResponseException) {
+        if (e.response.status.value == 404) null else throw e
+    }
 }
 
 @Serializable
@@ -123,4 +144,19 @@ data class BookOrbitFile(
     val sizeBytes: Long? = null,
     val filename: String? = null,
     val durationSeconds: Long? = null,
+)
+
+/** Only the fields Dexxicon needs from `AudiobookManifest` (server `packages/types`) —
+ * `assets` to pick a streaming `assetId`, `revision` since every playback-state write must
+ * echo it back as `manifestRevision`. `ignoreUnknownKeys` drops the rest (book/chapters/etc). */
+@Serializable
+data class BookOrbitAudiobookManifest(
+    val revision: String,
+    val assets: List<BookOrbitAudiobookAsset> = emptyList(),
+)
+
+@Serializable
+data class BookOrbitAudiobookAsset(
+    val assetId: String,
+    val sequence: Int = 0,
 )
