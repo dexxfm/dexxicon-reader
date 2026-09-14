@@ -33,6 +33,12 @@ data class PlayerUiSnapshot(
     val sleepAtChapterEnd: Boolean,
     val currentChapterIndex: Int,
     val chapters: List<PlayerChapter>,
+    /** A human-readable message for the most recent playback failure (issue #190) — a failed
+     *  stream request, an unreachable player service, an unsupported format — or null. Shown
+     *  as a banner alongside the rest of the now-playing UI (cover, title, transport controls
+     *  all stay visible/usable) rather than replacing it, unlike [PlayerScreen]'s own top-level
+     *  `error` param, which is for "we don't have anything to show yet, here's why". */
+    val playbackError: String? = null,
 ) {
     val currentChapterTitle: String?
         get() = chapters.getOrNull(currentChapterIndex)?.title

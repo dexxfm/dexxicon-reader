@@ -7,8 +7,10 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import android.os.Bundle
 import androidx.media3.session.MediaController
@@ -45,6 +47,14 @@ data class PlayerUiState(
     /** `AudioDeviceInfo.id` playback is pinned to, or null for the system default route. */
     val preferredAudioDeviceId: Int? = null,
     val options: PlayerPreferences = PlayerPreferences(),
+    /** A human-readable message for the most recent playback failure — an ExoPlayer-reported
+     *  error (bad stream URL, network failure, unsupported format, …) or a failure to even
+     *  connect to [PlaybackService] — or null. Before this, both failure modes were entirely
+     *  silent: [play] sets [audiobook]/title/cover synchronously, before the real
+     *  [MediaController] connection or the actual stream request ever resolves, so the player
+     *  screen looked fully loaded — cover, title, transport controls — with a Play button that
+     *  simply did nothing forever (issue #190). Cleared automatically by the next [play]. */
+    val error: String? = null,
 ) {
     val currentChapterIndex: Int get() = audiobook?.chapterIndexAt(positionMs) ?: 0
     val currentChapterTitle: String? get() = audiobook?.chapterAt(positionMs)?.title
@@ -61,6 +71,12 @@ class AudiobookPlayer @Inject constructor(
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
     private var controller: MediaController? = null
+    /** Non-null exactly while a [MediaController] connection is in flight — [withController]
+     *  checks this so a burst of commands (issue #190's own reproduction: mash Play a few
+     *  times while the very first connection is still resolving) queues onto [pendingCommands]
+     *  instead of kicking off a redundant `buildAsync()` per call. */
+    private var connectingFuture: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
+    private val pendingCommands = mutableListOf<(MediaController) -> Unit>()
     private var pollJob: Job? = null
     private var sleepJob: Job? = null
     private var current: Audiobook? = null
@@ -104,19 +120,43 @@ class AudiobookPlayer @Inject constructor(
         }
     }
 
+    /**
+     * Runs [block] against a connected [MediaController], connecting first if needed. issue
+     * #190: previously this started a brand-new `buildAsync()` on *every* call made while
+     * [controller] was still null, with no de-duplication — usually harmless, but if that
+     * first connection ever failed or hung (a stuck [PlaybackService] bind, a `SecurityException`
+     * from a missing runtime permission, …) every command just piled up as its own silent,
+     * never-resolving attempt: no error, no timeout, nothing for the UI to show. Now only the
+     * first call actually connects; later calls made before it resolves queue onto
+     * [pendingCommands] instead, and a connection failure is logged and surfaced via [_state]'s
+     * [PlayerUiState.error] rather than disappearing.
+     */
     private fun withController(block: (MediaController) -> Unit) {
         val existing = controller
         if (existing != null) {
             block(existing)
             return
         }
+        pendingCommands.add(block)
+        if (connectingFuture != null) return
+
         val token = SessionToken(context, ComponentName(context, PlaybackService::class.java))
         val future = MediaController.Builder(context, token).buildAsync()
+        connectingFuture = future
         future.addListener({
-            val c = future.get()
-            controller = c
-            c.addListener(playerListener)
-            block(c)
+            connectingFuture = null
+            val queued = pendingCommands.toList()
+            pendingCommands.clear()
+            runCatching { future.get() }
+                .onSuccess { c ->
+                    controller = c
+                    c.addListener(playerListener)
+                    queued.forEach { it(c) }
+                }
+                .onFailure { e ->
+                    Log.e(TAG, "Failed to connect to PlaybackService", e)
+                    _state.value = _state.value.copy(error = "Couldn't start the player — try again.")
+                }
         }, MoreExecutors.directExecutor())
     }
 
@@ -130,6 +170,20 @@ class AudiobookPlayer @Inject constructor(
                 speed = player.playbackParameters.speed,
             )
             if (player.isPlaying) startPolling() else stopPolling()
+        }
+
+        /** issue #190 — previously unhandled entirely, so a failed stream (bad/expired auth on
+         *  [Audiobook.streamUrl], a network error, an unsupported format, …) left the player
+         *  screen showing a fully "loaded" book — cover, title, transport controls all present,
+         *  since [play] sets those synchronously — with a Play button that silently did
+         *  nothing. */
+        override fun onPlayerError(error: PlaybackException) {
+            Log.e(TAG, "Playback error for ${current?.title}: ${error.errorCodeName}", error)
+            _state.value = _state.value.copy(
+                isPlaying = false,
+                isBuffering = false,
+                error = playbackErrorMessage(error),
+            )
         }
     }
 
@@ -330,4 +384,29 @@ class AudiobookPlayer @Inject constructor(
     private fun stopPolling() {
         pollJob?.cancel()
     }
+
+    companion object {
+        private const val TAG = "AudiobookPlayer"
+    }
+}
+
+/** A short, user-facing message for an ExoPlayer-reported playback failure — issue #190. Errors
+ *  reading the actual audio stream (a rejected/expired auth header, a 404, an unreachable host)
+ *  are by far the most likely cause in this app, since [Audiobook.streamUrl] always points at
+ *  the server's own authenticated download endpoint. */
+private fun playbackErrorMessage(error: PlaybackException): String = when (error.errorCode) {
+    PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS,
+    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED,
+    PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT,
+    PlaybackException.ERROR_CODE_IO_UNSPECIFIED,
+    -> "Couldn't reach the server — check your connection and try again."
+    PlaybackException.ERROR_CODE_IO_FILE_NOT_FOUND,
+    PlaybackException.ERROR_CODE_IO_NO_PERMISSION,
+    -> "This audiobook's file couldn't be found on the server."
+    PlaybackException.ERROR_CODE_DECODER_INIT_FAILED,
+    PlaybackException.ERROR_CODE_DECODING_FAILED,
+    PlaybackException.ERROR_CODE_PARSING_CONTAINER_MALFORMED,
+    PlaybackException.ERROR_CODE_PARSING_MANIFEST_MALFORMED,
+    -> "This audiobook's file format isn't supported."
+    else -> "Playback failed — try again."
 }

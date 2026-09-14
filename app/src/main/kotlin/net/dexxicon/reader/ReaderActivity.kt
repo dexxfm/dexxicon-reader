@@ -106,7 +106,17 @@ class ReaderActivity : FragmentActivity() {
                     // screen reads AndroidAppContainer's playerState/playerActions instead,
                     // the same bridge DexxiconApplication.wireMiniPlayer() already populates.
                     composable<PlayerRoute> {
-                        @Suppress("UNUSED_EXPRESSION") hiltViewModel<PlayerViewModel>()
+                        // issue #190: `screen` is read again (it wasn't at all, between #184
+                        // and this fix) purely for `error` — resolving the book/starting
+                        // playback failing (no audio acquisition, a catalog fetch error) — the
+                        // one thing the shared screen's own `state` (AndroidAppContainer's
+                        // playerState, sourced from AudiobookPlayer directly) can't represent,
+                        // since it stays null until playback has actually started. Without
+                        // this, that failure left the player stuck on an unexplained, permanent
+                        // loading spinner — `state` never becomes non-null because `play()` is
+                        // never reached.
+                        val playerViewModel = hiltViewModel<PlayerViewModel>()
+                        val screen by playerViewModel.screen.collectAsStateWithLifecycle()
                         val container = remember {
                             AndroidAppContainer.get(applicationContext, database, okHttpClient)
                         }
@@ -117,6 +127,7 @@ class ReaderActivity : FragmentActivity() {
                                 state = state,
                                 actions = actions,
                                 onBack = { if (!navController.popBackStack()) finish() },
+                                error = screen.error,
                             )
                         }
                     }

@@ -161,6 +161,7 @@ class DexxiconApplication :
                             sleepAtChapterEnd = state.sleepAtChapterEnd,
                             currentChapterIndex = state.currentChapterIndex,
                             chapters = it.chapters.map { chapter -> PlayerChapter(chapter.title, chapter.startMs) },
+                            playbackError = state.error,
                         )
                     },
                 )
