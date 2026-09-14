@@ -49,7 +49,7 @@ class MainActivity : FragmentActivity() {
                 // iOS's Swift readers, the native Hilt-injected reader ViewModels this Activity
                 // hosts already resolve everything they need themselves from serverId/bookId
                 // via their own repositories, the same way they did before :shared existed.
-                onOpenReader = { serverId, bookId, format, _, _, _, _ ->
+                onOpenReader = { serverId, bookId, format, _, _, _, _, _ ->
                     startActivity(ReaderActivity.intent(this, serverId, bookId, format))
                 },
             )

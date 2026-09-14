@@ -33,6 +33,11 @@ import net.dexxicon.reader.shared.di.AppContainer
  * reading direction (and, on iOS, which edge means "next page") without needing its own path
  * back into `:shared`'s catalog data just to check a genre tag.
  *
+ * [title] (issue #183 Phase 4) exists only because the comic reader's chrome needs *some*
+ * title to put in its top bar and, unlike EPUB/PDF, a CBZ has no embedded metadata of its own
+ * to read it from (Readium's `Publication.metadata.title` is what those two use instead) —
+ * every other format already gets a title from the file it opens, so this is otherwise unused.
+ *
  * [audiobook] (issue #114) is non-null only for [ContentFormat.AUDIOBOOK] — bundled into one
  * small data class rather than four more positional parameters most other formats would never
  * use, the same reasoning [AudiobookLaunchInfo] itself documents.
@@ -44,6 +49,7 @@ typealias OnOpenReader = (
     url: String,
     authHeader: String?,
     isManga: Boolean,
+    title: String,
     audiobook: AudiobookLaunchInfo?,
 ) -> Unit
 
@@ -100,5 +106,5 @@ fun AppContainer.openReader(
                 chapters = it.chapters,
             )
         }
-    onOpenReader(serverId, bookId, detail.summary.format, acquisition.href, header, isManga, audiobook)
+    onOpenReader(serverId, bookId, detail.summary.format, acquisition.href, header, isManga, detail.summary.title, audiobook)
 }
