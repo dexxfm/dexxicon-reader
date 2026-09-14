@@ -112,7 +112,19 @@ fun LibraryContent(
             uiState.books.isNotEmpty() && last >= uiState.books.size - 6
         }
     }
-    LaunchedEffect(shouldLoadMore) {
+    // issue #195 — keyed on `uiState.loadingMore` too, not just `shouldLoadMore` alone: a
+    // content-format filter that matches only a handful of a large catalogue (Audiobooks is
+    // the common case) can satisfy "near the end of the list" on page 1 and then *stay*
+    // satisfied through every later page, since the filtered list never grows past the
+    // viewport. `LaunchedEffect` only restarts its block on a key *change*, so keying on
+    // `shouldLoadMore` alone fired loadMore() exactly once (on the false->true edge) and then
+    // never again — silently stranding the rest of that format's books unfetched, since
+    // nothing else was ever going to call loadMore() again. `loadingMore` flips true->false
+    // once per fetch regardless of whether that page's filtered contribution was empty, so
+    // including it re-evaluates `shouldLoadMore` after every single page — continuing to
+    // page through until either enough results are found, or `loadMore()`'s own guards
+    // (`endReached`/`error`/empty book list) stop it.
+    LaunchedEffect(shouldLoadMore, uiState.loadingMore) {
         if (shouldLoadMore) state.loadMore()
     }
 
