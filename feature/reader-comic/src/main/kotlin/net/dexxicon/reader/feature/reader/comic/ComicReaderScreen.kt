@@ -41,7 +41,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.viewpager.widget.ViewPager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.datastore.ReaderFitMode
 import net.dexxicon.reader.core.designsystem.component.pageSnapshot
 import net.dexxicon.reader.core.designsystem.component.pageTurnGesture
 import net.dexxicon.reader.core.designsystem.component.rememberPageTurnState
@@ -81,10 +82,7 @@ fun ComicReaderScreen(
     viewModel: ComicReaderViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val tapNavigation by viewModel.tapNavigation.collectAsStateWithLifecycle()
-    val swipeSensitivity by viewModel.swipeSensitivity.collectAsStateWithLifecycle()
-    val smartZoom by viewModel.smartZoom.collectAsStateWithLifecycle()
-    val rightToLeft by viewModel.rightToLeft.collectAsStateWithLifecycle()
+    val preferences by viewModel.preferences.collectAsStateWithLifecycle()
 
     when (val s = state) {
         is ComicReaderState.Loading -> SharedComicReaderScreen(ComicReaderUiState.Loading, onBack)
@@ -93,14 +91,8 @@ fun ComicReaderScreen(
             state = s,
             onBack = onBack,
             onLocator = viewModel::onLocatorChanged,
-            tapNavigation = tapNavigation,
-            onToggleTapNavigation = viewModel::setTapNavigation,
-            swipeSensitivity = swipeSensitivity,
-            onSwipeSensitivity = viewModel::setSwipeSensitivity,
-            smartZoom = smartZoom,
-            onToggleSmartZoom = viewModel::setSmartZoom,
-            rightToLeft = rightToLeft,
-            onToggleRightToLeft = viewModel::setRightToLeft,
+            preferences = preferences,
+            onUpdatePreferences = viewModel::updatePreferences,
         )
     }
 }
@@ -110,14 +102,8 @@ private fun ReaderContent(
     state: ComicReaderState.Ready,
     onBack: () -> Unit,
     onLocator: (Locator) -> Unit,
-    tapNavigation: Boolean,
-    onToggleTapNavigation: (Boolean) -> Unit,
-    swipeSensitivity: ReaderSwipeSensitivity,
-    onSwipeSensitivity: (ReaderSwipeSensitivity) -> Unit,
-    smartZoom: Boolean,
-    onToggleSmartZoom: (Boolean) -> Unit,
-    rightToLeft: Boolean,
-    onToggleRightToLeft: (Boolean) -> Unit,
+    preferences: ReaderDisplayPreferences,
+    onUpdatePreferences: ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
 ) {
     val activity = LocalActivity.current as? FragmentActivity
     if (activity == null) {
@@ -133,9 +119,9 @@ private fun ReaderContent(
     var pageView by remember { mutableStateOf<View?>(null) }
     var chromeVisible by remember { mutableStateOf(true) }
     var page by remember { mutableIntStateOf(1) }
-    val tapNavEnabled by rememberUpdatedState(tapNavigation)
-    val smartZoomEnabled by rememberUpdatedState(smartZoom)
-    val rtlEnabled by rememberUpdatedState(rightToLeft)
+    val tapNavEnabled by rememberUpdatedState(preferences.tapNavigation)
+    val smartZoomEnabled by rememberUpdatedState(preferences.comicSmartZoom)
+    val rtlEnabled by rememberUpdatedState(preferences.comicRightToLeft)
 
     // Smart zoom ("guided view"): the current page's detected panels, in reading order, and
     // which one (if any) is framed right now. -1 means "showing the whole page".
@@ -247,6 +233,15 @@ private fun ReaderContent(
         onDispose { }
     }
 
+    // issue #183: "Fit"/"Width" — each page is a brand-new PhotoView (Readium recreates one
+    // per page), so this has to re-apply on every page change, not just when the setting
+    // itself changes. The short delay gives that fresh PhotoView one layout pass to measure
+    // its own real size first — [setPagePhotoViewsFitWidth] is a no-op otherwise.
+    LaunchedEffect(pageView, page, preferences.fitMode) {
+        kotlinx.coroutines.delay(50)
+        setPagePhotoViewsFitWidth(pageView, fitWidth = preferences.fitMode == ReaderFitMode.PAGE_WIDTH)
+    }
+
     fun goToPage(target: Int) {
         // Optimistic local update — same reason PDF's own goToPage does this: the slider
         // should track the drag instantly, not wait on the navigator's currentLocator flow.
@@ -268,21 +263,22 @@ private fun ReaderContent(
         state = ComicReaderUiState.Ready(title = state.title, pageCount = state.pageCount),
         onBack = onBack,
         chromeVisible = chromeVisible,
-        swipeSensitivity = swipeSensitivity,
-        onSwipeSensitivity = onSwipeSensitivity,
-        tapNavigation = tapNavigation,
-        onToggleTapNavigation = onToggleTapNavigation,
-        tapNavigationEnabled = !smartZoom,
-        tapNavigationDisabledReason = if (smartZoom) {
+        preferences = preferences,
+        onUpdatePreferences = onUpdatePreferences,
+        tapNavigationEnabled = !smartZoomEnabled,
+        tapNavigationDisabledReason = if (smartZoomEnabled) {
             "Off while Smart zoom is on — swipe to step through panels instead."
         } else {
             null
         },
-        rightToLeft = rightToLeft,
-        onToggleRightToLeft = onToggleRightToLeft,
         currentPage = page,
         onGoToPage = ::goToPage,
-        extraSettings = { SmartZoomSetting(smartZoom, onToggleSmartZoom) },
+        extraSettings = {
+            SmartZoomSetting(
+                smartZoom = preferences.comicSmartZoom,
+                onToggleSmartZoom = { enabled -> onUpdatePreferences { it.copy(comicSmartZoom = enabled) } },
+            )
+        },
         readerContent = {
             val pageTurn = rememberPageTurnState()
             Box(
@@ -295,7 +291,7 @@ private fun ReaderContent(
                     .pageTurnGesture(
                         state = pageTurn,
                         enabled = true,
-                        commitFraction = swipeSensitivity.commitFraction,
+                        commitFraction = preferences.swipeSensitivity.commitFraction,
                         snapshot = { pageView?.pageSnapshot() },
                         onTurn = { forward ->
                             // goForward()/goBackward() pick +1 vs -1 from the system locale, not
@@ -419,6 +415,41 @@ private fun setPagePhotoViewsZoomable(root: View?, zoomable: Boolean) {
         runCatching {
             view.javaClass.getMethod("setZoomable", Boolean::class.javaPrimitiveType)
                 .invoke(view, zoomable)
+        }
+    }
+}
+
+/**
+ * PhotoView's own scale type stays fixed at whatever Readium's `ImageNavigatorFragment`
+ * configures it with (fit-whole-page) — there's no navigator-level API to change it, so
+ * "Width" is applied on top of that base fit as a relative zoom instead: `getMinimumScale()`
+ * is PhotoView's own scale unit for "fit, unzoomed" (usually `1f`), and the ratio between the
+ * image's own fit-to-width and fit-to-whole-page pixel scales tells us how much further to
+ * zoom from there. When width is already the fit's constraining dimension (the common case
+ * for a portrait comic page in a portrait-ish viewport), that ratio is 1 — already fit to
+ * width by default, nothing to do. Reflection, same reasoning as [setPagePhotoViewsZoomable]:
+ * no compile-time dependency on PhotoView from this module.
+ */
+private fun setPagePhotoViewsFitWidth(root: View?, fitWidth: Boolean) {
+    if (root == null) return
+    findPhotoViews(root).forEach { view ->
+        runCatching {
+            val setScale = view.javaClass.getMethod(
+                "setScale", Float::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
+            )
+            val minScale = view.javaClass.getMethod("getMinimumScale").invoke(view) as Float
+            if (!fitWidth) {
+                setScale.invoke(view, minScale, false)
+                return@runCatching
+            }
+            val drawable = (view as? android.widget.ImageView)?.drawable ?: return@runCatching
+            val imgW = drawable.intrinsicWidth.toFloat()
+            val imgH = drawable.intrinsicHeight.toFloat()
+            if (imgW <= 0f || imgH <= 0f || view.width <= 0 || view.height <= 0) return@runCatching
+            val fitCenterScale = minOf(view.width / imgW, view.height / imgH)
+            val fitWidthScale = view.width / imgW
+            if (fitCenterScale <= 0f) return@runCatching
+            setScale.invoke(view, minScale * (fitWidthScale / fitCenterScale), false)
         }
     }
 }

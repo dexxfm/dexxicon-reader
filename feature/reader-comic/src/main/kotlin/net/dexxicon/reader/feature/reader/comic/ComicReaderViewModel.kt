@@ -25,8 +25,8 @@ import net.dexxicon.reader.core.reader.ComicArchiveNormalizer
 import net.dexxicon.reader.core.reader.PublicationStreamer
 import java.io.File
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.datastore.ReaderPreferencesStore
-import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
 import net.dexxicon.reader.feature.reader.comic.navigation.ComicReaderRoute
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
@@ -62,18 +62,6 @@ class ComicReaderViewModel @Inject constructor(
     private val _state = MutableStateFlow<ComicReaderState>(ComicReaderState.Loading)
     val state: StateFlow<ComicReaderState> = _state.asStateFlow()
 
-    val tapNavigation: StateFlow<Boolean> = preferencesStore.preferences
-        .map { it.tapNavigation }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, true)
-
-    val swipeSensitivity: StateFlow<ReaderSwipeSensitivity> = preferencesStore.preferences
-        .map { it.swipeSensitivity }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, ReaderSwipeSensitivity.MEDIUM)
-
-    val smartZoom: StateFlow<Boolean> = preferencesStore.preferences
-        .map { it.comicSmartZoom }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
-
     /** Whether this book's genres/categories (from [load]'s server detail) mention "manga" —
      *  false until detail arrives, and for a fully offline book with no server round-trip. */
     private val mangaGenre = MutableStateFlow(false)
@@ -88,7 +76,7 @@ class ComicReaderViewModel @Inject constructor(
      * follows the shared "Right-to-left" default from Settings — unless overridden for this
      * session via [setRightToLeft].
      */
-    val rightToLeft: StateFlow<Boolean> = combine(
+    private val rightToLeft: StateFlow<Boolean> = combine(
         preferencesStore.preferences.map { it.comicRightToLeft },
         mangaGenre,
         sessionOverride,
@@ -96,16 +84,30 @@ class ComicReaderViewModel @Inject constructor(
         override ?: (isManga || globalDefault)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
-    fun setTapNavigation(enabled: Boolean) {
-        viewModelScope.launch { preferencesStore.update { it.copy(tapNavigation = enabled) } }
-    }
+    /** The persisted preferences, with [comicRightToLeft][ReaderDisplayPreferences
+     *  .comicRightToLeft] replaced by [rightToLeft]'s own genre/session-aware computation —
+     *  everything the shared chrome's settings sheet needs from one place, mirroring PDF's own
+     *  `readerPreferences.preferences` shape one level up (this ViewModel already existed
+     *  before Phase 4 and owns its own store access, unlike the two Phase 2/3 readers, which
+     *  read `AppContainer.readerPreferences` directly). */
+    val preferences: StateFlow<ReaderDisplayPreferences> = combine(
+        preferencesStore.preferences,
+        rightToLeft,
+    ) { stored, effectiveRtl -> stored.copy(comicRightToLeft = effectiveRtl) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, ReaderDisplayPreferences())
 
-    fun setSwipeSensitivity(sensitivity: ReaderSwipeSensitivity) {
-        viewModelScope.launch { preferencesStore.update { it.copy(swipeSensitivity = sensitivity) } }
-    }
-
-    fun setSmartZoom(enabled: Boolean) {
-        viewModelScope.launch { preferencesStore.update { it.copy(comicSmartZoom = enabled) } }
+    /** The shared chrome's settings sheet calls this for every option — [comicRightToLeft]
+     *  needs [setRightToLeft]'s special session-override handling; everything else persists
+     *  directly. Assumes one field changes per call, same as every other reader's settings
+     *  sheet already does (`it.copy(oneField = newValue)`). */
+    fun updatePreferences(transform: (ReaderDisplayPreferences) -> ReaderDisplayPreferences) {
+        val current = preferences.value
+        val updated = transform(current)
+        if (updated.comicRightToLeft != current.comicRightToLeft) {
+            setRightToLeft(updated.comicRightToLeft)
+        } else {
+            viewModelScope.launch { preferencesStore.update { updated } }
+        }
     }
 
     fun setRightToLeft(enabled: Boolean) {

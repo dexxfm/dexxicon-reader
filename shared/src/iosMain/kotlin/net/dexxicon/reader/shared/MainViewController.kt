@@ -485,7 +485,6 @@ fun ComicReaderViewController(
     val chromeVisible by appContainer.comicChromeVisible.collectAsState()
     val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
     val actions = appContainer.comicReaderActions
-    val scope = rememberCoroutineScope()
 
     val screenState = native?.screenState ?: ComicReaderUiState.Loading
     val currentPage = native?.currentPage ?: 1
@@ -499,20 +498,10 @@ fun ComicReaderViewController(
             state = screenState,
             onBack = onBack,
             chromeVisible = chromeVisible,
-            swipeSensitivity = preferences.swipeSensitivity,
-            onSwipeSensitivity = { s ->
-                scope.launch { appContainer.readerPreferences.update { it.copy(swipeSensitivity = s) } }
-            },
-            tapNavigation = preferences.tapNavigation,
-            onToggleTapNavigation = { enabled ->
-                scope.launch { appContainer.readerPreferences.update { it.copy(tapNavigation = enabled) } }
-            },
-            rightToLeft = preferences.comicRightToLeft,
-            onToggleRightToLeft = { enabled ->
-                scope.launch { appContainer.readerPreferences.update { it.copy(comicRightToLeft = enabled) } }
-            },
+            preferences = preferences,
             currentPage = currentPage,
             onGoToPage = actions.goToPage,
+            onUpdatePreferences = { transform -> appContainer.readerPreferences.update(transform) },
             readerContent = {
                 UIKitViewController(
                     factory = { navigatorViewController },
