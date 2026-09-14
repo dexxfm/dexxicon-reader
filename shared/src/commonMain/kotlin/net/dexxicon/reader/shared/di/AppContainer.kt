@@ -59,6 +59,9 @@ import net.dexxicon.reader.shared.reader.AudiobookProgressSync
 import net.dexxicon.reader.shared.reader.epub.EpubProgressBridge
 import net.dexxicon.reader.shared.reader.epub.EpubReaderActions
 import net.dexxicon.reader.shared.reader.epub.EpubReaderNativeState
+import net.dexxicon.reader.shared.reader.pdf.PdfProgressBridge
+import net.dexxicon.reader.shared.reader.pdf.PdfReaderActions
+import net.dexxicon.reader.shared.reader.pdf.PdfReaderNativeState
 
 /**
  * Manual (non-Hilt) composition root for `:shared`'s commonMain UI. Every `:core:*` module
@@ -379,6 +382,20 @@ class AppContainer(
             )
         }
     }
+
+    /** Phase 3 of the shared-reader-chrome redesign (issue #183) — the iOS PDF reader's own
+     * bridge; simpler than the EPUB one (no chrome-hide/active-highlight state — PDF's chrome
+     * has neither), see [PdfReaderNativeState]/[PdfReaderActions]'s own doc comments. */
+    private val _pdfReaderState = MutableStateFlow<PdfReaderNativeState?>(null)
+    val pdfReaderState: StateFlow<PdfReaderNativeState?> = _pdfReaderState.asStateFlow()
+
+    fun updatePdfReaderState(value: PdfReaderNativeState?) {
+        _pdfReaderState.value = value
+    }
+
+    var pdfReaderActions: PdfReaderActions? = null
+
+    val pdfProgressBridge: PdfProgressBridge = PdfProgressBridge(progressRepository, scope)
 
     init {
         realAuthHeaderProvider =

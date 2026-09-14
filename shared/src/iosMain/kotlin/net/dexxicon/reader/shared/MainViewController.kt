@@ -30,6 +30,13 @@ import net.dexxicon.reader.shared.reader.epub.EpubReaderUiState
 import net.dexxicon.reader.shared.reader.epub.TocEntry
 import net.dexxicon.reader.shared.reader.epub.progressionFromLocatorJson
 import net.dexxicon.reader.shared.reader.epub.titleFromLocatorJson
+import net.dexxicon.reader.shared.reader.pdf.PdfProgressBridge
+import net.dexxicon.reader.shared.reader.pdf.PdfReaderActions
+import net.dexxicon.reader.shared.reader.pdf.PdfReaderNativeState
+import net.dexxicon.reader.shared.reader.pdf.PdfReaderScreen
+import net.dexxicon.reader.shared.reader.pdf.PdfReaderUiState
+import net.dexxicon.reader.shared.reader.pdf.pageFromLocatorJson
+import net.dexxicon.reader.shared.reader.pdf.progressionFromLocatorJson as pdfProgressionFromLocatorJson
 import platform.UIKit.UIViewController
 import kotlin.math.abs
 
@@ -309,6 +316,112 @@ fun EpubReaderViewController(
             onDeleteHighlight = { id -> scope.launch { appContainer.highlightRepository.delete(id) } },
             onJumpToRemoteResume = actions.jumpToRemoteResume,
             onDismissRemoteResume = {},
+            onUpdatePreferences = { transform -> appContainer.readerPreferences.update(transform) },
+            readerContent = {
+                UIKitViewController(
+                    factory = { navigatorViewController },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
+        )
+    }
+}
+
+/**
+ * Phase 3 of the shared-reader-chrome redesign (issue #183) — lets Swift's
+ * `PdfReaderViewController` resolve/save reading position, same shape as [epubProgressBridge].
+ */
+fun pdfProgressBridge(): PdfProgressBridge = appContainer.pdfProgressBridge
+
+/** Swift's `PDFNavigatorDelegate` calls this on every `locationDidChange`/on open, same shape
+ * as [updateEpubReaderState]. */
+fun updatePdfReaderState(state: PdfReaderNativeState?) {
+    appContainer.updatePdfReaderState(state)
+}
+
+/** Wires the shared PDF chrome's navigation/preference commands back to the real Readium
+ * Swift navigator, same convention as [setEpubReaderActions] — narrower, since PDF has no
+ * highlights/decorations/chrome-hide to wire up. */
+fun setPdfReaderActions(
+    goToPage: (Int) -> Unit,
+    goToLocatorJson: (String) -> Unit,
+    goToToc: (TocEntry) -> Unit,
+    submitPreferences: (ReaderDisplayPreferences) -> Unit,
+) {
+    appContainer.pdfReaderActions = PdfReaderActions(
+        goToPage = goToPage,
+        goToLocatorJson = goToLocatorJson,
+        goToToc = goToToc,
+        submitPreferences = submitPreferences,
+    )
+}
+
+/**
+ * Fourth Compose root for iOS (issue #183) — same shape as [EpubReaderViewController], minus
+ * the highlights/decorations/chrome-hide plumbing PDF's chrome doesn't have. Bookmarks resolve
+ * to a plain page number via [pageFromLocatorJson] (portable string parsing — see
+ * [PdfReaderActions]'s own doc comment), so `onGoToBookmark` doesn't need a dedicated Swift
+ * action the way EPUB's did.
+ */
+fun PdfReaderViewController(
+    onBack: () -> Unit,
+    navigatorViewController: UIViewController,
+    serverId: String,
+    bookId: String,
+): UIViewController = ComposeUIViewController {
+    val native by appContainer.pdfReaderState.collectAsState()
+    val bookmarks by appContainer.bookmarkRepository.observe(serverId, bookId).collectAsState(emptyList())
+    val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
+    val actions = appContainer.pdfReaderActions
+    val scope = rememberCoroutineScope()
+
+    // issue #183: same reasoning as EpubReaderViewController's own sync call — pulls
+    // server-side bookmarks into the local DB (and pushes any locally-pending ones) on open.
+    LaunchedEffect(serverId, bookId) {
+        runCatching { appContainer.bookmarkRepository.syncFromServer(serverId, bookId) }
+    }
+
+    val screenState = native?.screenState ?: PdfReaderUiState.Loading
+    val currentLocatorJson = native?.currentLocatorJson
+    val currentPage = currentLocatorJson?.let(::pageFromLocatorJson) ?: 1
+
+    val currentBookmark = remember(bookmarks, currentPage) {
+        bookmarks.firstOrNull { !it.isForeign && it.locatorJson.let(::pageFromLocatorJson) == currentPage }
+    }
+
+    LaunchedEffect(preferences) {
+        actions?.submitPreferences?.invoke(preferences)
+    }
+
+    if (actions != null) {
+        PdfReaderScreen(
+            state = screenState,
+            onBack = onBack,
+            preferences = preferences,
+            bookmarks = bookmarks,
+            currentBookmark = currentBookmark,
+            currentPage = currentPage,
+            onAddBookmark = {
+                currentLocatorJson?.let { json ->
+                    val page = pageFromLocatorJson(json)
+                    scope.launch {
+                        appContainer.bookmarkRepository.add(
+                            serverId = serverId,
+                            bookId = bookId,
+                            locatorJson = json,
+                            progression = pdfProgressionFromLocatorJson(json) ?: 0.0,
+                            title = page?.let { "Page $it" } ?: "Bookmark",
+                        )
+                    }
+                }
+            },
+            onDeleteBookmark = { id -> scope.launch { appContainer.bookmarkRepository.delete(id) } },
+            onGoToBookmark = { b ->
+                val page = pageFromLocatorJson(b.locatorJson)
+                if (page != null) actions.goToPage(page) else actions.goToLocatorJson(b.locatorJson)
+            },
+            onGoToToc = actions.goToToc,
+            onGoToPage = actions.goToPage,
             onUpdatePreferences = { transform -> appContainer.readerPreferences.update(transform) },
             readerContent = {
                 UIKitViewController(
