@@ -9,6 +9,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitViewController
 import androidx.compose.ui.window.ComposeUIViewController
+import coil3.SingletonImageLoader
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.model.Bookmark
@@ -54,7 +55,21 @@ import kotlin.math.abs
  * to that composition and a plain process-lifetime singleton are already equivalent in
  * practice — this just makes that equivalence available outside Compose as well.
  */
-private val appContainer: AppContainer by lazy { createAppContainer(PlatformContext()) }
+private val appContainer: AppContainer by lazy {
+    createAppContainer(PlatformContext()).also { container ->
+        // issue #173 — Coil3's Android integration auto-discovers a `SingletonImageLoader
+        // .Factory` by checking whether `Application` implements it (see
+        // `DexxiconApplication.newImageLoader`); there's no such auto-detection on iOS (or any
+        // other non-Android target), so without registering one explicitly here, the first
+        // `AsyncImage` call lazily builds a bare default `ImageLoader` with no network fetcher
+        // at all — every cover request fails silently. `container.imageLoader` already wires
+        // Coil to this same `AppContainer`'s authenticated Ktor client (see that property's
+        // own doc comment on why cover images reuse it rather than a second, unauthenticated
+        // one) — `setSafe` only takes effect if nothing has built the singleton loader yet,
+        // which holds here since this runs before any Composable has had a chance to.
+        SingletonImageLoader.setSafe { container.imageLoader }
+    }
+}
 
 /**
  * Entry point the iOS app wraps in a SwiftUI `UIViewControllerRepresentable`.
