@@ -11,9 +11,12 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -35,6 +38,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -385,11 +389,15 @@ private fun SingleSpreadReader(
 
     // issue #183: "Fit"/"Width" — each page is a brand-new PhotoView (Readium recreates one
     // per page), so this has to re-apply on every page change, not just when the setting
-    // itself changes. The short delay gives that fresh PhotoView one layout pass to measure
-    // its own real size first — [setPagePhotoViewsFitWidth] is a no-op otherwise.
+    // itself changes. [setPagePhotoViewsFitWidth] is a no-op until that fresh PhotoView has
+    // both laid out *and* finished decoding its image — retried on a short poll rather than a
+    // single fixed delay, since a slow (cold-cache/network) decode can outlast any one delay.
     LaunchedEffect(pageView, page, preferences.fitMode) {
-        kotlinx.coroutines.delay(50)
-        setPagePhotoViewsFitWidth(pageView, fitWidth = preferences.fitMode == ReaderFitMode.PAGE_WIDTH)
+        val fitWidth = preferences.fitMode == ReaderFitMode.PAGE_WIDTH
+        repeat(20) {
+            kotlinx.coroutines.delay(50)
+            if (setPagePhotoViewsFitWidth(pageView, fitWidth)) return@LaunchedEffect
+        }
     }
 
     val targetPanel = panels.getOrNull(panelIndex)
@@ -438,7 +446,7 @@ private fun SingleSpreadReader(
         ComicPageContainer(
             fragmentManager = fragmentManager,
             tag = NAV_FRAGMENT_TAG,
-            modifier = Modifier.graphicsLayer {
+            modifier = Modifier.fillMaxSize().graphicsLayer {
                 scaleX = zoomScale
                 scaleY = zoomScale
                 translationX = zoomTx
@@ -492,6 +500,14 @@ private fun DoubleSpreadReader(
         mutableIntStateOf(leadingPageFor(initialLocator?.locations?.position ?: fallbackPage))
     }
     var boxSize by remember { mutableStateOf(IntSize.Zero) }
+    // Each page's own width/height ratio, read straight off its `Drawable.intrinsicWidth/
+    // Height` (plain `ImageView` API, no reflection needed just to *read* this — unlike the
+    // PhotoView-specific zoom manipulation single-page mode uses). Seeded to a typical
+    // portrait comic/manga page ratio so the very first layout pass — before either page has
+    // actually decoded — isn't zero-width; corrected the moment each side's real image loads,
+    // and re-measured on every page turn in case a page genuinely differs.
+    var pageAspectA by remember { mutableStateOf(0.7071f) }
+    var pageAspectB by remember { mutableStateOf(0.7071f) }
     val rtlEnabled by rememberUpdatedState(preferences.comicRightToLeft)
     val pageCount = state.pageCount
 
@@ -580,11 +596,26 @@ private fun DoubleSpreadReader(
         onDispose { if (nav != null && listener != null) nav.removeInputListener(listener) }
     }
 
-    LaunchedEffect(pageViewA, pageViewB, leadingPage, preferences.fitMode) {
-        kotlinx.coroutines.delay(50)
-        val fitWidth = preferences.fitMode == ReaderFitMode.PAGE_WIDTH
-        setPagePhotoViewsFitWidth(pageViewA, fitWidth)
-        setPagePhotoViewsFitWidth(pageViewB, fitWidth)
+    // No PhotoView zoom trickery needed for the "no seam" fill, unlike single-page's Fit/Width
+    // — each container below is sized to match its own page's real aspect ratio exactly, so
+    // Readium's own default fit-whole-page already fills it edge-to-edge. Poll-until-ready
+    // (not a single fixed delay) because a fresh PhotoView's image can still be decoding well
+    // past any one delay.
+    LaunchedEffect(pageViewA, leadingPage) {
+        repeat(20) {
+            kotlinx.coroutines.delay(50)
+            val aspect = readPageAspect(pageViewA) ?: return@repeat
+            pageAspectA = aspect
+            return@LaunchedEffect
+        }
+    }
+    LaunchedEffect(pageViewB, leadingPage) {
+        repeat(20) {
+            kotlinx.coroutines.delay(50)
+            val aspect = readPageAspect(pageViewB) ?: return@repeat
+            pageAspectB = aspect
+            return@LaunchedEffect
+        }
     }
 
     fun advanceSpread(forward: Boolean): Boolean {
@@ -593,6 +624,25 @@ private fun DoubleSpreadReader(
         goToSpread(newLeading)
         return true
     }
+
+    // Both containers are sized to their own page's real aspect ratio — never forced to a flat
+    // 50/50 split — and the pair is centred as one block: fill height if it then fits the
+    // width, else shrink to fit width (still no seam, now letterboxed top/bottom instead of
+    // left/right). Exactly how a real book/manga spread reads, and the only way two same-
+    // height pages end up flush against each other with nothing in between.
+    val boxWidthPx = boxSize.width.toFloat()
+    val boxHeightPx = boxSize.height.toFloat()
+    val combinedAspect = (pageAspectA + pageAspectB).coerceAtLeast(0.01f)
+    val spreadHeightPx = if (boxWidthPx > 0f && boxHeightPx > 0f) {
+        minOf(boxHeightPx, boxWidthPx / combinedAspect)
+    } else {
+        0f
+    }
+    val widthAPx = spreadHeightPx * pageAspectA
+    val widthBPx = spreadHeightPx * pageAspectB
+    val leftWidthPx = if (rtlEnabled) widthBPx else widthAPx
+    val rightWidthPx = if (rtlEnabled) widthAPx else widthBPx
+    val marginXPx = ((boxWidthPx - (leftWidthPx + rightWidthPx)) / 2f).coerceAtLeast(0f)
 
     val pageTurn = rememberPageTurnState()
     Box(
@@ -615,7 +665,9 @@ private fun DoubleSpreadReader(
                 canTurn = { forward, touchX, touchY ->
                     val leftView = if (rtlEnabled) pageViewB else pageViewA
                     val rightView = if (rtlEnabled) pageViewA else pageViewB
-                    canTurnPastZoomSpread(leftView, rightView, boxSize.width, forward, touchX, touchY)
+                    canTurnPastZoomSpread(
+                        leftView, rightView, marginXPx, leftWidthPx, rightWidthPx, forward, touchX, touchY,
+                    )
                 },
                 atBoundary = { forward ->
                     val actuallyForward = forward != rtlEnabled
@@ -623,15 +675,33 @@ private fun DoubleSpreadReader(
                 },
             ),
     ) {
-        Row(Modifier.fillMaxSize()) {
+        val density = LocalDensity.current
+        Row(
+            Modifier
+                .align(Alignment.Center)
+                .width(with(density) { (widthAPx + widthBPx).toDp() })
+                .height(with(density) { spreadHeightPx.toDp() }),
+        ) {
             // First page of the pair sits on the reading direction's leading side — left for
             // LTR, right for RTL/manga — the second page trails it.
             if (rtlEnabled) {
-                ComicPageContainer(fragmentManager, NAV_FRAGMENT_TAG_TRAILING, Modifier.weight(1f)) { pageViewB = it }
-                ComicPageContainer(fragmentManager, NAV_FRAGMENT_TAG_LEADING, Modifier.weight(1f)) { pageViewA = it }
+                ComicPageContainer(
+                    fragmentManager, NAV_FRAGMENT_TAG_TRAILING,
+                    Modifier.width(with(density) { widthBPx.toDp() }).fillMaxHeight(),
+                ) { pageViewB = it }
+                ComicPageContainer(
+                    fragmentManager, NAV_FRAGMENT_TAG_LEADING,
+                    Modifier.width(with(density) { widthAPx.toDp() }).fillMaxHeight(),
+                ) { pageViewA = it }
             } else {
-                ComicPageContainer(fragmentManager, NAV_FRAGMENT_TAG_LEADING, Modifier.weight(1f)) { pageViewA = it }
-                ComicPageContainer(fragmentManager, NAV_FRAGMENT_TAG_TRAILING, Modifier.weight(1f)) { pageViewB = it }
+                ComicPageContainer(
+                    fragmentManager, NAV_FRAGMENT_TAG_LEADING,
+                    Modifier.width(with(density) { widthAPx.toDp() }).fillMaxHeight(),
+                ) { pageViewA = it }
+                ComicPageContainer(
+                    fragmentManager, NAV_FRAGMENT_TAG_TRAILING,
+                    Modifier.width(with(density) { widthBPx.toDp() }).fillMaxHeight(),
+                ) { pageViewB = it }
             }
         }
     }
@@ -654,7 +724,10 @@ private fun resumePageFor(state: ComicReaderState.Ready): Int =
 /**
  * A `FragmentContainerView` hosting one `ImageNavigatorFragment`, added under [tag] the first
  * time this enters composition — shared by [SingleSpreadReader] (one of these) and
- * [DoubleSpreadReader] (two, side by side).
+ * [DoubleSpreadReader] (two, side by side). Sizing is entirely the caller's own — [modifier]
+ * is applied as-is, with no `fillMaxSize()` appended here, since [DoubleSpreadReader] needs an
+ * exact width/height (matching each page's own aspect ratio, not just "half the screen") for
+ * its two containers to sit flush with no seam.
  */
 @Composable
 private fun ComicPageContainer(
@@ -680,7 +753,7 @@ private fun ComicPageContainer(
             }
             container.also(onViewCreated)
         },
-        modifier = modifier.fillMaxSize(),
+        modifier = modifier,
     )
 }
 
@@ -781,9 +854,14 @@ private fun setPagePhotoViewsZoomable(root: View?, zoomable: Boolean) {
  * width by default, nothing to do. Reflection, same reasoning as [setPagePhotoViewsZoomable]:
  * no compile-time dependency on PhotoView from this module.
  */
-private fun setPagePhotoViewsFitWidth(root: View?, fitWidth: Boolean) {
-    if (root == null) return
-    findPhotoViews(root).forEach { view ->
+/** Returns true once at least one found `PhotoView` had a real, laid-out drawable to scale —
+ * callers poll on that rather than trusting a single fixed delay (see the call sites). */
+private fun setPagePhotoViewsFitWidth(root: View?, fitWidth: Boolean): Boolean {
+    if (root == null) return false
+    val views = findPhotoViews(root)
+    if (views.isEmpty()) return false
+    var appliedAny = false
+    views.forEach { view ->
         runCatching {
             val setScale = view.javaClass.getMethod(
                 "setScale", Float::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
@@ -791,6 +869,7 @@ private fun setPagePhotoViewsFitWidth(root: View?, fitWidth: Boolean) {
             val minScale = view.javaClass.getMethod("getMinimumScale").invoke(view) as Float
             if (!fitWidth) {
                 setScale.invoke(view, minScale, false)
+                appliedAny = true
                 return@runCatching
             }
             val drawable = (view as? android.widget.ImageView)?.drawable ?: return@runCatching
@@ -801,8 +880,28 @@ private fun setPagePhotoViewsFitWidth(root: View?, fitWidth: Boolean) {
             val fitWidthScale = view.width / imgW
             if (fitCenterScale <= 0f) return@runCatching
             setScale.invoke(view, minScale * (fitWidthScale / fitCenterScale), false)
+            appliedAny = true
         }
     }
+    return appliedAny
+}
+
+/**
+ * [root]'s first `PhotoView` with an actual decoded image, as a plain width/height ratio —
+ * used to size [DoubleSpreadReader]'s two containers to each page's own real shape (see
+ * [readPageAspect]'s callers) rather than a flat 50/50 split. Plain `ImageView` API, unlike
+ * [setPagePhotoViewsFitWidth]'s PhotoView-specific zoom reflection — reading intrinsic size
+ * needs none of that.
+ */
+private fun readPageAspect(root: View?): Float? {
+    if (root == null) return null
+    findPhotoViews(root).forEach { view ->
+        val drawable = (view as? android.widget.ImageView)?.drawable ?: return@forEach
+        val w = drawable.intrinsicWidth.toFloat()
+        val h = drawable.intrinsicHeight.toFloat()
+        if (w > 0f && h > 0f) return w / h
+    }
+    return null
 }
 
 /**
@@ -831,21 +930,34 @@ private fun canTurnPastZoom(root: View, forward: Boolean, touchX: Float, touchY:
 /**
  * Double-spread version of [canTurnPastZoom]: picks whichever of [leftView]/[rightView] the
  * touch actually landed in — [touchX]/[touchY] are in the enclosing spread `Box`'s coordinate
- * space, the two containers split it evenly left/right — then hit-tests within that container
- * alone, same as the single-page case.
+ * space. Unlike a flat 50/50 split, the two containers can be different widths (each sized to
+ * its own page's aspect ratio) and centred with a margin on either side, so the left
+ * container's own span is `[marginX, marginX + leftWidth)`, not `[0, boxWidth/2)` — a touch
+ * landing in either outer margin (nothing rendered there) hits neither and just falls through
+ * to the default "allow the turn".
  */
 private fun canTurnPastZoomSpread(
     leftView: View?,
     rightView: View?,
-    boxWidth: Int,
+    marginX: Float,
+    leftWidth: Float,
+    rightWidth: Float,
     forward: Boolean,
     touchX: Float,
     touchY: Float,
 ): Boolean {
-    if (boxWidth <= 0) return true
-    val half = boxWidth / 2f
-    val view = if (touchX < half) leftView else rightView
-    val localX = if (touchX < half) touchX else touchX - half
+    val boundaryX = marginX + leftWidth
+    val view = when {
+        touchX < marginX -> null
+        touchX < boundaryX -> leftView
+        touchX < boundaryX + rightWidth -> rightView
+        else -> null
+    }
+    val localX = when (view) {
+        leftView -> touchX - marginX
+        rightView -> touchX - boundaryX
+        else -> touchX
+    }
     return view?.let { canTurnPastZoom(it, forward, localX, touchY) } ?: true
 }
 

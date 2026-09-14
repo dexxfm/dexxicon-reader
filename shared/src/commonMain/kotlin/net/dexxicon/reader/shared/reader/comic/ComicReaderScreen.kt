@@ -86,8 +86,10 @@ fun ComicReaderScreen(
     /** Whether the native embed is *actually* showing two pages side by side right now —
      *  resolved from [ReaderDisplayPreferences.pageLayout] plus (for [ReaderPageLayout.AUTO])
      *  its own viewport-width check, the same `>= 720dp/pt` threshold EPUB's own "Page layout"
-     *  setting already uses. Only affects the bottom bar's label here — pairing pages, syncing
-     *  two navigators, and stepping by a whole spread are all native-embed concerns. */
+     *  setting already uses. Affects the bottom bar's label and greys out "Page fit" (double-
+     *  spread always fills height edge-to-edge, no seam — see the native embed's own
+     *  `setPagePhotoViewsFitHeight`) here; pairing pages, syncing two navigators, and stepping
+     *  by a whole spread are all native-embed concerns. */
     isDoubleSpread: Boolean = false,
     currentPage: Int = 1,
     onGoToPage: (Int) -> Unit = {},
@@ -191,6 +193,7 @@ private fun ReaderContent(
                 onChange = { transform -> scope.launch { onUpdatePreferences(transform) } },
                 tapNavigationEnabled = tapNavigationEnabled,
                 tapNavigationDisabledReason = tapNavigationDisabledReason,
+                isDoubleSpread = isDoubleSpread,
                 extraSettings = extraSettings,
             )
         }
@@ -204,6 +207,7 @@ private fun ComicSettings(
     onChange: ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
     tapNavigationEnabled: Boolean,
     tapNavigationDisabledReason: String?,
+    isDoubleSpread: Boolean,
     extraSettings: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -232,7 +236,16 @@ private fun ComicSettings(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
-        Text("Page fit", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
+        Text(
+            "Page fit",
+            style = MaterialTheme.typography.titleSmall,
+            color = if (isDoubleSpread) {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            modifier = Modifier.padding(top = 16.dp),
+        )
         FlowRow(
             Modifier.fillMaxWidth().padding(top = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -244,11 +257,20 @@ private fun ComicSettings(
                 selected = !fitWidth,
                 onClick = { onChange { it.copy(fitMode = ReaderFitMode.PAGE_FIT) } },
                 label = { Text("Fit") },
+                enabled = !isDoubleSpread,
             )
             FilterChip(
                 selected = fitWidth,
                 onClick = { onChange { it.copy(fitMode = ReaderFitMode.PAGE_WIDTH) } },
                 label = { Text("Width") },
+                enabled = !isDoubleSpread,
+            )
+        }
+        if (isDoubleSpread) {
+            Text(
+                "Always fills height in Two-page layout, edge-to-edge with no seam.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
 
