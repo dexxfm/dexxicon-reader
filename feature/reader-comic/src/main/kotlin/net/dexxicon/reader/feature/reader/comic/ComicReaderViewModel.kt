@@ -39,6 +39,12 @@ sealed interface ComicReaderState {
     data class Ready(
         val publication: Publication,
         val initialLocator: Locator?,
+        /** 1-based resume page, known up front from progress resolution — [initialLocator],
+         *  when resuming to a specific page, is built via `Publication.locatorFromLink` from
+         *  a bare `Link` and never gets its own `Locator.locations.position` set, so anything
+         *  needing the actual page number (issue #188's double-spread pairing) must use this
+         *  instead of trying to re-derive it from the locator. */
+        val initialPage: Int?,
         val title: String,
         val pageCount: Int,
     ) : ComicReaderState
@@ -193,6 +199,7 @@ class ComicReaderViewModel @Inject constructor(
                 _state.value = ComicReaderState.Ready(
                     publication = opened.value,
                     initialLocator = resumeLocator,
+                    initialPage = targetPage,
                     title = detail?.summary?.title ?: downloadTitle ?: "",
                     pageCount = opened.value.readingOrder.size,
                 )
