@@ -223,10 +223,16 @@ class NativeProgressSync(
                 if (it == 0) pushBookOrbitLegacyAudioProgress(server, bookId, digestUrl, percent, positionMs)
                 return
             }
-            val assetId = manifest.assets.minByOrNull { asset -> asset.sequence }?.assetId ?: return
             val current = api.bookOrbitPlaybackState(
                 server.resolve("/api/v1/audiobooks/$bookId/playback-state"),
             ).takeIf { r -> r.isSuccessful }?.body()
+            // issue #212 — must target whichever asset the book is *actually* on, not always
+            // the first one: a reset (mark unread) that hits the wrong asset on a multi-file
+            // audiobook leaves the real current asset's position untouched, so the server's
+            // own aggregate progress never actually changes and the "reset" doesn't stick.
+            val assetId = current?.assetId
+                ?: manifest.assets.minByOrNull { asset -> asset.sequence }?.assetId
+                ?: return
             val response = api.bookOrbitSavePlaybackState(
                 server.resolve("/api/v1/audiobooks/$bookId/playback-state"),
                 BookOrbitPlaybackStateUpdate(
