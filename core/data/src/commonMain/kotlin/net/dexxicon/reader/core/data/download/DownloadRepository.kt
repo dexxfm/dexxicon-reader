@@ -48,6 +48,10 @@ interface DownloadRepository {
      *  each one individually. */
     suspend fun removeAllForServer(serverId: String)
 
+    /** issue #206 follow-up — one-time (safe to re-run) sweep for downloads orphaned by a
+     *  server deleted *before* [removeAllForServer] existed. */
+    suspend fun removeOrphaned()
+
     /** The on-disk path for a completed download, or null. */
     suspend fun localFile(serverId: String, bookId: String): String?
 }

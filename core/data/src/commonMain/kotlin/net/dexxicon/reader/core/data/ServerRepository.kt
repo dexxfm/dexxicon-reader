@@ -122,4 +122,16 @@ class ServerRepository(
         readingProgressDao.deleteForServer(id)
         downloadRepository.removeAllForServer(id)
     }
+
+    /**
+     * issue #206 follow-up — [delete]'s cascade only stops *new* orphans; servers deleted
+     * before that fix existed left rows behind that this never retroactively cleans up on its
+     * own. Safe to call anytime (e.g. once per app start) — a no-op once nothing's orphaned.
+     */
+    suspend fun sweepOrphanedData() = withContext(io) {
+        bookmarkDao.deleteOrphaned()
+        highlightDao.deleteOrphaned()
+        readingProgressDao.deleteOrphaned()
+        downloadRepository.removeOrphaned()
+    }
 }

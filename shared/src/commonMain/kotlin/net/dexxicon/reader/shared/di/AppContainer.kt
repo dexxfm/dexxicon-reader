@@ -431,6 +431,9 @@ class AppContainer(
     init {
         realAuthHeaderProvider =
             AuthHeaderProviderImpl(database.serverDao(), credentialStore, tokenManager, scope)
+        // issue #206 follow-up — one-time-per-launch sweep for rows orphaned by a server
+        // deleted before the delete()-time cascade existed; cheap DB-only no-op once clean.
+        scope.launch { serverRepository.sweepOrphanedData() }
     }
 }
 
