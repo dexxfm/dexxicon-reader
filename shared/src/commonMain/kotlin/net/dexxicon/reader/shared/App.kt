@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -61,6 +63,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -639,6 +642,7 @@ fun AddServerScreen(
         )
     }
     var showKoReader by remember { mutableStateOf(false) }
+    var showPassword by remember { mutableStateOf(false) }
 
     // While the browser step is in progress, the SSO WebView replaces the form entirely —
     // once completeSso() moves ssoState past Ready (into Exchanging, on the way to Idle+saved
@@ -717,12 +721,20 @@ fun AddServerScreen(
                     onValueChange = state::onPasswordChange,
                     label = { Text(if (state.isEditing) "Password (leave blank to keep current)" else "Password") },
                     singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
+                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.None,
                         autoCorrectEnabled = false,
                         keyboardType = KeyboardType.Password,
                     ),
+                    trailingIcon = {
+                        IconButton(onClick = { showPassword = !showPassword }) {
+                            Icon(
+                                if (showPassword) Icons.Filled.VisibilityOff else Icons.Filled.Visibility,
+                                contentDescription = if (showPassword) "Hide password" else "Show password",
+                            )
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
 
