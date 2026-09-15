@@ -19,6 +19,11 @@ data class ReadingProgressEntity(
     val coverUrl: String? = null,
     val format: String? = null,
     val digestUrl: String? = null,
+    /** issue #214 — true when this row holds a local change the server hasn't confirmed yet.
+     *  A server with no real progress timestamp (BookOrbit) can't tell "genuinely more
+     *  advanced" from "just hasn't synced" by percent alone, so reconciliation trusts this
+     *  flag instead: dirty rows get pushed, clean rows always adopt whatever the server says. */
+    val dirty: Boolean = false,
 ) {
     fun toDomain(): ReadingProgress = ReadingProgress(
         serverId = serverId,

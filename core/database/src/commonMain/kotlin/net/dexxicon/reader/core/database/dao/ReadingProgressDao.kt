@@ -49,4 +49,11 @@ interface ReadingProgressDao {
      *  deleted *before* [deleteForServer] existed, which never got cleaned up. */
     @Query("DELETE FROM reading_progress WHERE serverId NOT IN (SELECT id FROM servers)")
     suspend fun deleteOrphaned()
+
+    /** issue #214 — clears [ReadingProgressEntity.dirty] once a push actually lands, but only
+     *  if this row is still the same write we just pushed (`updatedAt` matches) — a newer
+     *  local write racing in while the push was in flight leaves its own `dirty = true` alone
+     *  instead of being clobbered back to "confirmed". */
+    @Query("UPDATE reading_progress SET dirty = 0 WHERE key = :key AND updatedAt = :updatedAt")
+    suspend fun clearDirtyIfUnchanged(key: String, updatedAt: Long)
 }

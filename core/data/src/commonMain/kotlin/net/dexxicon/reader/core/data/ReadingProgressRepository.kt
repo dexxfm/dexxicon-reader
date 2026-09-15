@@ -113,12 +113,13 @@ class ReadingProgressRepository(
                 percent = progress.percent ?: existing?.percent,
                 locator = progress.locator ?: existing?.locator,
             ),
-        )
+            // issue #214 — a fresh local write until the push below actually confirms it.
+        ).copy(dirty = true)
         dao.upsert(merged)
 
         if (progress.percent != null) {
             val domain = merged.toDomain()
-            appScope.launch { pushToServer(domain) }
+            appScope.launch { pushToServer(merged.key, merged.updatedAt, domain) }
         }
     }
 
@@ -300,12 +301,22 @@ class ReadingProgressRepository(
         val domain = row.toDomain()
 
         if (usesNative(server)) {
-            val native = nativeSync.pull(server, row.bookId, format, row.digestUrl)
-            when {
-                native == null || localPercent - native.percent > 0.005 -> runCatching {
-                    nativeSync.push(server, row.bookId, format, row.digestUrl, localPercent, positionMsOf(domain), pageOf(domain))
-                }
-                shouldAdoptNative(native, row) -> {
+            // issue #214 — a server with no real progress timestamp (BookOrbit) can't tell
+            // "genuinely more advanced" from "just hasn't synced" by comparing percentages;
+            // an explicit reset (mark unread) *lowers* percent, and the old percent-diff
+            // heuristic read that as every other device being "ahead" and pushed their stale
+            // cache right back over it. `dirty` is real information a clock isn't: it's set
+            // the moment this device makes a local change, and cleared only once the push
+            // actually lands — so a dirty row still fights for its change, and a clean one
+            // (nothing unconfirmed here) simply trusts whatever the server currently says.
+            if (row.dirty) {
+                val pushed = nativeSync.push(
+                    server, row.bookId, format, row.digestUrl, localPercent, positionMsOf(domain), pageOf(domain),
+                )
+                if (pushed) dao.clearDirtyIfUnchanged(row.key, row.updatedAt)
+            } else {
+                val native = nativeSync.pull(server, row.bookId, format, row.digestUrl)
+                if (native != null && kotlin.math.abs(native.percent - localPercent) > 0.005) {
                     // Adopt the server's %, and — for comics/PDF where it also sent an
                     // exact page — move the local position so reopening resumes there.
                     val locator = native.page
@@ -350,29 +361,29 @@ class ReadingProgressRepository(
         else -> SyncFailureReason.SERVER_ERROR
     }
 
-    private fun shouldAdoptNative(native: NativeProgress, row: ReadingProgressEntity): Boolean {
-        val local = row.percent ?: 0.0
-        if (native.percent - local <= 0.005) return false
-        return native.updatedAtMillis == null || native.updatedAtMillis > row.updatedAt
-    }
-
-    private suspend fun pushToServer(progress: ReadingProgress) {
+    /** issue #214 — clears [key]'s dirty flag once the push for the write stamped [updatedAt]
+     *  actually lands. Takes the key/timestamp separately from [progress] (rather than just
+     *  re-deriving them from it) so [dao.clearDirtyIfUnchanged] pins the exact write this call
+     *  is confirming, even though this runs on [appScope] after [save] has already returned
+     *  and a newer write could have landed in the meantime. */
+    private suspend fun pushToServer(key: String, updatedAt: Long, progress: ReadingProgress) {
         val percent = progress.percent ?: return
         val server = serverRepository.get(progress.serverId) ?: return
         val format = progress.format ?: ContentFormat.EPUB
 
-        if (usesNative(server)) {
-            runCatching {
-                nativeSync.push(
-                    server, progress.bookId, format, progress.digestUrl,
-                    percent, positionMsOf(progress), pageOf(progress),
-                )
-            }
+        val pushed = if (usesNative(server)) {
+            nativeSync.push(
+                server, progress.bookId, format, progress.digestUrl,
+                percent, positionMsOf(progress), pageOf(progress),
+            )
         } else if (usesKoSync(server)) {
             digestSourceFor(progress.serverId, progress.bookId, progress.digestUrl)?.let { source ->
-                runCatching { koSync.push(server, progress.key, source, percent.coerceIn(0.0, 1.0)) }
-            }
+                runCatching { koSync.push(server, progress.key, source, percent.coerceIn(0.0, 1.0)) }.isSuccess
+            } ?: false
+        } else {
+            false
         }
+        if (pushed) dao.clearDirtyIfUnchanged(key, updatedAt)
     }
 
     /** Audiobook position in ms, parsed from the `{"position":<ms>}` locator. */
