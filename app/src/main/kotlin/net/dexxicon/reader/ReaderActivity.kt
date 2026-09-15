@@ -128,6 +128,11 @@ class ReaderActivity : FragmentActivity() {
                                 actions = actions,
                                 onBack = { if (!navController.popBackStack()) finish() },
                                 error = screen.error,
+                                // issue #216 — same reasoning as `error` above: a per-open
+                                // decision the shared screen's own `state` (sourced straight
+                                // from the player engine) has no way to represent.
+                                resumeConflict = screen.resumeConflict,
+                                onResumeConflict = playerViewModel::resolveResumeConflict,
                             )
                         }
                     }

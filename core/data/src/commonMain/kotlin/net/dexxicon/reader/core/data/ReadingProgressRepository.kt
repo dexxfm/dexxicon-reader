@@ -160,8 +160,11 @@ class ReadingProgressRepository(
     }
 
     /**
-     * The position (ms) an audiobook should resume at: the furthest of the local position and
-     * whatever the server has. Never rewinds.
+     * The position (ms) an audiobook should resume at: the server's, when it's reachable and
+     * has one — the server is the cross-device source of truth, and that includes reflecting
+     * an explicit reset (issue #216; before this it was "furthest of local and server, never
+     * rewinds", which is exactly what let a stale local cache silently outrun a reset). Falls
+     * back to [localMs] only when the server can't be reached at all, or has nothing recorded.
      */
     suspend fun audiobookResumeMs(
         serverId: String,
@@ -172,21 +175,37 @@ class ReadingProgressRepository(
     ): Long = withContext(io) {
         if (durationMs <= 0L) return@withContext localMs
         val server = serverRepository.get(serverId) ?: return@withContext localMs
-        var best = localMs
 
         if (usesNative(server)) {
-            nativeSync.pull(server, bookId, ContentFormat.AUDIOBOOK, digestUrl)?.let { np ->
-                val ms = np.positionMs ?: (np.percent.coerceIn(0.0, 1.0) * durationMs).toLong()
-                best = maxOf(best, ms)
-            }
+            nativeAudiobookPositionMs(serverId, bookId, digestUrl, durationMs)?.let { return@withContext it }
         } else if (usesKoSync(server)) {
             digestSourceFor(serverId, bookId, digestUrl)?.let { source ->
                 runCatching { koSync.pull(server, key(serverId, bookId), source) }.getOrNull()?.let {
-                    best = maxOf(best, (it.percentage.coerceIn(0.0, 1.0) * durationMs).toLong())
+                    return@withContext (it.percentage.coerceIn(0.0, 1.0) * durationMs).toLong()
                 }
             }
         }
-        best
+        localMs
+    }
+
+    /**
+     * issue #216 — the server's raw audiobook position (ms), **not** blended with local like
+     * [audiobookResumeMs]'s "furthest wins, never rewind" — so a caller that needs to know
+     * whether the two genuinely *disagree* (rather than just picking one silently) can compare
+     * this against whatever position it already has. Null when the server has nothing, or the
+     * pull fails.
+     */
+    suspend fun nativeAudiobookPositionMs(
+        serverId: String,
+        bookId: String,
+        digestUrl: String?,
+        durationMs: Long,
+    ): Long? = withContext(io) {
+        if (durationMs <= 0L) return@withContext null
+        val server = serverRepository.get(serverId)?.takeIf { usesNative(it) } ?: return@withContext null
+        nativeSync.pull(server, bookId, ContentFormat.AUDIOBOOK, digestUrl)?.let { np ->
+            np.positionMs ?: (np.percent.coerceIn(0.0, 1.0) * durationMs).toLong()
+        }
     }
 
     /**

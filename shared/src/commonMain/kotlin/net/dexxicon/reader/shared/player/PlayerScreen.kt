@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.Replay
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
@@ -62,6 +63,7 @@ import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.core.designsystem.component.PillButton
 import net.dexxicon.reader.core.designsystem.theme.CoverShapeLarge
 import net.dexxicon.reader.core.designsystem.theme.Pill
+import net.dexxicon.reader.core.model.ResumeConflict
 import kotlin.math.abs
 
 private val SLEEP_OPTIONS = listOf(
@@ -95,6 +97,11 @@ fun PlayerScreen(
      * a network error) — matches Android's old `PlayerViewModel.screen.error`. `null` (the
      * common case, [state] simply not being loaded *yet*) shows the loading spinner instead. */
     error: String? = null,
+    /** issue #216 — non-null when the current/about-to-resume position and the server's
+     *  disagree meaningfully; playback is held (not autoplaying) until [onResumeConflict]
+     *  resolves it. */
+    resumeConflict: ResumeConflict? = null,
+    onResumeConflict: (useServerPosition: Boolean) -> Unit = {},
 ) {
     var showChapters by remember { mutableStateOf(false) }
     var showSpeed by remember { mutableStateOf(false) }
@@ -218,6 +225,32 @@ fun PlayerScreen(
                 }
             }
         }
+    }
+
+    // issue #216 — a blocking choice, not a dismissible banner: silently picking a side here
+    // is exactly the bug (a stale cached position kept winning and got pushed right back to
+    // the server), so this holds playback until the user actually decides.
+    if (resumeConflict != null) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Resume from where you left off?") },
+            text = {
+                Text(
+                    "The server has this at ${formatTime(resumeConflict.serverPositionMs)}, " +
+                        "but this device is at ${formatTime(resumeConflict.localPositionMs)}.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { onResumeConflict(true) }) {
+                    Text("Resume at ${formatTime(resumeConflict.serverPositionMs)}")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onResumeConflict(false) }) {
+                    Text("Keep ${formatTime(resumeConflict.localPositionMs)}")
+                }
+            },
+        )
     }
 }
 

@@ -7,6 +7,7 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.NativeProgressSync
 import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
@@ -107,6 +108,15 @@ class BookActions(
                 serverId = serverId,
                 bookId = bookId,
                 percent = percent,
+                // issue #216 follow-up — save() merges a null locator with whatever the row
+                // already had, so a bare percent=0.0 here left the *position* untouched: for
+                // BookOrbit audiobooks specifically, whose playback-state API has no
+                // percentage field at all, positionMs is the only thing that actually reaches
+                // the server — meaning "mark as unread" silently did nothing server-side for
+                // any book that already had real progress (the normal case). Explicitly
+                // zeroing the locator only for that reset case (format+percent both known,
+                // narrowly scoped rather than reworking save()'s merge semantics generally).
+                locator = "{\"position\":0}".takeIf { s.format == ContentFormat.AUDIOBOOK && percent == 0.0 },
                 format = s.format,
                 title = s.title,
                 author = s.authorLine.takeIf { it.isNotBlank() },
