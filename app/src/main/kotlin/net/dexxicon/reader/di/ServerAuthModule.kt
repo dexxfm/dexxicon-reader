@@ -14,7 +14,11 @@ import net.dexxicon.reader.core.common.DexxiconDispatcher
 import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.TokenManager
+import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.database.DexxiconDatabase
+import net.dexxicon.reader.core.database.dao.BookmarkDao
+import net.dexxicon.reader.core.database.dao.HighlightDao
+import net.dexxicon.reader.core.database.dao.ReadingProgressDao
 import net.dexxicon.reader.core.database.dao.ServerDao
 import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.DexxiconHttpClient
@@ -108,5 +112,12 @@ object ServerAuthModule {
         tokenManager: TokenManager,
         nativeUserApi: NativeUserApi,
         @Dispatcher(DexxiconDispatcher.IO) io: CoroutineDispatcher,
-    ): ServerRepository = ServerRepository(serverDao, credentialStore, tokenManager, nativeUserApi, io)
+        bookmarkDao: BookmarkDao,
+        highlightDao: HighlightDao,
+        readingProgressDao: ReadingProgressDao,
+        downloadRepository: DownloadRepository,
+    ): ServerRepository = ServerRepository(
+        serverDao, credentialStore, tokenManager, nativeUserApi, io,
+        bookmarkDao, highlightDao, readingProgressDao, downloadRepository,
+    )
 }

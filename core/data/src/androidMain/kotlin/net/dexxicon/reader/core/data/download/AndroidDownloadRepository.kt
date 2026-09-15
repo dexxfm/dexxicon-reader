@@ -133,6 +133,17 @@ class AndroidDownloadRepository @Inject constructor(
         dao.deleteByKey(key)
     }
 
+    override suspend fun removeAllForServer(serverId: String) = withContext(io) {
+        dao.forServer(serverId).forEach { entity ->
+            workManager.cancelUniqueWork(DownloadWorker.workName(entity.key))
+            entity.localPath?.let { path ->
+                File(path).delete()
+                File("$path.part").delete()
+            }
+        }
+        dao.deleteForServer(serverId)
+    }
+
     override suspend fun localFile(serverId: String, bookId: String): String? = withContext(io) {
         val entity = dao.find(key(serverId, bookId)) ?: return@withContext null
         if (entity.status != DownloadStatus.DONE.name) return@withContext null

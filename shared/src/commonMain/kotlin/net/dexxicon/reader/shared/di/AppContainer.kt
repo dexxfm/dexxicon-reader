@@ -207,6 +207,10 @@ class AppContainer(
         tokenManager = tokenManager,
         nativeUserApi = nativeUserApi,
         io = io,
+        bookmarkDao = database.bookmarkDao(),
+        highlightDao = database.highlightDao(),
+        readingProgressDao = database.readingProgressDao(),
+        downloadRepository = downloadRepository,
     )
 
     private val nativeProgressSync = NativeProgressSync(nativeProgressApi, bookOrbitBrowseApi, syncStateStore, io)

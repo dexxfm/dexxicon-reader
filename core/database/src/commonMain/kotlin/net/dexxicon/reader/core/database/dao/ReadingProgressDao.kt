@@ -37,4 +37,11 @@ interface ReadingProgressDao {
 
     @Query("DELETE FROM reading_progress WHERE key = :key")
     suspend fun deleteByKey(key: String)
+
+    /** issue #206 — server removal cascade. `observeAll()`/`observeInProgress()` (Home's
+     *  Continue reading/listening shelves) have no server scoping at all — a deleted server's
+     *  progress rows, which cache their own title/cover, would otherwise keep showing up there
+     *  forever. */
+    @Query("DELETE FROM reading_progress WHERE serverId = :serverId")
+    suspend fun deleteForServer(serverId: String)
 }

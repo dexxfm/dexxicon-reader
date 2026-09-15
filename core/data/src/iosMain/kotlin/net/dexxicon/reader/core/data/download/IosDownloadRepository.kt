@@ -29,5 +29,6 @@ class IosDownloadRepository : DownloadRepository {
     }
 
     override suspend fun remove(serverId: String, bookId: String) = Unit
+    override suspend fun removeAllForServer(serverId: String) = Unit
     override suspend fun localFile(serverId: String, bookId: String): String? = null
 }

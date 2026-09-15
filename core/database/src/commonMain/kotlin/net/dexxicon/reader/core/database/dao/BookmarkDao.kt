@@ -29,4 +29,8 @@ interface BookmarkDao {
 
     @Query("DELETE FROM bookmarks WHERE id = :id")
     suspend fun hardDelete(id: String)
+
+    /** issue #206 — server removal cascade; bookmarks otherwise outlive their server forever. */
+    @Query("DELETE FROM bookmarks WHERE serverId = :serverId")
+    suspend fun deleteForServer(serverId: String)
 }
