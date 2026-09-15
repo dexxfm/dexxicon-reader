@@ -5,6 +5,15 @@
 - JDK 17+ (the Android Studio JBR works)
 - Android SDK, platform 37, build-tools 36
 
+`gradle.properties` pins `org.gradle.java.home` to the Windows dev machine's Android Studio
+JBR path. On any other machine (or a different JDK location), override it in your own
+`~/.gradle/gradle.properties` — that file takes precedence over the project's — rather than
+editing the committed one:
+
+```properties
+org.gradle.java.home=/path/to/your/jdk-17-or-newer
+```
+
 ```bash
 ./gradlew :app:assembleDebug
 ```
