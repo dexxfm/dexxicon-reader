@@ -9,6 +9,10 @@ import kotlin.time.ExperimentalTime
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import net.dexxicon.reader.core.data.auth.TokenManager
+import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.database.dao.BookmarkDao
+import net.dexxicon.reader.core.database.dao.HighlightDao
+import net.dexxicon.reader.core.database.dao.ReadingProgressDao
 import net.dexxicon.reader.core.database.dao.ServerDao
 import net.dexxicon.reader.core.database.entity.ServerEntity
 import net.dexxicon.reader.core.model.Server
@@ -38,6 +42,13 @@ class ServerRepository(
     private val tokenManager: TokenManager,
     private val nativeUserApi: NativeUserApi,
     private val io: CoroutineDispatcher,
+    // issue #206 — deleted-server cascade cleanup. Raw DAOs (not ReadingProgressRepository
+    // etc.) specifically to avoid a circular dependency: ReadingProgressRepository already
+    // depends on this class.
+    private val bookmarkDao: BookmarkDao,
+    private val highlightDao: HighlightDao,
+    private val readingProgressDao: ReadingProgressDao,
+    private val downloadRepository: DownloadRepository,
 ) {
     val servers: Flow<List<Server>> =
         serverDao.observeAll().map { list -> list.map { it.toDomain() } }
@@ -93,9 +104,22 @@ class ServerRepository(
         serverDao.applyOrder(orderedIds)
     }
 
-    suspend fun delete(id: String) {
+    /**
+     * issue #206 — deleting a server used to leave every bookmark/highlight/reading-progress/
+     * download row tied to it behind forever: nothing else referenced [id] again, but nothing
+     * ever deleted them either (no DB-level cascade exists on any of these tables). Home's
+     * Continue reading/listening and Downloaded shelves in particular read *all* rows with no
+     * server-list filtering of their own, and both `ReadingProgressEntity`/`DownloadEntity`
+     * cache their own title/cover — so an orphaned row from a removed server kept surfacing
+     * there indefinitely, showing stale data for a book whose server no longer exists.
+     */
+    suspend fun delete(id: String) = withContext(io) {
         serverDao.deleteById(id)
         credentialStore.clear(id)
         tokenManager.invalidate(id)
+        bookmarkDao.deleteForServer(id)
+        highlightDao.deleteForServer(id)
+        readingProgressDao.deleteForServer(id)
+        downloadRepository.removeAllForServer(id)
     }
 }

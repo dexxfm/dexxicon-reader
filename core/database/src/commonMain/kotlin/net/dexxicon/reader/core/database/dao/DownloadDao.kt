@@ -44,4 +44,14 @@ interface DownloadDao {
 
     @Query("DELETE FROM downloads WHERE key = :key")
     suspend fun deleteByKey(key: String)
+
+    /** issue #206 — server removal cascade; `observeAll()` (Home's Downloaded shelf) has no
+     *  server scoping, so a deleted server's downloads — which cache their own title/cover —
+     *  would otherwise keep showing up there forever. Returned so the caller can also clean
+     *  up each one's on-disk file/queued work before the rows are gone. */
+    @Query("SELECT * FROM downloads WHERE serverId = :serverId")
+    suspend fun forServer(serverId: String): List<DownloadEntity>
+
+    @Query("DELETE FROM downloads WHERE serverId = :serverId")
+    suspend fun deleteForServer(serverId: String)
 }

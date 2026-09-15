@@ -29,4 +29,8 @@ interface HighlightDao {
 
     @Query("DELETE FROM highlights WHERE id = :id")
     suspend fun hardDelete(id: String)
+
+    /** issue #206 — server removal cascade; highlights otherwise outlive their server forever. */
+    @Query("DELETE FROM highlights WHERE serverId = :serverId")
+    suspend fun deleteForServer(serverId: String)
 }

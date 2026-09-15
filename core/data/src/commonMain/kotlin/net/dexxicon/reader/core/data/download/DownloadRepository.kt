@@ -43,6 +43,11 @@ interface DownloadRepository {
     suspend fun enqueue(detail: BookDetail): EnqueueResult
     suspend fun remove(serverId: String, bookId: String)
 
+    /** issue #206 — server removal cascade: cancels/removes every download still tied to
+     *  [serverId] (queued work, on-disk files, DB rows alike), same as calling [remove] for
+     *  each one individually. */
+    suspend fun removeAllForServer(serverId: String)
+
     /** The on-disk path for a completed download, or null. */
     suspend fun localFile(serverId: String, bookId: String): String?
 }
