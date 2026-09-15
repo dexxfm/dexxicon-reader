@@ -371,21 +371,29 @@ private fun Scrubber(state: PlayerUiSnapshot, onSeek: (Long) -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         var scrubbing by remember { mutableStateOf<Float?>(null) }
         val duration = state.durationMs.coerceAtLeast(1L)
+        // issue #205 — durationMs is still 0 before playback metadata has loaded (or stays 0
+        // forever on a connection error). Slider clamps `value` into `valueRange`, so a real,
+        // possibly large resumed positionMs against that 1ms placeholder range rendered as a
+        // full bar instead of empty. Position is meaningless as a fraction of an unknown total,
+        // so show 0 until a real duration arrives.
+        val durationKnown = state.durationMs > 0L
+        val position = if (durationKnown) (scrubbing ?: state.positionMs.toFloat()) else 0f
         Slider(
-            value = scrubbing ?: state.positionMs.toFloat(),
+            value = position,
             onValueChange = { scrubbing = it },
             onValueChangeFinished = {
                 scrubbing?.let { onSeek(it.toLong()) }
                 scrubbing = null
             },
             valueRange = 0f..duration.toFloat(),
+            enabled = durationKnown,
             modifier = Modifier.semantics {
                 contentDescription = "Playback position"
-                stateDescription = "${formatTime((scrubbing ?: state.positionMs.toFloat()).toLong())} of ${formatTime(duration)}"
+                stateDescription = "${formatTime(position.toLong())} of ${formatTime(duration)}"
             },
         )
         Row(Modifier.fillMaxWidth(), Arrangement.SpaceBetween) {
-            Text(formatTime((scrubbing ?: state.positionMs.toFloat()).toLong()), style = MaterialTheme.typography.labelSmall)
+            Text(formatTime(position.toLong()), style = MaterialTheme.typography.labelSmall)
             Text(formatTime(duration), style = MaterialTheme.typography.labelSmall)
         }
     }
