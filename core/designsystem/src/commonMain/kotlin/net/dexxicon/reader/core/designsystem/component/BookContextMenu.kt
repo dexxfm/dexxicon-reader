@@ -1,7 +1,6 @@
 package net.dexxicon.reader.core.designsystem.component
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -62,7 +61,6 @@ fun BookContextMenu(
             DropdownMenuItem(
                 text = { Text("Book details") },
                 leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) },
-                trailingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null) },
                 onClick = { onDismiss(); onDetails() },
             )
             val (label, icon) = when (downloadStatus) {
