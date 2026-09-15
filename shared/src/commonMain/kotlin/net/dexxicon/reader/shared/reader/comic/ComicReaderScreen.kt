@@ -91,6 +91,12 @@ fun ComicReaderScreen(
      *  `setPagePhotoViewsFitHeight`) here; pairing pages, syncing two navigators, and stepping
      *  by a whole spread are all native-embed concerns. */
     isDoubleSpread: Boolean = false,
+    /** issue #204 — whether the viewport is wide enough to *offer* "Two-page" at all (the
+     *  same `>= 720dp/pt` check as [isDoubleSpread]'s own AUTO resolution), independent of
+     *  whether double-spread is showing right now — SINGLE can be explicitly selected on a
+     *  wide screen too, and the chip still needs to know width to grey out DOUBLE correctly.
+     *  Defaults `true` (permissive) so callers that don't care about this gating don't have to. */
+    canUseDoubleSpread: Boolean = true,
     currentPage: Int = 1,
     onGoToPage: (Int) -> Unit = {},
     onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit = {},
@@ -115,6 +121,7 @@ fun ComicReaderScreen(
             tapNavigationEnabled = tapNavigationEnabled,
             tapNavigationDisabledReason = tapNavigationDisabledReason,
             isDoubleSpread = isDoubleSpread,
+            canUseDoubleSpread = canUseDoubleSpread,
             currentPage = currentPage,
             onGoToPage = onGoToPage,
             onUpdatePreferences = onUpdatePreferences,
@@ -134,6 +141,7 @@ private fun ReaderContent(
     tapNavigationEnabled: Boolean,
     tapNavigationDisabledReason: String?,
     isDoubleSpread: Boolean,
+    canUseDoubleSpread: Boolean,
     currentPage: Int,
     onGoToPage: (Int) -> Unit,
     onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
@@ -194,6 +202,7 @@ private fun ReaderContent(
                 tapNavigationEnabled = tapNavigationEnabled,
                 tapNavigationDisabledReason = tapNavigationDisabledReason,
                 isDoubleSpread = isDoubleSpread,
+                canUseDoubleSpread = canUseDoubleSpread,
                 extraSettings = extraSettings,
             )
         }
@@ -208,6 +217,7 @@ private fun ComicSettings(
     tapNavigationEnabled: Boolean,
     tapNavigationDisabledReason: String?,
     isDoubleSpread: Boolean,
+    canUseDoubleSpread: Boolean,
     extraSettings: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -284,8 +294,16 @@ private fun ComicSettings(
                     selected = preferences.pageLayout == layout,
                     onClick = { onChange { it.copy(pageLayout = layout) } },
                     label = { Text(comicPageLayoutLabel(layout)) },
+                    enabled = layout != ReaderPageLayout.DOUBLE || canUseDoubleSpread,
                 )
             }
+        }
+        if (preferences.pageLayout == ReaderPageLayout.DOUBLE && !canUseDoubleSpread) {
+            Text(
+                "Screen is too narrow for Two-page — showing Single instead.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Text("Page-turn swipe", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 16.dp))
