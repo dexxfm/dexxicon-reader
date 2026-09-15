@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
@@ -61,6 +62,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
+import coil3.compose.LocalPlatformContext
+import coil3.request.CachePolicy
+import coil3.request.ImageRequest
 import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.core.designsystem.theme.CoverShapeMedium
 import net.dexxicon.reader.core.designsystem.theme.Pill
@@ -234,13 +239,50 @@ private fun HeroBlock(
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CoverShapeMedium),
         ) {
-            s.coverUrl?.let {
+            var failed by remember(s.coverUrl) { mutableStateOf(false) }
+            if (s.coverUrl != null && !failed) {
+                // issue #163 — a cover added/changed server-side after this URL was first (and
+                // maybe unsuccessfully) fetched would otherwise never be seen again: Coil keys
+                // its memory/disk cache by URL, and this app's cover URLs are a fixed
+                // `/books/{id}/cover` with no cache-busting param. Detail is the one place a
+                // user is likely to check "did my newly-added cover show up", so it always
+                // re-validates over the network here (WRITE_ONLY skips the cache *read*, not
+                // the write) rather than trusting a stale cached miss/old image — the refreshed
+                // result still populates the shared cache for the Library grid's benefit.
+                val context = LocalPlatformContext.current
                 AsyncImage(
-                    model = it,
+                    model = remember(s.coverUrl) {
+                        ImageRequest.Builder(context)
+                            .data(s.coverUrl)
+                            .memoryCachePolicy(CachePolicy.WRITE_ONLY)
+                            .diskCachePolicy(CachePolicy.WRITE_ONLY)
+                            .build()
+                    },
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
+                    onState = { state -> failed = state is AsyncImagePainter.State.Error },
                 )
+            } else {
+                // Same "no cover" treatment as the grid's CoverImage — a genuine load failure
+                // (no cover on the server, a 404) reads identically to "there's just no cover".
+                Column(
+                    Modifier.align(Alignment.Center),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.MenuBook,
+                        contentDescription = null,
+                        modifier = Modifier.size(40.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        "No Cover",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

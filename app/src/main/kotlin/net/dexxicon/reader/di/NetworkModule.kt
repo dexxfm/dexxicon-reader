@@ -11,6 +11,7 @@ import net.dexxicon.reader.core.network.AuthInterceptor
 import net.dexxicon.reader.core.network.DexxiconHttpClient
 import net.dexxicon.reader.core.network.PersistentCookieJar
 import net.dexxicon.reader.core.network.ReadiumHttpClient
+import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import org.readium.r2.shared.util.http.HttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -62,6 +63,15 @@ object NetworkModule {
         .readTimeout(60, TimeUnit.SECONDS)
         .callTimeout(0, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
+        // issue #163 — this one client also serves Coil's cover-image fetcher (see
+        // DexxiconApplication.newImageLoader), and OkHttp's default Dispatcher caps concurrent
+        // requests to a single host at 5. A Library grid page loads a burst of uncached covers
+        // from one server at once, competing with other API calls for those same 5 slots —
+        // reproduced live as several-second-long grey placeholder boxes on a freshly-scrolled
+        // grid (they resolve fine on their own, just slowly). Almost every server here is a
+        // single self-hosted origin per user, so there's no risk of this politely-sized bump
+        // hammering a third party the way a much higher default would for a multi-host client.
+        .dispatcher(Dispatcher().apply { maxRequestsPerHost = 16 })
         .build()
 
     /** Readium's HTTP stack, delegating to the shared authenticated client. */

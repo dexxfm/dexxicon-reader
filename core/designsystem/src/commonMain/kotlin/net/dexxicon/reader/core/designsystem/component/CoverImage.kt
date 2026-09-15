@@ -1,7 +1,9 @@
 package net.dexxicon.reader.core.designsystem.component
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +16,12 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -22,6 +29,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import coil3.compose.AsyncImagePainter
 import net.dexxicon.reader.core.designsystem.theme.CoverShapeSmall
 import net.dexxicon.reader.core.model.ContentFormat
 
@@ -51,20 +59,37 @@ fun CoverImage(
             .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
-        if (coverUrl != null) {
+        // issue #163 — a genuine load failure (a 404 for a book with no cover, a
+        // scroll-cancelled request that's given up) rendered as the exact same empty grey box
+        // as "still loading", so a permanently-stuck cover was indistinguishable from a slow
+        // one. Track error state per coverUrl and fall back to the same "no cover" icon used
+        // when there's no URL at all, rather than leaving it blank forever.
+        var failed by remember(coverUrl) { mutableStateOf(false) }
+        if (coverUrl != null && !failed) {
             AsyncImage(
                 model = coverUrl,
                 contentDescription = contentDescription,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+                onState = { state -> failed = state is AsyncImagePainter.State.Error },
             )
         } else {
-            Icon(
-                Icons.AutoMirrored.Filled.MenuBook,
-                contentDescription = contentDescription,
-                modifier = Modifier.size(32.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.MenuBook,
+                    contentDescription = contentDescription,
+                    modifier = Modifier.size(32.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    "No Cover",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         if (downloaded) {
