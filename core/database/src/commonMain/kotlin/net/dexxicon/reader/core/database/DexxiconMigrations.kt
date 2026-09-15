@@ -147,9 +147,15 @@ internal val MIGRATION_8_9 = object : Migration(8, 9) {
     }
 }
 
+internal val MIGRATION_9_10 = object : Migration(9, 10) {
+    override fun migrate(connection: SQLiteConnection) {
+        connection.execSQL("ALTER TABLE `reading_progress` ADD COLUMN `dirty` INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 internal val ALL_MIGRATIONS = arrayOf(
     MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
-    MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9,
+    MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10,
 )
 
 /** Finishes a platform [getDatabaseBuilder]'s builder — driver, migrations, dispatcher. */

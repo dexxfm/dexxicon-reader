@@ -114,6 +114,8 @@ class NativeProgressSync(
             ?.also { Logger.i(TAG, "pull ${server.type} $bookId $format -> $it") }
     }
 
+    /** issue #214 — returns whether the push actually landed, so callers can clear a row's
+     *  dirty flag only once the server has genuinely confirmed the write. */
     suspend fun push(
         server: Server,
         bookId: String,
@@ -122,7 +124,7 @@ class NativeProgressSync(
         percent: Double,
         positionMs: Long?,
         position: String?,
-    ) = withContext(io) {
+    ): Boolean = withContext(io) {
         runCatching {
             when (server.type) {
                 ServerType.BOOKORBIT -> pushBookOrbit(server, bookId, format, digestUrl, percent, positionMs, position)
@@ -133,7 +135,7 @@ class NativeProgressSync(
             syncStateStore.markSynced(server.id)
             Logger.i(TAG, "push ${server.type} $bookId $format pct=$percent pos=${position ?: positionMs} ok")
         }.onFailure { Logger.w(TAG, "push ${server.type} $bookId $format failed: ${it.message}") }
-        Unit
+            .isSuccess
     }
 
     // ---- BookOrbit ----
