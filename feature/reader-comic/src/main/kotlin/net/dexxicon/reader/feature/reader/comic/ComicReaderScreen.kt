@@ -143,10 +143,15 @@ private fun ReaderContent(
     val fragmentManager = activity.supportFragmentManager
 
     val wideViewport = LocalConfiguration.current.screenWidthDp.dp >= 720.dp
+    // issue #204 — DOUBLE used to force double-spread at any width, even a phone-narrow one
+    // where it's unusably cramped. The settings sheet now disables "Two-page" below 720dp to
+    // match, but a screen can still narrow below that *while* DOUBLE is already the saved
+    // preference (e.g. unfolding a foldable and folding it back), so this falls back to
+    // single-page the same way AUTO would rather than trust the stale preference alone.
     val isDoubleSpread = when (preferences.pageLayout) {
         ReaderPageLayout.AUTO -> wideViewport
         ReaderPageLayout.SINGLE -> false
-        ReaderPageLayout.DOUBLE -> true
+        ReaderPageLayout.DOUBLE -> wideViewport
     }
 
     // The authoritative resume page, resolved once up front by the ViewModel — see
@@ -191,6 +196,7 @@ private fun ReaderContent(
             else -> null
         },
         isDoubleSpread = isDoubleSpread,
+        canUseDoubleSpread = wideViewport,
         currentPage = page,
         onGoToPage = ::goToPage,
         extraSettings = {
