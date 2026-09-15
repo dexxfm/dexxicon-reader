@@ -106,6 +106,13 @@ class BooksState(
             }
         }
         scope.launch {
+            container.appPreferences.preferences.map { it.catalogSort }.distinctUntilChanged().collect {
+                if (it == sort) return@collect
+                sort = it
+                refresh()
+            }
+        }
+        scope.launch {
             container.appPreferences.preferences.map { it.coverTapAction }.distinctUntilChanged().collect {
                 coverTapAction = it
             }
@@ -113,10 +120,12 @@ class BooksState(
         refresh()
     }
 
+    /** Persists this screen's own sort choice — the Settings default is untouched. The
+     *  actual [sort] update and [refresh] happen when that write is reflected back through
+     *  the preference collector above, same as [toggleViewMode]. */
     fun onSortChange(newSort: BookSort) {
         if (newSort == sort) return
-        sort = newSort
-        refresh()
+        scope.launch { container.appPreferences.setCatalogSort(newSort) }
     }
 
     fun onFilterSelected(newFilter: ContentFilter) {

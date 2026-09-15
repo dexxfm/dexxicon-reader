@@ -99,6 +99,13 @@ class LibraryState(
             }
         }
         scope.launch {
+            container.appPreferences.preferences.map { it.browseSort }.distinctUntilChanged().collect { sort ->
+                if (sort == _uiState.value.sort) return@collect
+                _uiState.update { it.copy(sort = sort) }
+                reload()
+            }
+        }
+        scope.launch {
             container.appPreferences.preferences.map { it.coverTapAction }.distinctUntilChanged().collect { action ->
                 _uiState.update { it.copy(coverTapAction = action) }
             }
@@ -121,10 +128,12 @@ class LibraryState(
 
     fun onQueryChange(value: String) = _uiState.update { it.copy(query = value) }
 
+    /** Persists Library's own sort choice — the Settings default is untouched. The actual
+     *  [LibraryUiState.sort] update and [reload] happen when that write is reflected back
+     *  through the preference collector above, same as [toggleViewMode]. */
     fun onSortSelected(sort: BookSort) {
         if (sort == _uiState.value.sort) return
-        _uiState.update { it.copy(sort = sort) }
-        reload()
+        scope.launch { container.appPreferences.setBrowseSort(sort) }
     }
 
     fun onFilterSelected(filter: ContentFilter) {
