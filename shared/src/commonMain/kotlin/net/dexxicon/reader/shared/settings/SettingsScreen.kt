@@ -43,6 +43,7 @@ import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.designsystem.component.FormatLegend
 import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
+import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.relativeTime
@@ -174,6 +175,25 @@ fun SettingsScreen(
                             selected = prefs.bookViewDefault == mode,
                             onClick = { state.setBookViewDefault(mode) },
                             label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                        )
+                    }
+                }
+
+                LayoutSpacer(Modifier.height(16.dp))
+                Text("Default sort", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "The order new lists start in for the Library and a server's catalog. Each " +
+                        "screen keeps its own sort; changing this here resets them all.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    BookSort.entries.forEach { sort ->
+                        FilterChip(
+                            selected = prefs.bookSortDefault == sort,
+                            onClick = { state.setBookSortDefault(sort) },
+                            label = { Text(sort.name.lowercase().replaceFirstChar { it.uppercase() }) },
                         )
                     }
                 }
