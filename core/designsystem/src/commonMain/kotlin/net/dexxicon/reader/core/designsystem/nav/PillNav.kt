@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import net.dexxicon.reader.core.designsystem.theme.Pill
 
@@ -41,6 +42,19 @@ import net.dexxicon.reader.core.designsystem.theme.Pill
  * extra breathing room above the pill reads better than content stopping flush against it.
  */
 val FloatingNavClearance = 96.dp
+
+/**
+ * Extra clearance below the pill, on top of the system's own bottom inset
+ * (`navigationBarsPadding()`, applied by the caller) — see [FloatingPillNavBar]'s own
+ * `padding(bottom = ...)`. Platform-specific because the system inset itself isn't
+ * comparable across platforms: Android's gesture-nav inset (~24dp on a stock Pixel-class
+ * device) is noticeably smaller than iOS's home-indicator safe area (a fixed 34pt on every
+ * Face-ID device), so the same flat extra margin on both left the pill sitting visibly
+ * higher on iOS (measured: 34pt inset + 16dp extra = 50pt total vs Android's 24dp + 16dp =
+ * 40dp total — confirmed via a real on-device inset readout on both platforms, not
+ * estimated from screenshots). iOS's extra margin is reduced so the two totals match.
+ */
+internal expect val PillExtraBottomMargin: Dp
 
 /**
  * Phase 4 (issue #115) — the floating pill bottom nav from the Claude Design mockup, replacing
@@ -91,7 +105,7 @@ fun <T> FloatingPillNavBar(
     // it this Box shrinks to wrap the pill's own width, and the pill ends up wherever its
     // parent Column (the host Scaffold's bottomBar slot) puts a Start-aligned child: flush
     // left, not centered (issue #115 PR feedback).
-    Box(modifier.fillMaxWidth().padding(bottom = 16.dp), contentAlignment = Alignment.Center) {
+    Box(modifier.fillMaxWidth().padding(bottom = PillExtraBottomMargin), contentAlignment = Alignment.Center) {
         Surface(
             shape = Pill,
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f),
