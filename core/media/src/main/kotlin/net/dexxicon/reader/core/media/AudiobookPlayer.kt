@@ -187,7 +187,14 @@ class AudiobookPlayer @Inject constructor(
         }
     }
 
-    fun play(audiobook: Audiobook, startPositionMs: Long) {
+    fun play(audiobook: Audiobook, startPositionMs: Long) = load(audiobook, startPositionMs, autoplay = true)
+
+    /** issue #216 — loads and seeks exactly like [play], but leaves playback paused: for
+     *  when the caller first needs the user to resolve a resume-position conflict (the
+     *  server and the locally-known position disagree) rather than silently picking one. */
+    fun prepare(audiobook: Audiobook, startPositionMs: Long) = load(audiobook, startPositionMs, autoplay = false)
+
+    private fun load(audiobook: Audiobook, startPositionMs: Long, autoplay: Boolean) {
         current = audiobook
         _state.value = PlayerUiState(
             audiobook = audiobook,
@@ -229,10 +236,21 @@ class AudiobookPlayer @Inject constructor(
             // wherever they last set it — see setSpeed()).
             c.setPlaybackSpeed(options.defaultSpeed)
             c.prepare()
-            c.play()
+            if (autoplay) c.play()
             applySkipSilence(options.skipSilence)
             if (preferredDeviceId != null) applyAudioOutput(preferredDeviceId)
         }
+    }
+
+    /** issue #216 — starts playback of whatever's already loaded, without touching position:
+     *  resolves a resume conflict by keeping the current position. */
+    fun resume() = withController { it.play() }
+
+    /** issue #216 — seeks then starts playback: resolves a resume conflict by accepting the
+     *  server's position. */
+    fun seekAndPlay(positionMs: Long) = withController { c ->
+        c.seekTo(positionMs.coerceAtLeast(0L))
+        c.play()
     }
 
     private fun applySkipSilence(enabled: Boolean) = withController { c ->
