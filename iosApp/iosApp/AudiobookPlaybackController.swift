@@ -440,7 +440,8 @@ final class AudiobookPlaybackController: NSObject {
             sleepTimerEndsAtEpochMs: state.sleepTimerEndsAt.map { KotlinLong(value: Int64($0.timeIntervalSince1970 * 1000)) },
             sleepAtChapterEnd: state.sleepAtChapterEnd,
             currentChapterIndex: Int32(state.currentChapterIndex),
-            chapters: book.chapters.map { PlayerChapter(title: $0.title, startMs: $0.startMs) }
+            chapters: book.chapters.map { PlayerChapter(title: $0.title, startMs: $0.startMs) },
+            playbackError: nil
         ))
     }
 
