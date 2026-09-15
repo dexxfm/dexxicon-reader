@@ -44,4 +44,9 @@ interface ReadingProgressDao {
      *  forever. */
     @Query("DELETE FROM reading_progress WHERE serverId = :serverId")
     suspend fun deleteForServer(serverId: String)
+
+    /** issue #206 follow-up — one-time (safe to re-run) sweep for rows orphaned by a server
+     *  deleted *before* [deleteForServer] existed, which never got cleaned up. */
+    @Query("DELETE FROM reading_progress WHERE serverId NOT IN (SELECT id FROM servers)")
+    suspend fun deleteOrphaned()
 }
