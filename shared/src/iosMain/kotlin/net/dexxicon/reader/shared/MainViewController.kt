@@ -15,6 +15,7 @@ import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
+import net.dexxicon.reader.shared.carplay.CarPlayLibraryBridge
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.di.PlatformContext
 import net.dexxicon.reader.shared.di.createAppContainer
@@ -93,6 +94,12 @@ fun MainViewController(onOpenReader: OnOpenReader) = ComposeUIViewController {
  * result for as long as it needs it.
  */
 fun audiobookProgressSync(): AudiobookProgressSync = appContainer.audiobookProgressSync
+
+/**
+ * issue #240 — CarPlay's `CarPlaySceneDelegate` calls this once (same top-level-function
+ * convention as [audiobookProgressSync]) to build its `CPListTemplate` browse tree.
+ */
+fun carPlayLibraryBridge(): CarPlayLibraryBridge = appContainer.carPlayLibraryBridge
 
 /**
  * Phase 4 Stage I (issue #146) — the iOS half of the same bridge Android's

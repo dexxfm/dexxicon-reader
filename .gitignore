@@ -33,3 +33,4 @@ iosApp/iosApp.xcodeproj/
 iosApp/**/xcuserdata/
 iosApp/DerivedData/
 *.xcworkspace/xcuserdata/
+.tmp_screens/
