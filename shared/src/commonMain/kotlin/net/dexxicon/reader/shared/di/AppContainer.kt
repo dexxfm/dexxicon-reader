@@ -441,6 +441,21 @@ class AppContainer(
         _comicIsDoubleSpread.value = value
     }
 
+    /** issue #188/#204 — whether the viewport is currently wide enough to *offer* "Two-page" at
+     *  all (independent of [comicIsDoubleSpread], which is whether it's showing right now —
+     *  SINGLE can be explicitly selected on a wide screen too). Pushed from Swift the same way
+     *  as [comicIsDoubleSpread], from the identical `>= 720pt` check — see
+     *  [net.dexxicon.reader.shared.reader.comic.ComicReaderScreen]'s `canUseDoubleSpread` param
+     *  doc comment for why this needs to be separate from [comicIsDoubleSpread]. Defaults `true`
+     *  (permissive) until Swift's first real layout pass pushes the actual value, matching that
+     *  param's own permissive default. */
+    private val _comicCanUseDoubleSpread = MutableStateFlow(true)
+    val comicCanUseDoubleSpread: StateFlow<Boolean> = _comicCanUseDoubleSpread.asStateFlow()
+
+    fun updateComicCanUseDoubleSpread(value: Boolean) {
+        _comicCanUseDoubleSpread.value = value
+    }
+
     init {
         realAuthHeaderProvider =
             AuthHeaderProviderImpl(database.serverDao(), credentialStore, tokenManager, scope)

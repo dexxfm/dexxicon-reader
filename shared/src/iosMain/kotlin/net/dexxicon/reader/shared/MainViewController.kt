@@ -478,6 +478,12 @@ fun updateComicIsDoubleSpread(isDoubleSpread: Boolean) {
     appContainer.updateComicIsDoubleSpread(isDoubleSpread)
 }
 
+/** issue #188/#204 — see [net.dexxicon.reader.shared.di.AppContainer.comicCanUseDoubleSpread]'s
+ *  own doc comment. */
+fun updateComicCanUseDoubleSpread(canUse: Boolean) {
+    appContainer.updateComicCanUseDoubleSpread(canUse)
+}
+
 /** Wires the shared comic chrome's page/preference commands back to the real Swift pager,
  * same convention as [setPdfReaderActions]. */
 fun setComicReaderActions(
@@ -506,6 +512,7 @@ fun ComicReaderViewController(
     val chromeVisible by appContainer.comicChromeVisible.collectAsState()
     val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
     val isDoubleSpread by appContainer.comicIsDoubleSpread.collectAsState()
+    val canUseDoubleSpread by appContainer.comicCanUseDoubleSpread.collectAsState()
     val actions = appContainer.comicReaderActions
 
     val screenState = native?.screenState ?: ComicReaderUiState.Loading
@@ -530,6 +537,7 @@ fun ComicReaderViewController(
                 null
             },
             isDoubleSpread = isDoubleSpread,
+            canUseDoubleSpread = canUseDoubleSpread,
             currentPage = currentPage,
             onGoToPage = actions.goToPage,
             onUpdatePreferences = { transform -> appContainer.readerPreferences.update(transform) },

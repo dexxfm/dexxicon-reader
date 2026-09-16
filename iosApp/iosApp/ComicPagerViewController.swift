@@ -218,14 +218,26 @@ final class ComicPagerViewController: UIViewController {
     private func updateIsDoubleSpread() {
         guard let prefs = lastPreferences else { return }
         let wideViewport = view.bounds.width >= 720
+        // issue #204 — DOUBLE falls back to the same wideViewport check AUTO uses, not an
+        // unconditional true: the settings sheet disables "Two-page" below 720pt (see
+        // canUseDoubleSpread below), but the viewport can still narrow *while* DOUBLE is
+        // already the saved preference (e.g. Split View resize), so a stale preference alone
+        // must never force an unusably cramped spread on a phone-sized window. Same fix
+        // already applied to the Android/shared ComicReaderScreen — see that file's own
+        // comment on this exact scenario.
         let isDoubleSpread: Bool
         if prefs.pageLayout == DatastoreReaderPageLayout.auto_ {
             isDoubleSpread = wideViewport
         } else if prefs.pageLayout == DatastoreReaderPageLayout.double_ {
-            isDoubleSpread = true
+            isDoubleSpread = wideViewport
         } else {
             isDoubleSpread = false
         }
+        // issue #204 — pushed unconditionally (not gated on isDoubleSpread's own change check
+        // below): the viewport can narrow below 720pt while a SINGLE-layout book is open,
+        // which never changes isDoubleSpread (already false) but must still grey out "Two-page"
+        // in the settings sheet so a phone-sized window can't select it.
+        MainViewControllerKt.updateComicCanUseDoubleSpread(canUse: wideViewport)
         guard content?.isDoubleSpread != isDoubleSpread else { return }
         content?.isDoubleSpread = isDoubleSpread
         MainViewControllerKt.updateComicIsDoubleSpread(isDoubleSpread: isDoubleSpread)
