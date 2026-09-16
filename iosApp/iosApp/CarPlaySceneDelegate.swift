@@ -77,38 +77,48 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         }
     }
 
+    /// issue #240 (requested live): one tab per list, instead of three stacked sections in a
+    /// single scrolling list — easier to parse at a glance while driving, and each tab keeps
+    /// its own scroll position when switching back to it, unlike sections in one long list.
     private func presentLibrary(
         continueListening: [CarPlayAudiobookCard],
         downloaded: [CarPlayAudiobookCard],
         all: [CarPlayAudiobookCard]
     ) {
-        var sections: [CPListSection] = []
+        var tabs: [CPListTemplate] = []
         if !continueListening.isEmpty {
-            sections.append(CPListSection(
-                items: continueListening.map(listItem),
-                header: "Continue listening",
-                sectionIndexTitle: nil
-            ))
+            tabs.append(tab(title: "Continue listening", cards: continueListening))
         }
         if !downloaded.isEmpty {
-            sections.append(CPListSection(
-                items: downloaded.map(listItem),
-                header: "Downloaded",
-                sectionIndexTitle: nil
-            ))
+            tabs.append(tab(title: "Downloaded", cards: downloaded))
         }
         if !all.isEmpty {
-            sections.append(CPListSection(
-                items: all.map(listItem),
-                header: "All audiobooks",
-                sectionIndexTitle: nil
-            ))
+            tabs.append(tab(title: "All audiobooks", cards: all))
+        }
+        if tabs.isEmpty {
+            // No content anywhere — a tab bar needs at least one tab, so fall back to a plain
+            // empty list rather than an invalid zero-tab CPTabBarTemplate.
+            interfaceController?.setRootTemplate(
+                CPListTemplate(title: "Dexxicon Reader", sections: []),
+                animated: true,
+                completion: nil
+            )
+            return
         }
         interfaceController?.setRootTemplate(
-            CPListTemplate(title: "Dexxicon Reader", sections: sections),
+            CPTabBarTemplate(templates: tabs),
             animated: true,
             completion: nil
         )
+    }
+
+    private func tab(title: String, cards: [CarPlayAudiobookCard]) -> CPListTemplate {
+        let template = CPListTemplate(
+            title: title,
+            sections: [CPListSection(items: cards.map(listItem), header: nil, sectionIndexTitle: nil)]
+        )
+        template.tabTitle = title
+        return template
     }
 
     private func listItem(for card: CarPlayAudiobookCard) -> CPListItem {
@@ -171,7 +181,23 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
                 digestUrl: playable.digestUrl
             )
             AudiobookPlaybackController.shared.start(book: book, authHeader: playable.authHeader)
-            self.interfaceController?.pushTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
+            self.showNowPlaying()
+        }
+    }
+
+    /// issue #240: real crash confirmed via crash log — `CPNowPlayingTemplate.shared` is a
+    /// singleton, so playing a second book after already having pushed it once threw
+    /// `"Pushing the same template instance more than once is not supported."` `pushTemplate`
+    /// is only safe the first time; once it's already somewhere in the stack (the user picked
+    /// a book, went back to the browse tabs, then picked another), `popToTemplate` brings the
+    /// same instance back to the front instead of pushing a duplicate.
+    private func showNowPlaying() {
+        guard let interfaceController else { return }
+        let alreadyPushed = interfaceController.templates.contains { $0 === CPNowPlayingTemplate.shared }
+        if alreadyPushed {
+            interfaceController.popToTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
+        } else {
+            interfaceController.pushTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
         }
     }
 }
