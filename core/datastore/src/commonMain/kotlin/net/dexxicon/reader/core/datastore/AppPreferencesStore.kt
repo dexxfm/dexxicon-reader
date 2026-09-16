@@ -9,6 +9,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import okio.Path.Companion.toPath
 
@@ -33,6 +34,12 @@ data class AppPreferences(
     val browseView: BookViewMode = BookViewMode.GRID,
     /** A server catalog's current layout — its own toggle, falls back to [bookViewDefault]. */
     val catalogView: BookViewMode = BookViewMode.GRID,
+    /** The sort order new lists start with, chosen in Settings (issue #218). */
+    val bookSortDefault: BookSort = BookSort.RECENT,
+    /** Browse's current sort — its own choice, falls back to [bookSortDefault]. */
+    val browseSort: BookSort = BookSort.RECENT,
+    /** A server catalog's current sort — its own choice, falls back to [bookSortDefault]. */
+    val catalogSort: BookSort = BookSort.RECENT,
     /** What tapping a cover does in the catalog / Browse screens. */
     val coverTapAction: CoverTapAction = CoverTapAction.OPEN_DETAILS,
 )
@@ -69,11 +76,15 @@ class AppPreferencesStore(context: PlatformStorageContext) {
         val BOOK_VIEW_DEFAULT = stringPreferencesKey("book_view")
         val BROWSE_VIEW = stringPreferencesKey("book_view_browse")
         val CATALOG_VIEW = stringPreferencesKey("book_view_catalog")
+        val BOOK_SORT_DEFAULT = stringPreferencesKey("book_sort")
+        val BROWSE_SORT = stringPreferencesKey("book_sort_browse")
+        val CATALOG_SORT = stringPreferencesKey("book_sort_catalog")
         val COVER_TAP_ACTION = stringPreferencesKey("cover_tap_action")
     }
 
     val preferences: Flow<AppPreferences> = dataStore.data.map { p ->
         val default = p.mode(Keys.BOOK_VIEW_DEFAULT) ?: BookViewMode.GRID
+        val sortDefault = p.sort(Keys.BOOK_SORT_DEFAULT) ?: BookSort.RECENT
         AppPreferences(
             theme = p[Keys.THEME]?.let { runCatching { AppTheme.valueOf(it) }.getOrNull() }
                 ?: AppTheme.SYSTEM,
@@ -87,6 +98,9 @@ class AppPreferencesStore(context: PlatformStorageContext) {
             bookViewDefault = default,
             browseView = p.mode(Keys.BROWSE_VIEW) ?: default,
             catalogView = p.mode(Keys.CATALOG_VIEW) ?: default,
+            bookSortDefault = sortDefault,
+            browseSort = p.sort(Keys.BROWSE_SORT) ?: sortDefault,
+            catalogSort = p.sort(Keys.CATALOG_SORT) ?: sortDefault,
             coverTapAction = p[Keys.COVER_TAP_ACTION]
                 ?.let { runCatching { CoverTapAction.valueOf(it) }.getOrNull() }
                 ?: CoverTapAction.OPEN_DETAILS,
@@ -95,6 +109,9 @@ class AppPreferencesStore(context: PlatformStorageContext) {
 
     private fun Preferences.mode(key: Preferences.Key<String>): BookViewMode? =
         this[key]?.let { runCatching { BookViewMode.valueOf(it) }.getOrNull() }
+
+    private fun Preferences.sort(key: Preferences.Key<String>): BookSort? =
+        this[key]?.let { runCatching { BookSort.valueOf(it) }.getOrNull() }
 
     suspend fun setTheme(theme: AppTheme) {
         dataStore.edit { it[Keys.THEME] = theme.name }
@@ -126,6 +143,25 @@ class AppPreferencesStore(context: PlatformStorageContext) {
     /** A server catalog's own layout toggle — leaves the Settings default alone. */
     suspend fun setCatalogView(mode: BookViewMode) {
         dataStore.edit { it[Keys.CATALOG_VIEW] = mode.name }
+    }
+
+    /** Change the Settings default and snap every screen's current sort back to it. */
+    suspend fun setBookSortDefault(sort: BookSort) {
+        dataStore.edit {
+            it[Keys.BOOK_SORT_DEFAULT] = sort.name
+            it.remove(Keys.BROWSE_SORT)
+            it.remove(Keys.CATALOG_SORT)
+        }
+    }
+
+    /** Browse's own sort choice — leaves the Settings default alone. */
+    suspend fun setBrowseSort(sort: BookSort) {
+        dataStore.edit { it[Keys.BROWSE_SORT] = sort.name }
+    }
+
+    /** A server catalog's own sort choice — leaves the Settings default alone. */
+    suspend fun setCatalogSort(sort: BookSort) {
+        dataStore.edit { it[Keys.CATALOG_SORT] = sort.name }
     }
 
     suspend fun setCoverTapAction(action: CoverTapAction) {

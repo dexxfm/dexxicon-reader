@@ -13,6 +13,7 @@ import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.datastore.PlayerPreferences
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.shared.di.AppContainer
 
@@ -66,6 +67,10 @@ class SettingsState(
 
     fun setBookViewDefault(mode: BookViewMode) {
         scope.launch { container.appPreferences.setBookViewDefault(mode) }
+    }
+
+    fun setBookSortDefault(sort: BookSort) {
+        scope.launch { container.appPreferences.setBookSortDefault(sort) }
     }
 
     fun setCoverTapAction(action: CoverTapAction) {
