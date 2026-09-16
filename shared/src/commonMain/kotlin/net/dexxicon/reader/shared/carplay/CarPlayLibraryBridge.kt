@@ -32,15 +32,16 @@ import net.dexxicon.reader.shared.openReader
  * Deliberately simpler than Android Auto's tree in two ways, not oversights:
  * - No per-server folder split — CarPlay's own list-length conventions favor fewer, flatter
  *   lists more than Android Auto's does; "All audiobooks" merges every server into one list.
- * - No auto-paging past non-audio pages (Android Auto's `MAX_SOURCE_PAGES` loop, needed because
- *   some servers don't filter by format server-side) — a single generously-sized page is
- *   enough for CarPlay's stricter per-list item conventions; a server whose first page happens
- *   to have zero audiobooks yields fewer results here than Android Auto's list would, a real,
- *   accepted v1 gap, not silently wrong.
  * - "Downloaded" only reflects what's downloaded, for browsing — resolving a tap always goes
  *   through the network/stream path (via [AppContainer.openReader]), not the local file, since
  *   `AudiobookPlaybackController` has no local-file playback path built/tested yet. A real,
  *   accepted v1 gap: tapping a downloaded book on CarPlay still needs a network connection.
+ *
+ * [allAudiobooks] *does* mirror Android Auto's `MAX_SOURCE_PAGES` auto-paging (found live,
+ * not anticipated up front: a single unfiltered page of "recent across all formats" genuinely
+ * returned zero audiobooks against a real test library, not just "fewer" as first assumed —
+ * `CatalogRepository.allBooks`'s `formats` filter is applied client-side to whatever that page
+ * already contains, same reason Android Auto's own implementation needs the same loop).
  */
 class CarPlayLibraryBridge(
     private val appContainer: AppContainer,
@@ -77,29 +78,48 @@ class CarPlayLibraryBridge(
         }
     }
 
+    /**
+     * issue #240, found live: a single unfiltered page genuinely returned zero audiobooks
+     * against a real test library — `allBooks`'s `formats` filter is applied client-side to
+     * whatever page N of "recent across all formats" already contains (see
+     * [net.dexxicon.reader.core.data.CatalogRepository.allBooks]), so a server whose first
+     * page of *anything recent* has no audiobooks yields nothing at all, not just "fewer".
+     * This mirrors Android Auto's own `MediaLibraryContentSourceImpl.audiobooks()` fix for the
+     * identical problem: keep asking for more pages until enough audiobooks are collected.
+     */
     fun allAudiobooks(onResult: (List<CarPlayAudiobookCard>) -> Unit) {
         scope.launch {
-            val cards = when (
-                val result = catalogRepository.allBooks(
-                    query = null,
-                    sort = BookSort.RECENT,
-                    page = 0,
-                    pageSize = MAX_AUDIOBOOKS,
-                    formats = AUDIO_ONLY,
-                )
-            ) {
-                is Outcome.Success -> result.value.books.map { book ->
-                    CarPlayAudiobookCard(
-                        serverId = book.primary.serverId,
-                        bookId = book.primary.bookId,
-                        title = book.title,
-                        author = book.authorLine.takeIf { it.isNotBlank() },
-                        coverUrl = book.coverUrl,
-                        progress = null,
+            val collected = mutableListOf<CarPlayAudiobookCard>()
+            var sourcePage = 0
+            var hasMore = true
+            while (hasMore && sourcePage < MAX_SOURCE_PAGES && collected.size < MAX_AUDIOBOOKS) {
+                when (
+                    val result = catalogRepository.allBooks(
+                        query = null,
+                        sort = BookSort.RECENT,
+                        page = sourcePage,
+                        pageSize = SOURCE_PAGE_SIZE,
+                        formats = AUDIO_ONLY,
                     )
+                ) {
+                    is Outcome.Success -> {
+                        collected += result.value.books.map { book ->
+                            CarPlayAudiobookCard(
+                                serverId = book.primary.serverId,
+                                bookId = book.primary.bookId,
+                                title = book.title,
+                                author = book.authorLine.takeIf { it.isNotBlank() },
+                                coverUrl = book.coverUrl,
+                                progress = null,
+                            )
+                        }
+                        hasMore = result.value.hasMore
+                    }
+                    is Outcome.Failure -> hasMore = false
                 }
-                is Outcome.Failure -> emptyList()
+                sourcePage++
             }
+            val cards = collected.distinctBy { "${it.serverId}::${it.bookId}" }.take(MAX_AUDIOBOOKS)
             withContext(Dispatchers.Main) { onResult(cards) }
         }
     }
@@ -142,8 +162,11 @@ class CarPlayLibraryBridge(
 
     private companion object {
         // Smaller than Android Auto's MAX_AUDIOBOOKS=200 — CarPlay's own HIG favors shorter
-        // lists than Android Auto's browse tree does.
+        // lists than Android Auto's browse tree does. SOURCE_PAGE_SIZE/MAX_SOURCE_PAGES match
+        // Android Auto's own MediaLibraryContentSourceImpl values exactly.
         const val MAX_AUDIOBOOKS = 100
+        const val SOURCE_PAGE_SIZE = 60
+        const val MAX_SOURCE_PAGES = 10
         val AUDIO_ONLY = setOf(ContentFormat.AUDIOBOOK)
     }
 }
