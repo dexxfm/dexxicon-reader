@@ -87,4 +87,17 @@ targets:
         script: |
           set -e
           cd "$SRCROOT/.."
+          # issue #235: on Xcode Cloud, ci_post_clone.sh's `brew install openjdk@21` runs as
+          # a separate CI step/process from this one - env vars it exports don't carry over,
+          # only filesystem state does. Registering the JDK with macOS's system Java wrapper
+          # (the usual fix) needs `sudo`, which that non-interactive environment has no
+          # password for. Exporting JAVA_HOME directly here, right before invoking gradlew,
+          # sidesteps both: the JDK is still on disk at Homebrew's standard Apple Silicon
+          # prefix regardless of which CI step installed it, this just has to point at it.
+          # A no-op on the SSH-build Mac (or any environment) where JAVA_HOME/the system
+          # Java wrapper is already configured some other way - only sets it if that exact
+          # path exists, never overrides an already-working setup.
+          if [ -d /opt/homebrew/opt/openjdk@21 ]; then
+            export JAVA_HOME=/opt/homebrew/opt/openjdk@21
+          fi
           ./gradlew :shared:embedAndSignAppleFrameworkForXcode

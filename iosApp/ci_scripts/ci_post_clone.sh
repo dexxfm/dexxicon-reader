@@ -37,17 +37,20 @@ cp "$IOS_DIR/Package.resolved" "$SWIFTPM_DIR/Package.resolved"
 #
 #    org.gradle.java.home alone isn't enough (issue #235, a real build failure, not
 #    theoretical): it only takes effect once Gradle's own JVM is already running. The
-#    `./gradlew` wrapper *script* needs a bare `java` (or $JAVA_HOME, which this later
-#    Run Script build phase doesn't inherit from this script's own process — Xcode Cloud
-#    ci_scripts and the xcodebuild step that runs afterward are separate process
-#    environments) just to bootstrap Gradle in the first place, and this VM has no JDK
-#    registered with macOS's system Java wrapper (/usr/libexec/java_home) — so that very
-#    first launch fails with "Unable to locate a Java Runtime" before gradle.properties is
-#    ever read. Symlinking into the standard system JVM location (exactly what Homebrew's
-#    own install output suggests as a Caveat) fixes it for every later step, not just Gradle.
+#    `./gradlew` wrapper *script* needs a bare `java` (or $JAVA_HOME) just to bootstrap
+#    Gradle in the first place, and this VM has no JDK registered with macOS's system Java
+#    wrapper — so that very first launch fails with "Unable to locate a Java Runtime" before
+#    gradle.properties is ever read. The obvious fix (symlink the JDK into the system JVM
+#    location, exactly what Homebrew's own install output suggests as a Caveat) needs
+#    `sudo`, which this non-interactive CI environment has no password for ("sudo: a
+#    password is required" — confirmed via a second real build failure, not theoretical
+#    either). The actual fix lives in project.yml's "Build the shared Kotlin framework"
+#    script instead: it exports JAVA_HOME itself, right before invoking gradlew, computed
+#    from the same Homebrew-installed JDK this step installs — filesystem state from
+#    `brew install` persists across Xcode Cloud's separate CI steps even though shell/env
+#    state doesn't, so that later script just needs to know where to look.
 brew install openjdk@21
 JDK_HOME="$(brew --prefix openjdk@21)"
-sudo ln -sfn "$JDK_HOME/libexec/openjdk.jdk" /Library/Java/JavaVirtualMachines/openjdk-21.jdk
 mkdir -p "$HOME/.gradle"
 echo "org.gradle.java.home=$JDK_HOME" >> "$HOME/.gradle/gradle.properties"
 
