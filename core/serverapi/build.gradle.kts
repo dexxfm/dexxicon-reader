@@ -24,7 +24,7 @@ kotlin {
         // Opt-in required by the KMP androidLibrary DSL — plain unit tests (no device) live
         // in src/androidHostTest, not src/test as with the classic com.android.library plugin.
         // commonTest sources (all of this module's tests, now) run there too, alongside
-        // iosSimulatorArm64Test on Codemagic's ios-ci.
+        // iosSimulatorArm64Test on a real Mac build host.
         withHostTestBuilder {}.configure {}
     }
     iosArm64()

@@ -16,9 +16,9 @@ import platform.darwin.NSObject
  * iOS [actual]: `WKWebView` via Compose Multiplatform's `UIKitView`, with a
  * `WKNavigationDelegateProtocol` implementation intercepting `decidePolicyForNavigationAction`
  * — the WKWebView equivalent of the Android actual's `shouldOverrideUrlLoading`. This is real
- * Objective-C protocol conformance in Kotlin/Native, unverifiable on this Windows dev machine
- * (no local iOS toolchain) and only checkable via Codemagic's `ios-ci` — see [SsoWebView]'s
- * doc comment and issue #70 for the wider caveat.
+ * Objective-C protocol conformance in Kotlin/Native, unverifiable on the Windows dev machine
+ * (no local iOS toolchain there) — only checkable via a real Mac build host — see
+ * [SsoWebView]'s doc comment and issue #70 for the wider caveat.
  *
  * Deliberately does NOT implement `onProgress` — `WKWebView`'s loading progress is a
  * KVO-observable property (`estimatedProgress`), not a delegate callback, and bridging KVO
