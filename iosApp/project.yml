@@ -64,14 +64,22 @@ targets:
         # manual, case-by-case grant from Apple (requested via developer.apple.com/contact/
         # carplay/) before it can appear in ANY real provisioning profile — including the
         # Debug ones Automatic signing generates on the fly. Scoped to Debug only, deliberately
-        # left off Release below: Simulator builds ("Sign to Run Locally") accept an
-        # entitlement with no matching provisioning profile at all, so CarPlay is buildable
-        # and testable in Simulator right now, but a Debug build to a *real* device won't work
-        # until Apple grants the entitlement (Xcode will fail signing with a clear "missing
-        # entitlement" error, not a confusing crash) — and Release must never reference this
-        # file, or the existing TestFlight/App Store archive pipeline breaks immediately, since
-        # "Dexxicon Reader App Store v2" doesn't (yet) include this entitlement either.
+        # left off Release below. CODE_SIGN_STYLE: Manual here is load-bearing, not
+        # decorative — confirmed live (2026-09-16) that Automatic signing silently drops this
+        # entitlement even for Simulator's "Sign to Run Locally" identity, because Automatic
+        # computes the actual signed entitlements from what DEVELOPMENT_TEAM's account is
+        # approved for, not just whatever CODE_SIGN_ENTITLEMENTS points at — `codesign -d
+        # --entitlements` on the built app showed an empty dict despite this file being wired
+        # up correctly. Manual signing takes the entitlements file at face value with no
+        # account-capability filtering, so it's required for CarPlay to actually reach the
+        # signed binary on Simulator. A Debug build to a *real* device still won't get this
+        # entitlement until Apple approves it (manual signing needs a matching profile there
+        # too) — and Release must never reference any of this, or the existing TestFlight/App
+        # Store archive pipeline breaks immediately, since "Dexxicon Reader App Store v2"
+        # doesn't (yet) include this entitlement either.
         Debug:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: "-"
           CODE_SIGN_ENTITLEMENTS: iosApp/iosApp.entitlements
         # Release archives (TestFlight/App Store) need an Apple Distribution identity, not
         # Apple Development — automatic signing defaults to a Development profile even when
