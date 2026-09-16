@@ -3,7 +3,7 @@ set -e
 set -x
 
 # Xcode Cloud post-clone hook — must live at iosApp/ci_scripts/ci_post_clone.sh, the same
-# level as the generated iosApp.xcodeproj (Xcode Cloud looks for ci_scripts next to the
+# level as the generated Dexxicon.xcodeproj (Xcode Cloud looks for ci_scripts next to the
 # project/workspace it's building, not at the repo root). Runs right after clone, before
 # Xcode Cloud resolves/opens the project, so this is the one place to do everything the
 # checked-in source needs before a normal `xcodebuild` can proceed.
@@ -13,7 +13,7 @@ set -x
 IOS_DIR="$CI_PRIMARY_REPOSITORY_PATH/iosApp"
 cd "$IOS_DIR"
 
-# 1. Generate the Xcode project — iosApp.xcodeproj is deliberately NOT committed (it's
+# 1. Generate the Xcode project — Dexxicon.xcodeproj is deliberately NOT committed (it's
 #    xcodegen-generated from project.yml, gitignored, same as every local/SSH build this
 #    project already does).
 brew install xcodegen
@@ -24,7 +24,7 @@ xcodegen generate
 #    latest-matching versions instead of the exact ones this project actually tests against.
 #    iosApp/Package.resolved (committed) is the source of truth; copy it into the spot the
 #    freshly-generated .xcodeproj expects it.
-SWIFTPM_DIR="$IOS_DIR/iosApp.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
+SWIFTPM_DIR="$IOS_DIR/Dexxicon.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
 mkdir -p "$SWIFTPM_DIR"
 cp "$IOS_DIR/Package.resolved" "$SWIFTPM_DIR/Package.resolved"
 
