@@ -422,6 +422,13 @@ final class AudiobookPlaybackController: NSObject {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: coverImage.size) { _ in coverImage }
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        // issue #119: CarPlay's Now Playing play/pause glyph appears to read this separate,
+        // newer (iOS 16+) property rather than (or in addition to) the legacy
+        // MPNowPlayingInfoPropertyPlaybackRate key above — the lock screen/Control Center
+        // rendered correctly without it (confirmed on real hardware), but CarPlay kept showing
+        // a stale "not playing" glyph even while genuinely-progressing playback was confirmed
+        // live via logs, with this property never having been set at all.
+        MPNowPlayingInfoCenter.default().playbackState = state.isPlaying ? .playing : .paused
     }
 
     // MARK: :shared mini-player bridge (issue #146)
