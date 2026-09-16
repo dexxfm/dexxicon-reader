@@ -14,6 +14,10 @@ import CarPlay
 /// No library-browsing template — scope stayed at "now playing" per issue #119's own title.
 /// A `CPListTemplate`-backed browse tree sourced from the catalog (mirroring Android Auto's
 /// `MediaLibraryService` browse tree, issue #118) would be a separate, larger follow-up issue.
+// issue #119: explicit bare name so Info.plist's UISceneDelegateClassName (which references
+// this class by its plain, unqualified name — see Info.plist's own comment) resolves correctly
+// regardless of Swift's default module-qualified NSStringFromClass output.
+@objc(CarPlaySceneDelegate)
 final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegate {
     private var interfaceController: CPInterfaceController?
 

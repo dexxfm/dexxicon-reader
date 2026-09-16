@@ -42,15 +42,33 @@
 		<string>audio</string>
 	</array>
 	<!-- issue #119: CarPlay connects as a second, concurrent scene alongside the phone/iPad
-	     UIWindowScene — AppDelegate.application(_:configurationForConnecting:options:) routes
-	     it to CarPlaySceneDelegate. This key (and UIApplicationSupportsMultipleScenes) is what
-	     opts the app into the scene-based lifecycle CarPlay requires; no static
-	     UISceneConfigurations entries are needed since the delegate class is chosen
-	     programmatically, not declared here. -->
+	     UIWindowScene. A previous version of this comment claimed the dynamic
+	     AppDelegate.application(_:configurationForConnecting:options:) routing alone was
+	     enough — that was wrong, confirmed by a real crash: "Application does not implement
+	     CarPlay template application lifecycle methods in its scene delegate"
+	     (NSGenericException). Unlike a plain UIWindowScene, CPTemplateApplicationScene needs a
+	     *static* UISceneConfigurations entry for its role — the system checks this before ever
+	     calling the dynamic delegate method. The dynamic AppDelegate routing stays too (it's
+	     what actually wires up CarPlaySceneDelegate as the class instance), this static entry
+	     just satisfies the system's own upfront validation. -->
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
 		<true/>
+		<key>UISceneConfigurations</key>
+		<dict>
+			<key>CPTemplateApplicationSceneSessionRoleApplication</key>
+			<array>
+				<dict>
+					<key>UISceneClassName</key>
+					<string>CPTemplateApplicationScene</string>
+					<key>UISceneConfigurationName</key>
+					<string>CarPlay</string>
+					<key>UISceneDelegateClassName</key>
+					<string>CarPlaySceneDelegate</string>
+				</dict>
+			</array>
+		</dict>
 	</dict>
 	<key>UILaunchScreen</key>
 	<dict/>
