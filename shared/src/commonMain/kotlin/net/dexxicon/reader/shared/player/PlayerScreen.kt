@@ -306,11 +306,18 @@ private fun NowPlayingContent(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                    // issue #238: matchHeightConstraintsFirst = true derived the cover's width
+                    // from the full available height — on an iPad in landscape that height is
+                    // often taller than this half-width column, so the square cover overflowed
+                    // past its column and into the controls next to it. Deriving from width
+                    // (the dimension this Box actually bounds via weight(1f)) instead keeps the
+                    // cover within its column always; it just doesn't fill 100% of the height
+                    // on a very tall/narrow column, which is a minor, correct tradeoff.
                     CoverArt(
                         coverUrl = state.coverUrl,
                         modifier = Modifier
-                            .fillMaxHeight()
-                            .aspectRatio(1f, matchHeightConstraintsFirst = true),
+                            .fillMaxWidth()
+                            .aspectRatio(1f),
                     )
                 }
                 // Scrolls only if a short landscape area can't fit the controls.
