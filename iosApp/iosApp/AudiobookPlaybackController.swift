@@ -78,6 +78,15 @@ final class AudiobookPlaybackController: NSObject {
     private var timeObserverToken: Any?
     private var sleepWorkItem: DispatchWorkItem?
     private var lastPushedPositionMs: Int64 = -1
+    // issue #119: CarPlay throttles how often it picks up MPNowPlayingInfoCenter updates —
+    // pushing on every 1s tick (as this used to) silently exceeds that limit and leaves
+    // CarPlay's Now Playing screen frozen, even though the phone's own UI/Control Center
+    // keeps updating fine (confirmed live: phone showed real playback progressing, CarPlay
+    // stayed stuck). The system already extrapolates elapsed time on its own from
+    // rate + a timestamp, so a per-second push was never actually needed for that — only
+    // pushing when the derived chapter title changes (or via the explicit calls in
+    // playPause/seek/setSpeed/start) keeps updates infrequent enough for CarPlay to keep up.
+    private var lastPushedChapterIndex: Int = -1
     private var coverImage: UIImage?
 
     /// The `:shared` Kotlin object this whole feature is built around (issue #114) — held
@@ -114,8 +123,20 @@ final class AudiobookPlaybackController: NSObject {
     func start(book: Book, authHeader: String?) {
         guard let remoteURL = URL(string: book.digestUrl) else { return }
 
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // issue #237: these were silent `try?` calls — if audio session activation actually
+        // fails, playback still audibly works (AVPlayer doesn't require it the way the
+        // lock-screen/CarPlay Now Playing surface does), so a real failure here would otherwise
+        // be invisible.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        } catch {
+            NSLog("DEXXICON_AUDIO_SESSION setCategory failed: %@", "\(error)")
+        }
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            NSLog("DEXXICON_AUDIO_SESSION setActive failed: %@", "\(error)")
+        }
 
         let newLoader = AudiobookStreamLoader(authHeader: authHeader)
         loader = newLoader
@@ -130,6 +151,7 @@ final class AudiobookPlaybackController: NSObject {
 
         state = State(book: book, durationMs: book.durationMs)
         lastPushedPositionMs = -1
+        lastPushedChapterIndex = -1
         loadCoverIfNeeded(book.coverUrl, authHeader: authHeader)
         attachTimeObserver()
         updateNowPlayingInfo()
@@ -315,7 +337,14 @@ final class AudiobookPlaybackController: NSObject {
             )
         }
 
-        updateNowPlayingInfo()
+        // issue #119: only push here when the chapter actually changed — see
+        // lastPushedChapterIndex's own comment. playPause/seek/setSpeed/start already push on
+        // their own transition points; this covers a chapter boundary crossed during plain,
+        // uninterrupted listening (the one case nothing else would catch).
+        if state.currentChapterIndex != lastPushedChapterIndex {
+            lastPushedChapterIndex = state.currentChapterIndex
+            updateNowPlayingInfo()
+        }
     }
 
     // MARK: route change (Bluetooth/CarPlay follow — issue #114)
@@ -393,6 +422,13 @@ final class AudiobookPlaybackController: NSObject {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: coverImage.size) { _ in coverImage }
         }
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        // issue #119: CarPlay's Now Playing play/pause glyph appears to read this separate,
+        // newer (iOS 16+) property rather than (or in addition to) the legacy
+        // MPNowPlayingInfoPropertyPlaybackRate key above — the lock screen/Control Center
+        // rendered correctly without it (confirmed on real hardware), but CarPlay kept showing
+        // a stale "not playing" glyph even while genuinely-progressing playback was confirmed
+        // live via logs, with this property never having been set at all.
+        MPNowPlayingInfoCenter.default().playbackState = state.isPlaying ? .playing : .paused
     }
 
     // MARK: :shared mini-player bridge (issue #146)
