@@ -35,6 +35,7 @@ import net.dexxicon.reader.core.database.entity.ReadingProgressEntity
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.Server
+import net.dexxicon.reader.core.model.ServerType
 
 /** issue #154 — [ReadingProgressRepository.syncProgress] reconciles every locally-tracked row
  * against its server; a library with hundreds of read/finished books used to do that one row
@@ -145,17 +146,44 @@ class ReadingProgressRepository(
 
     private suspend fun seedFromServer(server: Server) {
         if (!usesNative(server)) return
-        persistSeeded(librarySeeder.inProgress(server))
+        persistSeeded(server, librarySeeder.inProgress(server))
     }
 
-    /** Persist newly-seen "continue" rows. A book already tracked here is left alone —
-     *  its local position may be newer than the server's list. */
-    private suspend fun persistSeeded(rows: List<ReadingProgress>) {
+    /**
+     * Persist newly-seen "continue" rows. A book already tracked here is left alone — its
+     * local position may be newer than the server's list.
+     *
+     * issue #211 — stamping local `now()` for every row makes "recency" really mean
+     * "whenever this device happened to first see the book", which differs device to
+     * device. Grimmory's per-book progress endpoint has a real server-side timestamp
+     * ([NativeProgressSync.pull]'s `updatedAtMillis`, already parsed from `lastReadTime`/
+     * per-format `updatedAt`) — fetched here per row so seeded rows sort consistently
+     * across devices. BookOrbit has no equivalent field anywhere in its API (investigated
+     * for #211) — its rows keep the local-seed-time fallback.
+     */
+    private suspend fun persistSeeded(server: Server, rows: List<ReadingProgress>) {
         val now = currentTimeMillis()
-        for (row in rows) {
-            if (row.percent == null) continue
-            if (dao.find(row.key) != null) continue
-            dao.upsert(ReadingProgressEntity.fromDomain(row.copy(updatedAt = now)))
+        val eligible = rows.filter { it.percent != null && dao.find(it.key) == null }
+        if (eligible.isEmpty()) return
+
+        val realUpdatedAt: Map<String, Long> = if (server.type == ServerType.GRIMMORY) {
+            eligible.chunked(PROGRESS_SYNC_CONCURRENCY).flatMap { chunk ->
+                coroutineScope {
+                    chunk.map { row ->
+                        async {
+                            val format = row.format ?: ContentFormat.EPUB
+                            row.key to nativeSync.pull(server, row.bookId, format, row.digestUrl)?.updatedAtMillis
+                        }
+                    }.awaitAll()
+                }
+            }.mapNotNull { (key, at) -> at?.let { key to it } }.toMap()
+        } else {
+            emptyMap()
+        }
+
+        for (row in eligible) {
+            val updatedAt = realUpdatedAt[row.key] ?: now
+            dao.upsert(ReadingProgressEntity.fromDomain(row.copy(updatedAt = updatedAt)))
         }
     }
 
@@ -281,7 +309,7 @@ class ReadingProgressRepository(
         // rows below rather than hammering it, and report it.
         allServers.filter { usesNative(it) }.forEach { server ->
             when (val result = librarySeeder.inProgressResult(server)) {
-                is Outcome.Success -> persistSeeded(result.value)
+                is Outcome.Success -> persistSeeded(server, result.value)
                 is Outcome.Failure -> failures += ServerSyncFailure(
                     server.id, server.displayName, result.error.toSyncReason(),
                 )
