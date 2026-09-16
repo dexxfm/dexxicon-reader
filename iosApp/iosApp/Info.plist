@@ -41,6 +41,17 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<!-- issue #119: CarPlay connects as a second, concurrent scene alongside the phone/iPad
+	     UIWindowScene — AppDelegate.application(_:configurationForConnecting:options:) routes
+	     it to CarPlaySceneDelegate. This key (and UIApplicationSupportsMultipleScenes) is what
+	     opts the app into the scene-based lifecycle CarPlay requires; no static
+	     UISceneConfigurations entries are needed since the delegate class is chosen
+	     programmatically, not declared here. -->
+	<key>UIApplicationSceneManifest</key>
+	<dict>
+		<key>UIApplicationSupportsMultipleScenes</key>
+		<true/>
+	</dict>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>

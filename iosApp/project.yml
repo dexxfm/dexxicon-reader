@@ -60,6 +60,19 @@ targets:
           - -framework
           - SharedKit
       configs:
+        # issue #119: the CarPlay entitlement (com.apple.developer.carplay-audio) needs a
+        # manual, case-by-case grant from Apple (requested via developer.apple.com/contact/
+        # carplay/) before it can appear in ANY real provisioning profile — including the
+        # Debug ones Automatic signing generates on the fly. Scoped to Debug only, deliberately
+        # left off Release below: Simulator builds ("Sign to Run Locally") accept an
+        # entitlement with no matching provisioning profile at all, so CarPlay is buildable
+        # and testable in Simulator right now, but a Debug build to a *real* device won't work
+        # until Apple grants the entitlement (Xcode will fail signing with a clear "missing
+        # entitlement" error, not a confusing crash) — and Release must never reference this
+        # file, or the existing TestFlight/App Store archive pipeline breaks immediately, since
+        # "Dexxicon Reader App Store v2" doesn't (yet) include this entitlement either.
+        Debug:
+          CODE_SIGN_ENTITLEMENTS: iosApp/iosApp.entitlements
         # Release archives (TestFlight/App Store) need an Apple Distribution identity, not
         # Apple Development — automatic signing defaults to a Development profile even when
         # archiving, which then requires a registered device (there are none registered on
