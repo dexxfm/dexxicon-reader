@@ -116,8 +116,8 @@ final class AudiobookPlaybackController: NSObject {
 
         // issue #237: these were silent `try?` calls — if audio session activation actually
         // fails, playback still audibly works (AVPlayer doesn't require it the way the
-        // lock-screen/CarPlay Now Playing surface does), so the failure was invisible. Logging
-        // explicitly here until the real cause of "Now Playing never appears" is found.
+        // lock-screen/CarPlay Now Playing surface does), so a real failure here would otherwise
+        // be invisible.
         do {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
         } catch {
@@ -128,13 +128,6 @@ final class AudiobookPlaybackController: NSObject {
         } catch {
             NSLog("DEXXICON_AUDIO_SESSION setActive failed: %@", "\(error)")
         }
-        NSLog(
-            "DEXXICON_AUDIO_SESSION category=%@ mode=%@ isOtherAudioPlaying=%@ secondaryAudioShouldBeSilencedHint=%@",
-            AVAudioSession.sharedInstance().category.rawValue,
-            AVAudioSession.sharedInstance().mode.rawValue,
-            "\(AVAudioSession.sharedInstance().isOtherAudioPlaying)",
-            "\(AVAudioSession.sharedInstance().secondaryAudioShouldBeSilencedHint)"
-        )
 
         let newLoader = AudiobookStreamLoader(authHeader: authHeader)
         loader = newLoader
@@ -408,20 +401,6 @@ final class AudiobookPlaybackController: NSObject {
             MPMediaItemPropertyPlaybackDuration: Double(state.durationMs) / 1000.0,
             MPNowPlayingInfoPropertyPlaybackRate: state.isPlaying ? Double(state.speed) : 0.0,
         ]
-        // issue #237 diagnostic: confirm what's actually being sent, and whether our own
-        // isPlaying flag agrees with the real AVPlayer state (a divergence here — us claiming
-        // rate=1.0 while the real player is still 0/buffering — could be why the system
-        // doesn't treat this as Now Playing eligible even though setNowPlayingInfo "succeeds").
-        NSLog(
-            "DEXXICON_NOWPLAYING title=%@ elapsed=%.1f duration=%.1f rate=%.2f | real player.rate=%.2f timeControlStatus=%d hasArtwork=%@",
-            state.currentChapterTitle ?? book.title,
-            Double(state.positionMs) / 1000.0,
-            Double(state.durationMs) / 1000.0,
-            state.isPlaying ? Double(state.speed) : 0.0,
-            player?.rate ?? -999,
-            player?.timeControlStatus.rawValue ?? -1,
-            "\(coverImage != nil)"
-        )
         if let coverImage {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: coverImage.size) { _ in coverImage }
         }
