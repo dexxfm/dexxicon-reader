@@ -195,7 +195,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         guard let interfaceController else { return }
         let alreadyPushed = interfaceController.templates.contains { $0 === CPNowPlayingTemplate.shared }
         if alreadyPushed {
-            interfaceController.popToTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
+            interfaceController.pop(to: CPNowPlayingTemplate.shared, animated: true, completion: nil)
         } else {
             interfaceController.pushTemplate(CPNowPlayingTemplate.shared, animated: true, completion: nil)
         }
