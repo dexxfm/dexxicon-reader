@@ -26,7 +26,7 @@ their web readers use — rather than generic OPDS.
   <tr>
     <td align="center"><img src="docs/screenshots/player.png" width="200" alt="Audiobook player screen"><br><sub>Audiobook Player</sub></td>
     <td align="center"><img src="docs/screenshots/settings.png" width="200" alt="Settings screen"><br><sub>Settings</sub></td>
-    <td></td>
+    <td align="center"><img src="docs/screenshots/liquid-glass-nav.png" width="200" alt="Library screen showing the frosted liquid-glass nav bar"><br><sub>Liquid‑glass nav</sub></td>
   </tr>
 </table>
 
