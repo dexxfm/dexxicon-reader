@@ -60,36 +60,40 @@ targets:
           - -framework
           - SharedKit
       configs:
-        # issue #119: the CarPlay entitlement (com.apple.developer.carplay-audio) needs a
+        # issue #119: the CarPlay entitlement (com.apple.developer.carplay-audio) needed a
         # manual, case-by-case grant from Apple (requested via developer.apple.com/contact/
-        # carplay/) before it can appear in ANY real provisioning profile — including the
-        # Debug ones Automatic signing generates on the fly. Scoped to Debug only, deliberately
-        # left off Release below. CODE_SIGN_STYLE: Manual here is load-bearing, not
-        # decorative — confirmed live (2026-09-16) that Automatic signing silently drops this
-        # entitlement even for Simulator's "Sign to Run Locally" identity, because Automatic
-        # computes the actual signed entitlements from what DEVELOPMENT_TEAM's account is
-        # approved for, not just whatever CODE_SIGN_ENTITLEMENTS points at — `codesign -d
-        # --entitlements` on the built app showed an empty dict despite this file being wired
-        # up correctly. Manual signing takes the entitlements file at face value with no
-        # account-capability filtering, so it's required for CarPlay to actually reach the
-        # signed binary on Simulator. A Debug build to a *real* device still won't get this
-        # entitlement until Apple approves it (manual signing needs a matching profile there
-        # too) — and Release must never reference any of this, or the existing TestFlight/App
-        # Store archive pipeline breaks immediately, since "Dexxicon Reader App Store v2"
-        # doesn't (yet) include this entitlement either.
+        # carplay/) before it could appear in any real provisioning profile. That grant arrived
+        # 2026-09-16 and the App ID's CarPlay (Audio) capability is now enabled, so both configs
+        # below carry the entitlement — the old Debug-only restriction (and the Release-side
+        # "Dexxicon Reader App Store v2" profile not including it) no longer applies; that
+        # profile was regenerated the same day against the now-CarPlay-capable App ID.
+        # CODE_SIGN_STYLE: Manual here is load-bearing, not decorative — confirmed live
+        # (2026-09-16) that Automatic signing silently drops this entitlement even for
+        # Simulator's "Sign to Run Locally" identity, because Automatic computes the actual
+        # signed entitlements from what DEVELOPMENT_TEAM's account is approved for, not just
+        # whatever CODE_SIGN_ENTITLEMENTS points at — `codesign -d --entitlements` on the built
+        # app showed an empty dict despite this file being wired up correctly. Manual signing
+        # takes the entitlements file at face value with no account-capability filtering.
         Debug:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: "-"
           CODE_SIGN_ENTITLEMENTS: iosApp/iosApp.entitlements
-        # Release archives (TestFlight/App Store) need an Apple Distribution identity, not
-        # Apple Development — automatic signing defaults to a Development profile even when
+        # Release archives (TestFlight/App Store) need a Distribution identity, not Apple
+        # Development — automatic signing defaults to a Development profile even when
         # archiving, which then requires a registered device (there are none registered on
         # this team, and App Store distribution doesn't need any). Manual signing here points
-        # straight at the Apple Distribution certificate + "Dexxicon Reader App Store v2"
-        # profile, both provisioned via the App Store Connect API (issue: 0.15.0 release).
+        # at the "iPhone Distribution: Damien Ball (XG622A3783)" certificate specifically
+        # (rather than the generic "Apple Distribution" prefix) because that identity's private
+        # key lives in a dedicated CI keychain (~/.dexxiroll-ci/signing.keychain-db) usable for
+        # codesign over a headless SSH session without unlocking the login keychain — the login
+        # keychain has no attached security session over SSH on this Mac ("User interaction is
+        # not allowed" / errSecInternalComponent), so its own Apple Distribution identity can't
+        # sign here at all. The regenerated "Dexxicon Reader App Store v2" profile was created
+        # against this same certificate for exactly that reason.
         Release:
           CODE_SIGN_STYLE: Manual
-          CODE_SIGN_IDENTITY: Apple Distribution
+          CODE_SIGN_IDENTITY: iPhone Distribution
+          CODE_SIGN_ENTITLEMENTS: iosApp/iosApp.entitlements
           PROVISIONING_PROFILE_SPECIFIER: Dexxicon Reader App Store v2
     dependencies:
       - package: ReadiumSwiftToolkit
