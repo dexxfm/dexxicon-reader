@@ -68,6 +68,12 @@ kotlin {
             implementation(libs.hilt.work)
             implementation(libs.kotlinx.coroutines.android)
         }
+        iosMain.dependencies {
+            // IosDownloadRepository (issue #174) — streams a download to disk; okio's
+            // FileSystem.SYSTEM is the portable KMP file-write API here (already used by
+            // :core:datastore for path handling), avoiding raw NSFileHandle interop.
+            implementation(libs.okio)
+        }
         getByName("androidHostTest").dependencies {
             implementation(libs.junit)
             implementation(libs.truth)
