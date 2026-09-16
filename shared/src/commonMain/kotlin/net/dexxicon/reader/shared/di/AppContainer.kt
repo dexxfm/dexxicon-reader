@@ -55,6 +55,7 @@ import net.dexxicon.reader.core.serverapi.user.NativeUserApi
 import net.dexxicon.reader.shared.player.NowPlaying
 import net.dexxicon.reader.shared.player.PlayerActions
 import net.dexxicon.reader.shared.player.PlayerUiSnapshot
+import net.dexxicon.reader.shared.carplay.CarPlayLibraryBridge
 import net.dexxicon.reader.shared.reader.AudiobookProgressSync
 import net.dexxicon.reader.shared.reader.comic.ComicProgressBridge
 import net.dexxicon.reader.shared.reader.comic.ComicReaderActions
@@ -281,6 +282,14 @@ class AppContainer(
         bookOrbitBrowseApi = bookOrbitBrowseApi,
         serverRepository = serverRepository,
         progressDao = database.readingProgressDao(),
+        scope = scope,
+    )
+
+    /** issue #240 — CarPlay's library browse tree. `this` is safe to capture here despite
+     *  being mid-construction: [CarPlayLibraryBridge] only calls back into it later (async,
+     *  after this whole container is built), never during its own init. */
+    val carPlayLibraryBridge: CarPlayLibraryBridge = CarPlayLibraryBridge(
+        appContainer = this,
         scope = scope,
     )
 
