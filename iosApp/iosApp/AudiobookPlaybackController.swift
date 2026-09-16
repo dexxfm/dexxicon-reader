@@ -78,6 +78,15 @@ final class AudiobookPlaybackController: NSObject {
     private var timeObserverToken: Any?
     private var sleepWorkItem: DispatchWorkItem?
     private var lastPushedPositionMs: Int64 = -1
+    // issue #119: CarPlay throttles how often it picks up MPNowPlayingInfoCenter updates —
+    // pushing on every 1s tick (as this used to) silently exceeds that limit and leaves
+    // CarPlay's Now Playing screen frozen, even though the phone's own UI/Control Center
+    // keeps updating fine (confirmed live: phone showed real playback progressing, CarPlay
+    // stayed stuck). The system already extrapolates elapsed time on its own from
+    // rate + a timestamp, so a per-second push was never actually needed for that — only
+    // pushing when the derived chapter title changes (or via the explicit calls in
+    // playPause/seek/setSpeed/start) keeps updates infrequent enough for CarPlay to keep up.
+    private var lastPushedChapterIndex: Int = -1
     private var coverImage: UIImage?
 
     /// The `:shared` Kotlin object this whole feature is built around (issue #114) — held
@@ -142,6 +151,7 @@ final class AudiobookPlaybackController: NSObject {
 
         state = State(book: book, durationMs: book.durationMs)
         lastPushedPositionMs = -1
+        lastPushedChapterIndex = -1
         loadCoverIfNeeded(book.coverUrl, authHeader: authHeader)
         attachTimeObserver()
         updateNowPlayingInfo()
@@ -327,7 +337,14 @@ final class AudiobookPlaybackController: NSObject {
             )
         }
 
-        updateNowPlayingInfo()
+        // issue #119: only push here when the chapter actually changed — see
+        // lastPushedChapterIndex's own comment. playPause/seek/setSpeed/start already push on
+        // their own transition points; this covers a chapter boundary crossed during plain,
+        // uninterrupted listening (the one case nothing else would catch).
+        if state.currentChapterIndex != lastPushedChapterIndex {
+            lastPushedChapterIndex = state.currentChapterIndex
+            updateNowPlayingInfo()
+        }
     }
 
     // MARK: route change (Bluetooth/CarPlay follow — issue #114)
