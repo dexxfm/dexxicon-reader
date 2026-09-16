@@ -1,13 +1,17 @@
 # Dexxicon Reader
 
-A native Android client for self‑hosted book, comic and audiobook libraries. Built for
-**BookOrbit** (primary) and **Grimmory / BookLore** (secondary), talking to their own REST
-APIs — the same ones their web readers use — rather than generic OPDS.
+A native Android and iOS client for self‑hosted book, comic and audiobook libraries. Built
+for **BookOrbit** (primary) and **Grimmory / BookLore** (secondary), talking to their own
+REST APIs — the same ones their web readers use — rather than generic OPDS.
 
 <p>
   <a href="https://github.com/dexxfm/dexxicon-reader/releases"><img alt="latest release" src="https://img.shields.io/github/v/release/dexxfm/dexxicon-reader?include_prereleases&sort=semver"></a>
   <img alt="min SDK 29" src="https://img.shields.io/badge/minSdk-29-blue">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/licence-MIT-green"></a>
+</p>
+
+<p>
+  <a href="https://testflight.apple.com/join/JGZW1hqK"><img alt="Get it on TestFlight" src="https://img.shields.io/badge/iOS-Get%20it%20on%20TestFlight-0D96F6?logo=apple&logoColor=white&style=for-the-badge"></a>
 </p>
 
 <table>
@@ -24,6 +28,15 @@ APIs — the same ones their web readers use — rather than generic OPDS.
 </table>
 
 ## Install
+
+### iOS
+
+1. Join the beta via TestFlight: **[testflight.apple.com/join/JGZW1hqK](https://testflight.apple.com/join/JGZW1hqK)**.
+2. Install the TestFlight app if you don't have it, then install Dexxicon Reader through it.
+3. Open the app, add your server (URL + your normal account, or **Sign in with SSO** if your
+   server has an identity provider configured), and your library shows up.
+
+### Android
 
 1. Download the latest APK from [Releases](https://github.com/dexxfm/dexxicon-reader/releases)
    (or grab the AAB there if you're sideloading through Play).
