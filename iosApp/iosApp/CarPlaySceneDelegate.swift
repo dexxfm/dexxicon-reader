@@ -29,6 +29,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         didConnect interfaceController: CPInterfaceController
     ) {
         self.interfaceController = interfaceController
+        configureNowPlayingButtons()
         loadLibrary()
     }
 
@@ -132,7 +133,7 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         if let cached = coverCache[card.coverUrl ?? ""] {
             item.setImage(cached)
         } else if let urlString = card.coverUrl, let url = URL(string: urlString) {
-            loadCover(url: url) { [weak self, weak item] image in
+            loadCover(url: url, authHeader: card.coverAuthHeader) { [weak self, weak item] image in
                 guard let self, let item, let image else { return }
                 self.coverCache[urlString] = image
                 item.setImage(image)
@@ -141,8 +142,15 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         return item
     }
 
-    private func loadCover(url: URL, completion: @escaping (UIImage?) -> Void) {
-        URLSession.shared.dataTask(with: url) { data, _, _ in
+    /// issue #240: real bug found live — every cover silently failed to load, for every book,
+    /// with no error surfaced anywhere. This was a plain unauthenticated request; these servers
+    /// require an `Authorization` header for cover art the same as any other acquisition URL
+    /// (see `AudiobookPlaybackController.loadCoverIfNeeded`'s identical pattern) — `card
+    /// .coverAuthHeader` is resolved server-side in `CarPlayLibraryBridge`, the same way.
+    private func loadCover(url: URL, authHeader: String?, completion: @escaping (UIImage?) -> Void) {
+        var request = URLRequest(url: url)
+        if let authHeader { request.setValue(authHeader, forHTTPHeaderField: "Authorization") }
+        URLSession.shared.dataTask(with: request) { data, _, _ in
             // issue #240: CPListItem.maximumImageSize is the documented target — CarPlay
             // renders whatever's provided at whatever size it already is, undersized or
             // oversized, so downscaling here (cheap, cover art is never that large to begin
@@ -159,6 +167,34 @@ final class CarPlaySceneDelegate: UIResponder, CPTemplateApplicationSceneDelegat
         let newSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
         let renderer = UIGraphicsImageRenderer(size: newSize)
         return renderer.image { _ in image.draw(in: CGRect(origin: .zero, size: newSize)) }
+    }
+
+    // MARK: Now Playing buttons
+
+    /// issue #240 (requested live, explicitly *not* a sleep timer — "doesn't make sense in a
+    /// car"): a playback-speed button on the Now Playing screen. `CPNowPlayingPlaybackRateButton`
+    /// is a system-provided button that displays whatever rate the app is currently publishing
+    /// (the same `MPNowPlayingInfoPropertyPlaybackRate` `AudiobookPlaybackController` already
+    /// sets) and calls this handler on tap — cycling through the list is entirely up to the app.
+    /// Same speed steps as the in-app player's own speed sheet
+    /// (`core/datastore/PlayerPreferencesStore.kt`'s `PLAYBACK_SPEEDS`) — kept as a plain Swift
+    /// constant rather than exposed through the KMP bridge, since this is the only place on iOS
+    /// that needs the *list*, not just the current value.
+    private static let playbackSpeeds: [Float] = [0.8, 1.0, 1.2, 1.5, 1.75, 2.0, 3.0]
+
+    private func configureNowPlayingButtons() {
+        let speedButton = CPNowPlayingPlaybackRateButton { [weak self] _ in
+            self?.cycleSpeed()
+        }
+        CPNowPlayingTemplate.shared.updateNowPlayingButtons([speedButton])
+    }
+
+    private func cycleSpeed() {
+        let speeds = CarPlaySceneDelegate.playbackSpeeds
+        let current = AudiobookPlaybackController.shared.state.speed
+        let currentIndex = speeds.firstIndex { abs($0 - current) < 0.01 } ?? speeds.firstIndex(of: 1.0)!
+        let next = speeds[(currentIndex + 1) % speeds.count]
+        AudiobookPlaybackController.shared.setSpeed(next)
     }
 
     // MARK: playback

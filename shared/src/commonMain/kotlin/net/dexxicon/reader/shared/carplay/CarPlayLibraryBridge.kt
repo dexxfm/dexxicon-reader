@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared.carplay
 
+import io.ktor.http.Url
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -42,6 +43,12 @@ import net.dexxicon.reader.shared.openReader
  * returned zero audiobooks against a real test library, not just "fewer" as first assumed —
  * `CatalogRepository.allBooks`'s `formats` filter is applied client-side to whatever that page
  * already contains, same reason Android Auto's own implementation needs the same loop).
+ *
+ * Every [CarPlayAudiobookCard] also carries a resolved [CarPlayAudiobookCard.coverAuthHeader] —
+ * found live too: cover images silently failed to load for every single book, since Swift's
+ * plain `URLSession.shared.dataTask` had no `Authorization` header at all, and these servers
+ * require one even for cover art. Resolved here the same way [openReader] resolves it for an
+ * acquisition URL, via [AppContainer.authHeaderProvider].
  */
 class CarPlayLibraryBridge(
     private val appContainer: AppContainer,
@@ -71,6 +78,7 @@ class CarPlayLibraryBridge(
                         title = download.title,
                         author = download.authorLine.takeIf { it.isNotBlank() },
                         coverUrl = download.coverUrl,
+                        coverAuthHeader = coverAuthHeaderFor(download.coverUrl),
                         progress = progressRepository.get(download.serverId, download.bookId)?.percent,
                     )
                 }
@@ -110,6 +118,7 @@ class CarPlayLibraryBridge(
                                 title = book.title,
                                 author = book.authorLine.takeIf { it.isNotBlank() },
                                 coverUrl = book.coverUrl,
+                                coverAuthHeader = coverAuthHeaderFor(book.coverUrl),
                                 progress = null,
                             )
                         }
@@ -157,8 +166,12 @@ class CarPlayLibraryBridge(
         title = title.orEmpty(),
         author = author,
         coverUrl = coverUrl,
+        coverAuthHeader = coverAuthHeaderFor(coverUrl),
         progress = percent,
     )
+
+    private fun coverAuthHeaderFor(coverUrl: String?): String? =
+        coverUrl?.let { runCatching { appContainer.authHeaderProvider.authHeader(Url(it)) }.getOrNull() }
 
     private companion object {
         // Smaller than Android Auto's MAX_AUDIOBOOKS=200 — CarPlay's own HIG favors shorter
@@ -177,6 +190,10 @@ data class CarPlayAudiobookCard(
     val title: String,
     val author: String?,
     val coverUrl: String?,
+    /** Resolved once here (see this file's own doc comment) — the server requires this for
+     *  cover art, same as any other acquisition URL, so Swift's cover-fetch needs it attached
+     *  as an `Authorization` header the same way `AudiobookPlaybackController` already does. */
+    val coverAuthHeader: String?,
     /** 0.0-1.0 listening progress, when known. */
     val progress: Double?,
 )
