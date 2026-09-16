@@ -59,6 +59,17 @@ targets:
           - $(inherited)
           - -framework
           - SharedKit
+      configs:
+        # Release archives (TestFlight/App Store) need an Apple Distribution identity, not
+        # Apple Development — automatic signing defaults to a Development profile even when
+        # archiving, which then requires a registered device (there are none registered on
+        # this team, and App Store distribution doesn't need any). Manual signing here points
+        # straight at the Apple Distribution certificate + "Dexxicon Reader App Store v2"
+        # profile, both provisioned via the App Store Connect API (issue: 0.15.0 release).
+        Release:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: Dexxicon Reader App Store v2
     dependencies:
       - package: ReadiumSwiftToolkit
         product: ReadiumShared
