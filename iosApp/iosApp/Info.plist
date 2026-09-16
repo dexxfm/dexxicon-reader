@@ -22,6 +22,13 @@
 	<string>37</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- Export compliance: the app only ever uses HTTPS/TLS to talk to a user-configured
+	     server, the OS Keychain for credential storage, and hashing (SHA-256 for OIDC PKCE,
+	     MD5 for KOReader sync digests — not encryption) — no custom/non-exempt encryption.
+	     Declaring this up front skips the manual "Missing Compliance" prompt App Store
+	     Connect otherwise asks on every single upload before a build can reach testers. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<!-- issue #169: Compose Multiplatform's own startup sanity check (PlistSanityCheck)
 	     throws an uncaught fatal exception on launch without this — required for smooth
 	     scrolling on ProMotion/high-refresh-rate displays, not optional polish. -->
