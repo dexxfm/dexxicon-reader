@@ -82,9 +82,12 @@ targets:
         # Development — automatic signing defaults to a Development profile even when
         # archiving, which then requires a registered device (there are none registered on
         # this team, and App Store distribution doesn't need any). Manual signing here points
-        # at the "iPhone Distribution: Damien Ball (XG622A3783)" certificate specifically
-        # (rather than the generic "Apple Distribution" prefix) because that identity's private
-        # key lives in a dedicated CI keychain (~/.dexxiroll-ci/signing.keychain-db) usable for
+        # at the SHA-1 of the "iPhone Distribution: Damien Ball (XG622A3783)" certificate
+        # specifically (a name-prefix value like "iPhone Distribution" gets resolved by Xcode
+        # as an alias of the "Apple Distribution" identity class and silently picks the *other*
+        # distribution cert on this team — confirmed live 2026-09-16, the hash is the only
+        # reliable way to pin one exact cert when two exist) because this cert's private key
+        # lives in a dedicated CI keychain (~/.dexxiroll-ci/signing.keychain-db) usable for
         # codesign over a headless SSH session without unlocking the login keychain — the login
         # keychain has no attached security session over SSH on this Mac ("User interaction is
         # not allowed" / errSecInternalComponent), so its own Apple Distribution identity can't
@@ -92,7 +95,7 @@ targets:
         # against this same certificate for exactly that reason.
         Release:
           CODE_SIGN_STYLE: Manual
-          CODE_SIGN_IDENTITY: iPhone Distribution
+          CODE_SIGN_IDENTITY: 6471802D27C39A0B657FA56E13399B6004CFC948
           CODE_SIGN_ENTITLEMENTS: iosApp/iosApp.entitlements
           PROVISIONING_PROFILE_SPECIFIER: Dexxicon Reader App Store v2
     dependencies:
