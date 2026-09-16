@@ -81,6 +81,10 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
+import io.github.nadeemiqbal.liquidglass.LiquidGlassQuality
+import io.github.nadeemiqbal.liquidglass.liquidGlassSource
+import io.github.nadeemiqbal.liquidglass.rememberLiquidGlassState
+import io.github.nadeemiqbal.liquidglass.rememberPlatformLiquidGlassQuality
 import kotlinx.serialization.Serializable
 import net.dexxicon.reader.core.designsystem.nav.FloatingPillNavBar
 import net.dexxicon.reader.core.designsystem.nav.PillNavigationRail
@@ -89,6 +93,7 @@ import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.core.designsystem.theme.DexxiconTheme
 import net.dexxicon.reader.core.model.AuthMode
+import net.dexxicon.reader.core.model.GlassIntensity
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.shared.catalog.BookDetailScreen
 import net.dexxicon.reader.shared.catalog.BooksScreen
@@ -172,6 +177,20 @@ fun App(
         AppTheme.SYSTEM -> isSystemInDarkTheme()
     }
     val nowPlaying by container.nowPlaying.collectAsState()
+    // Issue #224 — shared between the pill nav's glass surface and this Box's own content as
+    // its backdrop source (see below). GlassIntensity.OFF forces the library's own
+    // zero-allocation Fallback tier regardless of what the device would otherwise auto-detect
+    // (rememberPlatformLiquidGlassQuality already protects low-RAM/old devices on its own —
+    // this is the user's *explicit* "no blur" choice layered on top of that, not a duplicate
+    // of it); every other intensity level uses the platform's own tier and just scales the
+    // effect's strength within it (PillNav.kt's private GlassIntensity.blurScale).
+    val platformGlassQuality = rememberPlatformLiquidGlassQuality()
+    val glassQuality = if (theme.glassIntensity == GlassIntensity.OFF) {
+        LiquidGlassQuality.Fallback
+    } else {
+        platformGlassQuality
+    }
+    val glassState = rememberLiquidGlassState(glassQuality)
     DexxiconTheme(darkTheme = darkTheme) {
         val nav = rememberNavController()
         val backStackEntry by nav.currentBackStackEntryAsState()
@@ -208,7 +227,15 @@ fun App(
                 // the raw top/side system-bar insets; the floating group re-adds its own
                 // `navigationBarsPadding()` directly, same as native's did before it too.
                 Box(Modifier.fillMaxSize()) {
-                    Row(Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)) {
+                    // Issue #224 — everything in this Row (rail, two-pane Library panel, and
+                    // whatever screen the NavHost currently shows) is the backdrop the floating
+                    // pill nav's glass surface samples/blurs/tints. Marking the whole Row rather
+                    // than just the NavHost so the rail and two-pane panel are part of what's
+                    // "behind the glass" too, not just the current screen's own content.
+                    Row(
+                        Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)
+                            .liquidGlassSource(glassState),
+                    ) {
                         if (showRail) {
                             PillNavigationRail(
                                 destinations = TopLevelDestination.entries,
@@ -340,6 +367,8 @@ fun App(
                                 icon = { it.icon },
                                 label = { it.label },
                                 onSelect = { nav.switchTopLevel(it) },
+                                glassState = glassState,
+                                glassIntensity = theme.glassIntensity,
                             )
                         }
                     }

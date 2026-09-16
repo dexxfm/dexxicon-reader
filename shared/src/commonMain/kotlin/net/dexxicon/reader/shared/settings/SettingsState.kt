@@ -15,6 +15,7 @@ import net.dexxicon.reader.core.datastore.PlayerPreferences
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
+import net.dexxicon.reader.core.model.GlassIntensity
 import net.dexxicon.reader.shared.di.AppContainer
 
 /** Mirrors native's `SyncServerRow` (`feature/settings/KoSyncSettingsViewModel.kt`) —
@@ -75,6 +76,10 @@ class SettingsState(
 
     fun setCoverTapAction(action: CoverTapAction) {
         scope.launch { container.appPreferences.setCoverTapAction(action) }
+    }
+
+    fun setGlassIntensity(intensity: GlassIntensity) {
+        scope.launch { container.appPreferences.setGlassIntensity(intensity) }
     }
 
     fun setDownloadsWifiOnly(enabled: Boolean) {
