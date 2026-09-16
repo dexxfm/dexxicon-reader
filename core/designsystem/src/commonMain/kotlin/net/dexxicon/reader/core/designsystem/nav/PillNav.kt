@@ -143,8 +143,19 @@ fun <T> FloatingPillNavBar(
     Box(modifier.fillMaxWidth().padding(bottom = PillExtraBottomMargin), contentAlignment = Alignment.Center) {
         val tier = LiquidGlassDefaults.forQuality(glassState.quality)
         val scale = glassIntensity.blurScale
-        val baseTint = LiquidGlassDefaults.tintFor(isSystemInDarkTheme())
         val outline = MaterialTheme.colorScheme.outlineVariant
+        // OFF renders the exact pre-#224 look (this project's own themed surfaceVariant tone,
+        // fairly opaque) rather than the library's generic light/dark-aware white-or-black
+        // tint scaled toward zero — that scaling collapsed the fill to near-invisible (only
+        // the shadow + edge sheen showed), and even at full alpha the library's tint is meant
+        // to sit *on top of* a blur, not stand alone as this app's "no effect" flat look. Every
+        // other level uses the library's own tint, scaled by intensity alongside blur/saturation.
+        val tint = if (glassIntensity == GlassIntensity.OFF) {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)
+        } else {
+            val baseTint = LiquidGlassDefaults.tintFor(isSystemInDarkTheme())
+            baseTint.copy(alpha = (baseTint.alpha * scale).coerceIn(0f, 1f))
+        }
         Box(
             Modifier
                 .shadow(8.dp, Pill)
@@ -153,7 +164,7 @@ fun <T> FloatingPillNavBar(
                     shape = Pill,
                     blurRadius = tier.blurRadius * scale,
                     saturation = 1f + (tier.saturation - 1f) * scale,
-                    tint = baseTint.copy(alpha = (baseTint.alpha * scale).coerceIn(0f, 1f)),
+                    tint = tint,
                     borderHighlight = Brush.verticalGradient(
                         0f to outline.copy(alpha = 0.8f),
                         1f to outline.copy(alpha = 0.1f),
