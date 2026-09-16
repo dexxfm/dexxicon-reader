@@ -1,12 +1,15 @@
 # Dexxicon Reader
 
-A native Android and iOS client for self‑hosted book, comic and audiobook libraries. Built
-for **BookOrbit** (primary) and **Grimmory / BookLore** (secondary), talking to their own
-REST APIs — the same ones their web readers use — rather than generic OPDS.
+A native Android **and** iOS client for self‑hosted book, comic and audiobook libraries —
+one app, feature-equal on both platforms, with your library in your pocket, on your tablet,
+and **in the car** through Android Auto and Apple CarPlay. Built for **BookOrbit** (primary)
+and **Grimmory / BookLore** (secondary), talking to their own REST APIs — the same ones
+their web readers use — rather than generic OPDS.
 
 <p>
   <a href="https://github.com/dexxfm/dexxicon-reader/releases"><img alt="latest release" src="https://img.shields.io/github/v/release/dexxfm/dexxicon-reader?include_prereleases&sort=semver"></a>
   <img alt="min SDK 29" src="https://img.shields.io/badge/minSdk-29-blue">
+  <img alt="iOS 16+" src="https://img.shields.io/badge/iOS-16%2B-000000?logo=apple&logoColor=white">
   <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/licence-MIT-green"></a>
 </p>
 
@@ -75,26 +78,38 @@ Building from source instead? See [BUILD.md](BUILD.md).
 - Pull‑to‑refresh on Home, Library and Settings; Home shows when it last synced and which
   server, if any, didn't.
 
-### Readers
+### Readers — identical on Android and iOS
+One shared UI (Kotlin Multiplatform + Compose) drives the reading experience on both
+platforms, so the settings sheet, gestures and sync behaviour you learn on one match the
+other exactly.
+
 | Format | Reader |
 |---|---|
 | **EPUB** | Readium — font size, light/sepia/dark themes, paged or scrolling, TOC, tap **and swipe** to turn pages, highlights & notes, **bookmarks** |
-| **Comic** — CBZ **and CBR** | Readium image navigator + page slider + pinch zoom + drag‑to‑turn with adjustable sensitivity. `.cbr` (RAR) is unpacked with junrar and cached as CBZ on first open |
+| **Comic** — CBZ **and CBR** | Readium image navigator + page slider + pinch zoom + drag‑to‑turn with adjustable sensitivity + **two‑page spread** on tablets/iPad/unfolded foldables, with auto‑detected right‑to‑left (manga) reading order. `.cbr` (RAR) is unpacked and cached as CBZ on first open |
 | **PDF** | Readium + PDFium — page/scroll modes, outline, zoom, drag‑to‑turn with adjustable sensitivity, display settings, page bookmarks |
-| **Audiobook** — M4B / MP3 / … | Media3 player — background playback, lock‑screen & notification controls, chapter list, scrubber |
+| **Audiobook** — M4B / MP3 / … | Background playback, lock‑screen & notification controls (Now Playing / Control Center on iOS), chapter list, scrubber |
 
 Audiobook extras: playback speed, sleep timer (timed or **end of chapter**), **skip
 silence**, configurable skip‑forward/back intervals, rewind‑on‑resume. The player shows
-the current audio route (speaker / Bluetooth / headphones) and opens the system output
-switcher in one tap. A mini‑player bar sits above the bottom navigation while audio is
-active; its **X** ends playback and clears the notification.
-
-- **Android Auto.** Audiobooks are browsable and playable from the car — Continue
-  listening, Downloaded, and all audiobooks (split per server), plus search. The
-  now‑playing screen has cover art, chapter, scrubber and rewind‑15 / play / forward‑30;
-  playback resumes where you left off and position syncs back to the server.
+the current audio route (speaker / Bluetooth / headphones / AirPlay) and opens the system
+output switcher in one tap — Android also gets **Google Cast**. A mini‑player bar sits
+above the bottom navigation while audio is active; its **X** ends playback and clears the
+notification.
 
 MOBI / AZW3 / FB2 are recognised but not yet openable (converters are a work in progress).
+
+### In the car — Android Auto & Apple CarPlay
+Your audiobook library, browsable and playable without touching your phone:
+
+- **A full browsable library**, not just a bare now‑playing screen: Continue listening,
+  Downloaded, and All audiobooks (split per server if you have more than one) — Android
+  Auto adds search on top.
+- **A real Now Playing screen** with cover art, current chapter, and a scrubber. Android
+  Auto shows rewind‑15 / play / forward‑30; CarPlay adds a dedicated **playback‑speed**
+  button in place of a sleep timer — you don't need a sleep timer while driving.
+- Playback picks up exactly where you left off and syncs your position back to the server
+  the moment you're within range again. Downloaded books play with no signal at all.
 
 ### Sync — two‑way
 - **Reading & listening position** round‑trips with the server, so you resume on your phone
@@ -114,27 +129,33 @@ MOBI / AZW3 / FB2 are recognised but not yet openable (converters are a work in 
 ### Settings
 - **Servers** — drag to set display priority (used for the server list, the sync list, and
   which library's books come first when browsing).
-- **Appearance** — theme (system / light / dark) and the default book layout (grid or
-  list) for the Library and server catalogues; each screen keeps its own toggle.
+- **Appearance** — theme (system / light / dark), the default book layout (grid or list)
+  for the Library and server catalogues (each screen keeps its own toggle), default sort
+  order for Library and server browsing, and **Glass intensity** for the floating nav bar.
 - **Downloads** — Wi‑Fi‑only queueing and a total storage cap (default 10 GB); a download
   that would exceed the cap is skipped.
 - **Reading sync** — per‑server channel and last‑synced time; `kosync` account setup for
   generic OPDS servers.
 
 ### Design & privacy
-- Jetpack Compose + Material 3, dark‑blue/grey theme, light/dark, edge‑to‑edge.
+- A real‑time, frosted **liquid‑glass backdrop blur** on the floating pill navigation bar —
+  not a flat translucent overlay, an actual live blur of what's scrolling underneath —
+  with an intensity slider in Settings if you'd rather tone it down. Jetpack Compose +
+  Material 3 on Android, Compose Multiplatform sharing that same design language on iOS;
+  adaptive layouts for phones, tablets, foldables and iPad; light/dark, edge‑to‑edge.
 - No ads, no analytics, no third‑party SDKs. The app connects only to the servers you add;
   credentials are encrypted on‑device with a hardware‑backed key. Crashes are saved locally
   and only emailed if you choose to, after reviewing the contents. See [PRIVACY.md](PRIVACY.md).
 
 ## Status
 
-Usable daily‑driver for BookOrbit and Grimmory. Current version **0.13.1** — see
-[Releases](https://github.com/dexxfm/dexxicon-reader/releases) for APKs and Play‑ready
-App Bundles, and [CHANGELOG.md](CHANGELOG.md) for what each one brought.
+**v1.0.0** — a complete, polished daily driver for BookOrbit and Grimmory, feature‑equal on
+Android and iOS: shared readers, shared sync, shared design, Android Auto and CarPlay both
+done, adaptive tablet/foldable/iPad layouts done. See
+[Releases](https://github.com/dexxfm/dexxicon-reader/releases) for APKs and Play‑ready App
+Bundles, and [CHANGELOG.md](CHANGELOG.md) for what each version brought.
 
-Adaptive tablet/foldable layouts, Android Auto, and a Play Console upload are done. A
-[baseline profile](PERF.md) ships with release builds.
+A [baseline profile](PERF.md) ships with Android release builds.
 
 **Not done yet:** MOBI/AZW3/FB2 conversion, OPDS‑PSE comic page streaming. Kobo sync was cut.
 
