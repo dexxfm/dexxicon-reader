@@ -39,7 +39,6 @@ REST APIs — the same ones their web readers use — rather than generic OPDS.
 ### Android
 
 1. Download the latest APK from [Releases](https://github.com/dexxfm/dexxicon-reader/releases)
-   (or grab the AAB there if you're sideloading through Play).
 2. Install it — Android will prompt to allow installs from your browser/file manager the first
    time; no other setup is required.
 3. Open the app, add your server (URL + your normal account, or **Sign in with SSO** if your
