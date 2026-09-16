@@ -114,8 +114,27 @@ final class AudiobookPlaybackController: NSObject {
     func start(book: Book, authHeader: String?) {
         guard let remoteURL = URL(string: book.digestUrl) else { return }
 
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
-        try? AVAudioSession.sharedInstance().setActive(true)
+        // issue #237: these were silent `try?` calls — if audio session activation actually
+        // fails, playback still audibly works (AVPlayer doesn't require it the way the
+        // lock-screen/CarPlay Now Playing surface does), so the failure was invisible. Logging
+        // explicitly here until the real cause of "Now Playing never appears" is found.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
+        } catch {
+            NSLog("DEXXICON_AUDIO_SESSION setCategory failed: %@", "\(error)")
+        }
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            NSLog("DEXXICON_AUDIO_SESSION setActive failed: %@", "\(error)")
+        }
+        NSLog(
+            "DEXXICON_AUDIO_SESSION category=%@ mode=%@ isOtherAudioPlaying=%@ secondaryAudioShouldBeSilencedHint=%@",
+            AVAudioSession.sharedInstance().category.rawValue,
+            AVAudioSession.sharedInstance().mode.rawValue,
+            "\(AVAudioSession.sharedInstance().isOtherAudioPlaying)",
+            "\(AVAudioSession.sharedInstance().secondaryAudioShouldBeSilencedHint)"
+        )
 
         let newLoader = AudiobookStreamLoader(authHeader: authHeader)
         loader = newLoader
