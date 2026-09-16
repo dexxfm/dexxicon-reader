@@ -50,6 +50,10 @@ androidxBrowser = "1.10.0"
 # iOS-only for now (KMP :core:security) — KeychainSettings backs CredentialStore there,
 # since Keychain items are already encrypted at rest and need no separate app-level cipher.
 multiplatformSettings = "1.3.0"
+# Real backdrop blur for the floating pill nav (issue #224) — Compose Multiplatform, with
+# tiered device-quality fallback (flat tint on low-end Android/pre-iOS15) so this never OOMs
+# a low-RAM device the way an unconditional blur allocation could.
+liquidGlass = "0.2.3"
 # iOS-only for now (KMP :core:network) — backs ConnectivityMonitor's iOS actual, since
 # NWPathMonitor itself isn't reachable from Kotlin/Native. ktor is versioned separately below,
 # for the same module's new (not yet Android-wired) Ktor HttpClient.
@@ -146,6 +150,7 @@ coil-network-ktor3 = { module = "io.coil-kt.coil3:coil-network-ktor3", version.r
 appauth = { module = "net.openid:appauth", version.ref = "appauth" }
 androidx-browser = { module = "androidx.browser:browser", version.ref = "androidxBrowser" }
 multiplatform-settings = { module = "com.russhwolf:multiplatform-settings", version.ref = "multiplatformSettings" }
+liquid-glass = { module = "io.github.nadeemiqbal:liquid-glass", version.ref = "liquidGlass" }
 connectivity-core = { module = "dev.jordond.connectivity:connectivity-core", version.ref = "connectivity" }
 connectivity-apple = { module = "dev.jordond.connectivity:connectivity-apple", version.ref = "connectivity" }
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
+import net.dexxicon.reader.core.model.GlassIntensity
 import okio.Path.Companion.toPath
 
 enum class AppTheme { SYSTEM, LIGHT, DARK }
@@ -42,6 +43,8 @@ data class AppPreferences(
     val catalogSort: BookSort = BookSort.RECENT,
     /** What tapping a cover does in the catalog / Browse screens. */
     val coverTapAction: CoverTapAction = CoverTapAction.OPEN_DETAILS,
+    /** Floating pill nav's liquid-glass strength (issue #224). */
+    val glassIntensity: GlassIntensity = GlassIntensity.STANDARD,
 )
 
 /**
@@ -80,6 +83,7 @@ class AppPreferencesStore(context: PlatformStorageContext) {
         val BROWSE_SORT = stringPreferencesKey("book_sort_browse")
         val CATALOG_SORT = stringPreferencesKey("book_sort_catalog")
         val COVER_TAP_ACTION = stringPreferencesKey("cover_tap_action")
+        val GLASS_INTENSITY = stringPreferencesKey("glass_intensity")
     }
 
     val preferences: Flow<AppPreferences> = dataStore.data.map { p ->
@@ -104,6 +108,9 @@ class AppPreferencesStore(context: PlatformStorageContext) {
             coverTapAction = p[Keys.COVER_TAP_ACTION]
                 ?.let { runCatching { CoverTapAction.valueOf(it) }.getOrNull() }
                 ?: CoverTapAction.OPEN_DETAILS,
+            glassIntensity = p[Keys.GLASS_INTENSITY]
+                ?.let { runCatching { GlassIntensity.valueOf(it) }.getOrNull() }
+                ?: GlassIntensity.STANDARD,
         )
     }
 
@@ -166,6 +173,10 @@ class AppPreferencesStore(context: PlatformStorageContext) {
 
     suspend fun setCoverTapAction(action: CoverTapAction) {
         dataStore.edit { it[Keys.COVER_TAP_ACTION] = action.name }
+    }
+
+    suspend fun setGlassIntensity(intensity: GlassIntensity) {
+        dataStore.edit { it[Keys.GLASS_INTENSITY] = intensity.name }
     }
 
     private companion object {

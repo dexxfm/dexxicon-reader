@@ -45,6 +45,7 @@ import net.dexxicon.reader.core.designsystem.component.FormatLegend
 import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
+import net.dexxicon.reader.core.model.GlassIntensity
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.relativeTime
 
@@ -213,6 +214,26 @@ fun SettingsScreen(
                             selected = prefs.coverTapAction == action,
                             onClick = { state.setCoverTapAction(action) },
                             label = { Text(action.label) },
+                        )
+                    }
+                }
+
+                LayoutSpacer(Modifier.height(16.dp))
+                Text("Glass intensity", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "How strong the floating nav bar's blurred-glass look is. Off keeps the " +
+                        "flat tint from before and never blurs anything, for low-end devices or " +
+                        "if you just prefer it flat.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp),
+                )
+                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GlassIntensity.entries.forEach { intensity ->
+                        FilterChip(
+                            selected = prefs.glassIntensity == intensity,
+                            onClick = { state.setGlassIntensity(intensity) },
+                            label = { Text(intensity.name.lowercase().replaceFirstChar { it.uppercase() }) },
                         )
                     }
                 }

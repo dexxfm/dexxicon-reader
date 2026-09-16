@@ -40,6 +40,11 @@ kotlin {
             implementation(compose.materialIconsExtended)
             implementation(compose.components.resources)
             api(libs.coil.compose)
+            // Real backdrop blur for the pill nav (issue #224) - api(), not implementation():
+            // FloatingPillNavBar exposes LiquidGlassState in its own public signature so the
+            // one call site (:shared's App.kt) can create it and share it between the pill and
+            // whatever content sits behind it as the glass's backdrop source.
+            api(libs.liquid.glass)
         }
     }
 }

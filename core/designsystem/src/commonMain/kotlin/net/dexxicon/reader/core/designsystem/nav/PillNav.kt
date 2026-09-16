@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,7 +20,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,12 +27,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import io.github.nadeemiqbal.liquidglass.LiquidGlassDefaults
+import io.github.nadeemiqbal.liquidglass.LiquidGlassState
+import io.github.nadeemiqbal.liquidglass.liquidGlass
 import net.dexxicon.reader.core.designsystem.theme.Pill
+import net.dexxicon.reader.core.model.GlassIntensity
 
 /**
  * Bottom padding a screen's own scrollable content should reserve when the floating nav
@@ -57,6 +63,22 @@ val FloatingNavClearance = 96.dp
 internal expect val PillExtraBottomMargin: Dp
 
 /**
+ * Multiplier applied to a [LiquidGlassDefaults.Tier]'s blur radius / saturation-lift-above-1 /
+ * tint alpha — scales the glass effect's strength within whatever quality tier the device is
+ * already capped to, rather than overriding the tier (device-safety stays with
+ * [io.github.nadeemiqbal.liquidglass.rememberPlatformLiquidGlassQuality], not this setting).
+ * [GlassIntensity.OFF] isn't handled here — the caller passes a [LiquidGlassState] already
+ * forced to `Fallback` quality for that case, so blur/saturation are no-ops regardless of scale.
+ */
+private val GlassIntensity.blurScale: Float
+    get() = when (this) {
+        GlassIntensity.OFF -> 0f
+        GlassIntensity.SUBTLE -> 0.5f
+        GlassIntensity.STANDARD -> 1f
+        GlassIntensity.STRONG -> 1.5f
+    }
+
+/**
  * Phase 4 (issue #115) — the floating pill bottom nav from the Claude Design mockup, replacing
  * [androidx.compose.material3.NavigationBar]. Icon-only (no labels — the mockup's phone frame
  * never shows one), translucent tonal pill, selected/unselected states are a color swap only
@@ -79,10 +101,21 @@ internal expect val PillExtraBottomMargin: Dp
  * (which reserved its own layout space below the content) — true floating, per the mockup's
  * own translucent-pill intent, no longer deferred. [FloatingNavClearance] is the bottom
  * clearance a screen's own scrollable content should reserve so its last item can still scroll
- * fully clear of the pill rather than staying permanently hidden behind it. Real backdrop blur
- * still needs a `RenderEffect` (Android 12+ only, and no direct multiplatform equivalent for the
- * iOS build), so this still approximates the mockup's blurred glass look with a semi-transparent
- * tonal surface instead of literally blurring content behind it.
+ * fully clear of the pill rather than staying permanently hidden behind it.
+ *
+ * Issue #224 replaced the flat semi-transparent `Surface` this used to be with real backdrop
+ * blur via the `io.github.nadeemiqbal:liquid-glass` library (Compose Multiplatform, with its
+ * own per-device quality tiering so this degrades to a zero-allocation tint on low-RAM Android
+ * and pre-iOS15 hardware automatically). [glassState] must be created once by the caller (with
+ * `rememberLiquidGlassState()`) and shared with whatever `Modifier.liquidGlassSource` marks as
+ * this pill's backdrop — see `:shared`'s `App.kt`, the one call site. [glassIntensity] is a
+ * user-facing Settings choice (Appearance → Glass intensity) layered on top of the library's
+ * own device-tier detection: it scales blur radius / saturation / tint *within* whatever tier
+ * the device is capped to, rather than overriding the tier itself, so a low-RAM device still
+ * never gets a real blur allocation even if the user picks Strong — [GlassIntensity.OFF] is the
+ * one exception, which forces the library's own zero-allocation [io.github.nadeemiqbal
+ * .liquidglass.LiquidGlassQuality.Fallback] tier regardless of device capability, since that's
+ * the user explicitly asking for no blur at all, not just a lighter one.
  *
  * Press feedback (both here and in [PillNavigationRail]) is a hand-rolled fade, not
  * `Modifier.indication` + a ripple factory: `androidx.compose.material3.ripple.ripple()`
@@ -99,6 +132,8 @@ fun <T> FloatingPillNavBar(
     icon: (T) -> ImageVector,
     label: @Composable (T) -> String,
     onSelect: (T) -> Unit,
+    glassState: LiquidGlassState,
+    glassIntensity: GlassIntensity,
     modifier: Modifier = Modifier,
 ) {
     // fillMaxWidth() is what actually makes contentAlignment=Center center the pill — without
@@ -106,11 +141,24 @@ fun <T> FloatingPillNavBar(
     // parent Column (the host Scaffold's bottomBar slot) puts a Start-aligned child: flush
     // left, not centered (issue #115 PR feedback).
     Box(modifier.fillMaxWidth().padding(bottom = PillExtraBottomMargin), contentAlignment = Alignment.Center) {
-        Surface(
-            shape = Pill,
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f),
-            shadowElevation = 8.dp,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        val tier = LiquidGlassDefaults.forQuality(glassState.quality)
+        val scale = glassIntensity.blurScale
+        val baseTint = LiquidGlassDefaults.tintFor(isSystemInDarkTheme())
+        val outline = MaterialTheme.colorScheme.outlineVariant
+        Box(
+            Modifier
+                .shadow(8.dp, Pill)
+                .liquidGlass(
+                    state = glassState,
+                    shape = Pill,
+                    blurRadius = tier.blurRadius * scale,
+                    saturation = 1f + (tier.saturation - 1f) * scale,
+                    tint = baseTint.copy(alpha = (baseTint.alpha * scale).coerceIn(0f, 1f)),
+                    borderHighlight = Brush.verticalGradient(
+                        0f to outline.copy(alpha = 0.8f),
+                        1f to outline.copy(alpha = 0.1f),
+                    ),
+                ),
         ) {
             Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 destinations.forEach { destination ->
