@@ -408,6 +408,20 @@ final class AudiobookPlaybackController: NSObject {
             MPMediaItemPropertyPlaybackDuration: Double(state.durationMs) / 1000.0,
             MPNowPlayingInfoPropertyPlaybackRate: state.isPlaying ? Double(state.speed) : 0.0,
         ]
+        // issue #237 diagnostic: confirm what's actually being sent, and whether our own
+        // isPlaying flag agrees with the real AVPlayer state (a divergence here — us claiming
+        // rate=1.0 while the real player is still 0/buffering — could be why the system
+        // doesn't treat this as Now Playing eligible even though setNowPlayingInfo "succeeds").
+        NSLog(
+            "DEXXICON_NOWPLAYING title=%@ elapsed=%.1f duration=%.1f rate=%.2f | real player.rate=%.2f timeControlStatus=%d hasArtwork=%@",
+            state.currentChapterTitle ?? book.title,
+            Double(state.positionMs) / 1000.0,
+            Double(state.durationMs) / 1000.0,
+            state.isPlaying ? Double(state.speed) : 0.0,
+            player?.rate ?? -999,
+            player?.timeControlStatus.rawValue ?? -1,
+            "\(coverImage != nil)"
+        )
         if let coverImage {
             info[MPMediaItemPropertyArtwork] = MPMediaItemArtwork(boundsSize: coverImage.size) { _ in coverImage }
         }
