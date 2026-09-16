@@ -34,8 +34,20 @@ cp "$IOS_DIR/Package.resolved" "$SWIFTPM_DIR/Package.resolved"
 #    org.gradle.java.home directly into ~/.gradle/gradle.properties (rather than relying on
 #    a workflow-level JAVA_HOME env var) keeps this self-contained in the repo: nothing to
 #    configure by hand in App Store Connect for this part.
+#
+#    org.gradle.java.home alone isn't enough (issue #235, a real build failure, not
+#    theoretical): it only takes effect once Gradle's own JVM is already running. The
+#    `./gradlew` wrapper *script* needs a bare `java` (or $JAVA_HOME, which this later
+#    Run Script build phase doesn't inherit from this script's own process — Xcode Cloud
+#    ci_scripts and the xcodebuild step that runs afterward are separate process
+#    environments) just to bootstrap Gradle in the first place, and this VM has no JDK
+#    registered with macOS's system Java wrapper (/usr/libexec/java_home) — so that very
+#    first launch fails with "Unable to locate a Java Runtime" before gradle.properties is
+#    ever read. Symlinking into the standard system JVM location (exactly what Homebrew's
+#    own install output suggests as a Caveat) fixes it for every later step, not just Gradle.
 brew install openjdk@21
 JDK_HOME="$(brew --prefix openjdk@21)"
+sudo ln -sfn "$JDK_HOME/libexec/openjdk.jdk" /Library/Java/JavaVirtualMachines/openjdk-21.jdk
 mkdir -p "$HOME/.gradle"
 echo "org.gradle.java.home=$JDK_HOME" >> "$HOME/.gradle/gradle.properties"
 
