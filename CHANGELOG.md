@@ -1,5 +1,67 @@
 # Changelog
 
+## 1.0.0 — 2026-09-16
+
+**First stable release — and the first with Android and iOS truly at parity.** CarPlay
+joins Android Auto, the floating nav bar gets a real backdrop blur, and iOS catches up on
+downloads, comics, and covers.
+
+- **New: Apple CarPlay support**, matching Android Auto — a full browsable library
+  (Continue listening, Downloaded, All audiobooks) and a real Now Playing screen with
+  cover art, chapter, a scrubber, and a playback-speed button in place of a sleep timer.
+- **New: real backdrop blur on the floating pill nav bar** — a live frosted-glass effect
+  instead of a flat translucent overlay, with an intensity setting in Appearance.
+- **New: real download support on iOS**, replacing the earlier stub.
+- **New: two-page spread for comics on iOS**, matching Android.
+- **Fixed: iOS book covers, a missing app icon, and a stale display name/version.**
+- **Fixed: the audiobook player's cover art overlapping the controls** on iPad in
+  landscape.
+- Default sort order setting for Library and server browsing.
+- Continue-reading rows now seed from Grimmory's real timestamps instead of the time you
+  first opened the app.
+- Retired the old Codemagic CI now that a dedicated Mac build host exists.
+
+## 0.14.1 — 2026-09-15
+
+- **Fixed: removing a server left behind its books, reading progress, and downloads.**
+  Removing a server now cascades — a startup sweep also cleans up anything orphaned by an
+  earlier removal, before this fix landed.
+- **Fixed: audiobook "mark as unread" could target the wrong asset** when a book existed
+  on more than one server.
+- **More reliable progress sync** — replaced a percent-comparison reconciliation (which
+  could miss real changes or overwrite a newer position) with proper dirty-flag tracking.
+- **New: a resume-conflict prompt for audiobooks** — if your phone and the server disagree
+  on where you left off, you're asked which position to keep instead of one silently
+  winning.
+- Comic reader: the "Two-page" layout option is greyed out below 720dp, where it wouldn't
+  fit.
+- The audiobook player's progress bar now starts at 0 instead of a stale value while
+  duration is still loading.
+
+## 0.14.0 — 2026-09-14
+
+**iOS reaches full reader parity with Android.** The EPUB, PDF, comic, and audiobook
+player screens on iOS now share the exact same Compose UI, settings sheets, and sync
+behavior as Android, instead of being separate native screens — every reader fix from here
+on lands on both platforms at once.
+
+- **New: two-page spread for comics** (Android) on tablets and unfolded foldables.
+- **New: auto two-column EPUB layout** at wide widths, with a redesigned pill-style
+  settings sheet.
+- **Audiobook player and Home/Library redesigned** with the pill design language — edge-
+  fade shelf masks, a two-pane Library + Detail layout on tablets/foldables.
+- **Fixed: BookOrbit audiobooks broken by a server 2.10.0 API migration** — books opened
+  but never actually started playing, with no error shown; playback errors now surface
+  instead of failing silently.
+- **Fixed: Library's infinite scroll could stop forever** when a format filter (e.g.
+  "Audiobooks" only) had no matches on the very first page.
+- **Fixed: Library cover art** could get stuck mid-load, show a permanent error state, or
+  keep showing a stale image after the server's copy changed.
+- Add/Edit Server: the password field now has a show/hide toggle.
+- Android Auto: browse-grid audiobook items show a progress subtitle.
+- Fixed several iOS launch/open crashes (EPUB and CBZ opening, native sign-in, full-screen
+  presentation).
+
 ## 0.13.3 — 2026-09-13
 
 - **Fixed: SSO sessions sometimes requiring you to sign in again after the app sat
