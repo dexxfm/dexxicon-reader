@@ -1,5 +1,6 @@
 package net.dexxicon.reader.feature.player
 
+import android.net.Uri
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -12,6 +13,7 @@ import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.ReadingProgressRepository
+import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.datastore.PlayerPreferencesStore
 import net.dexxicon.reader.core.media.AudiobookPlayer
 import net.dexxicon.reader.core.media.PlayerUiState
@@ -21,6 +23,7 @@ import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ResumeConflict
 import net.dexxicon.reader.feature.player.navigation.PlayerRoute
 import org.json.JSONObject
+import java.io.File
 import javax.inject.Inject
 import kotlin.math.abs
 
@@ -39,6 +42,7 @@ private const val RESUME_CONFLICT_TOLERANCE_MS = 5_000L
 class PlayerViewModel @Inject constructor(
     private val catalogRepository: CatalogRepository,
     private val progressRepository: ReadingProgressRepository,
+    private val downloadRepository: DownloadRepository,
     private val playerPreferences: PlayerPreferencesStore,
     val player: AudiobookPlayer,
     savedStateHandle: SavedStateHandle,
@@ -69,75 +73,110 @@ class PlayerViewModel @Inject constructor(
             return
         }
 
-        when (val result = catalogRepository.detail(route.serverId, route.bookId)) {
-            is Outcome.Failure ->
-                _screen.value = PlayerScreenState(loading = false, error = result.error.message ?: "Couldn't load this audiobook")
+        // Prefer a downloaded copy — this is also what makes playback work offline, so
+        // don't gate it on the (network) catalog detail call. Mirrors the same pattern
+        // already used by EpubReaderViewModel/PdfReaderViewModel/ComicReaderViewModel and
+        // MediaLibraryContentSourceImpl's (Android Auto) resolve()/resolveFromLocal() —
+        // issue #246: this ViewModel was the one place that never checked for a local file
+        // at all, so a downloaded audiobook still tried (and failed) to stream in airplane
+        // mode, surfacing a raw "Unable to resolve host" exception message.
+        val localFile = downloadRepository.localFile(route.serverId, route.bookId)?.let(::File)
+        val detail = (catalogRepository.detail(route.serverId, route.bookId) as? Outcome.Success)?.value
 
-            is Outcome.Success -> {
-                val detail = result.value
-                val acquisition = detail.acquisitions.firstOrNull { it.format == ContentFormat.AUDIOBOOK }
-                    ?: detail.primaryAcquisition
-                if (acquisition == null) {
-                    _screen.value = PlayerScreenState(loading = false, error = "This book has no audio to play")
-                    return
-                }
-                val durationMs = detail.audio?.durationMs ?: 0L
-                val audiobook = Audiobook(
-                    serverId = route.serverId,
-                    bookId = route.bookId,
-                    title = detail.summary.title,
-                    author = detail.summary.authorLine,
-                    coverUrl = detail.summary.coverUrl,
-                    streamUrl = acquisition.href,
-                    durationMs = durationMs,
-                    narrator = detail.narratorLine.takeIf { it.isNotBlank() },
-                    chapters = detail.audio?.chapters.orEmpty(),
-                )
-                progressRepository.save(
-                    ReadingProgress(
-                        serverId = route.serverId,
-                        bookId = route.bookId,
-                        title = detail.summary.title,
-                        author = detail.summary.authorLine,
-                        coverUrl = detail.summary.coverUrl,
-                        format = ContentFormat.AUDIOBOOK,
-                        digestUrl = acquisition.href,
-                    ),
-                )
-                val localMs = progressRepository.get(route.serverId, route.bookId)
-                    ?.locator
-                    ?.let { runCatching { JSONObject(it).optLong("position", 0L) }.getOrDefault(0L) }
-                    ?: 0L
-                // issue #216 — the raw server position, unblended, so a genuine conflict (the
-                // server was reset elsewhere) can be surfaced instead of "furthest wins"
-                // silently keeping whichever side happens to have the bigger number.
-                val remoteMs = progressRepository.nativeAudiobookPositionMs(
-                    serverId = route.serverId,
-                    bookId = route.bookId,
-                    digestUrl = acquisition.href,
-                    durationMs = durationMs,
-                )
-                if (remoteMs != null && abs(remoteMs - localMs) > RESUME_CONFLICT_TOLERANCE_MS) {
-                    player.prepare(audiobook, localMs)
-                    _screen.value = PlayerScreenState(
-                        loading = false,
-                        resumeConflict = ResumeConflict(remoteMs, localMs, durationMs),
-                    )
-                } else {
-                    // remoteMs is already the answer for a native server (just pulled above,
-                    // agrees with local within tolerance) — only re-resolve when it's null
-                    // (a kosync server, never pulled above, or the native pull itself failed).
-                    val startMs = remoteMs ?: progressRepository.audiobookResumeMs(
-                        serverId = route.serverId,
-                        bookId = route.bookId,
-                        digestUrl = acquisition.href,
-                        durationMs = durationMs,
-                        localMs = localMs,
-                    )
-                    player.play(audiobook, startMs)
-                    _screen.value = PlayerScreenState(loading = false)
-                }
-            }
+        if (localFile == null && detail == null) {
+            _screen.value = PlayerScreenState(loading = false, error = "Couldn't load this audiobook")
+            return
+        }
+
+        val acquisition = detail?.acquisitions?.firstOrNull { it.format == ContentFormat.AUDIOBOOK }
+            ?: detail?.primaryAcquisition
+        if (localFile == null && acquisition == null) {
+            _screen.value = PlayerScreenState(loading = false, error = "This book has no audio to play")
+            return
+        }
+
+        if (detail == null) {
+            // Fully offline open (no cached BookDetail either) — resume from the last known
+            // local position, same degraded metadata shape resolveFromLocal() already uses
+            // for Android Auto. Chapters/exact duration aren't known without a server round
+            // trip; the player's own onEvents callback backfills the real duration once
+            // ExoPlayer has prepared the local file.
+            val download = downloadRepository.get(route.serverId, route.bookId)
+            val localMs = progressRepository.get(route.serverId, route.bookId)
+                ?.locator
+                ?.let { runCatching { JSONObject(it).optLong("position", 0L) }.getOrDefault(0L) }
+                ?: 0L
+            val audiobook = Audiobook(
+                serverId = route.serverId,
+                bookId = route.bookId,
+                title = download?.title ?: "Audiobook",
+                author = download?.authorLine.orEmpty(),
+                coverUrl = download?.coverUrl,
+                streamUrl = Uri.fromFile(localFile).toString(),
+                durationMs = 0L,
+            )
+            player.play(audiobook, localMs)
+            _screen.value = PlayerScreenState(loading = false)
+            return
+        }
+
+        val durationMs = detail.audio?.durationMs ?: 0L
+        val audiobook = Audiobook(
+            serverId = route.serverId,
+            bookId = route.bookId,
+            title = detail.summary.title,
+            author = detail.summary.authorLine,
+            coverUrl = detail.summary.coverUrl,
+            // A downloaded copy plays from disk even when the server is reachable — no
+            // reason to burn data/battery re-streaming a book already sitting locally.
+            streamUrl = localFile?.let { Uri.fromFile(it).toString() } ?: acquisition!!.href,
+            durationMs = durationMs,
+            narrator = detail.narratorLine.takeIf { it.isNotBlank() },
+            chapters = detail.audio?.chapters.orEmpty(),
+        )
+        progressRepository.save(
+            ReadingProgress(
+                serverId = route.serverId,
+                bookId = route.bookId,
+                title = detail.summary.title,
+                author = detail.summary.authorLine,
+                coverUrl = detail.summary.coverUrl,
+                format = ContentFormat.AUDIOBOOK,
+                digestUrl = acquisition!!.href,
+            ),
+        )
+        val localMs = progressRepository.get(route.serverId, route.bookId)
+            ?.locator
+            ?.let { runCatching { JSONObject(it).optLong("position", 0L) }.getOrDefault(0L) }
+            ?: 0L
+        // issue #216 — the raw server position, unblended, so a genuine conflict (the
+        // server was reset elsewhere) can be surfaced instead of "furthest wins"
+        // silently keeping whichever side happens to have the bigger number.
+        val remoteMs = progressRepository.nativeAudiobookPositionMs(
+            serverId = route.serverId,
+            bookId = route.bookId,
+            digestUrl = acquisition.href,
+            durationMs = durationMs,
+        )
+        if (remoteMs != null && abs(remoteMs - localMs) > RESUME_CONFLICT_TOLERANCE_MS) {
+            player.prepare(audiobook, localMs)
+            _screen.value = PlayerScreenState(
+                loading = false,
+                resumeConflict = ResumeConflict(remoteMs, localMs, durationMs),
+            )
+        } else {
+            // remoteMs is already the answer for a native server (just pulled above,
+            // agrees with local within tolerance) — only re-resolve when it's null
+            // (a kosync server, never pulled above, or the native pull itself failed).
+            val startMs = remoteMs ?: progressRepository.audiobookResumeMs(
+                serverId = route.serverId,
+                bookId = route.bookId,
+                digestUrl = acquisition.href,
+                durationMs = durationMs,
+                localMs = localMs,
+            )
+            player.play(audiobook, startMs)
+            _screen.value = PlayerScreenState(loading = false)
         }
     }
 
