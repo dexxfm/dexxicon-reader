@@ -156,5 +156,9 @@ class BookDetailState(
         serverId: String,
         bookId: String,
         onOpenReader: OnOpenReader,
-    ) = container.openReader(detail, serverId, bookId, onOpenReader)
+    ) {
+        // issue #250: openReader() became a suspend fun (it now checks
+        // DownloadRepository.localFile()) -- this UI click callback isn't itself a coroutine.
+        scope.launch { container.openReader(detail, serverId, bookId, onOpenReader) }
+    }
 }

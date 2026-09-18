@@ -169,9 +169,11 @@ class HomeState(
      * except [ContinueItem.serverId]/[ContinueItem.bookId]/[ContinueItem.format] — see
      * `MainActivity`'s `onOpenReader` wiring — and resolve everything else themselves,
      * including a local download (issue #246/#247), so it's safe to still call [onOpenReader]
-     * with [item]'s own cached metadata once a local copy is confirmed. iOS's native readers
-     * do use the passed url/authHeader directly and still need a real [detail] fetch to open —
-     * unchanged (and no worse than before this fix) when offline. */
+     * with [item]'s own cached metadata once a local copy is confirmed. issue #250: iOS's
+     * native readers *do* use the passed url/authHeader directly (no independent local-file
+     * check of their own), so this builds a real `file://` url here too — see
+     * [net.dexxicon.reader.shared.openReader]'s own doc comment for why that's the portable
+     * "use the local copy" signal across the Kotlin/Swift boundary. */
     fun continueReading(item: ContinueItem, onOpenReader: OnOpenReader) {
         scope.launch {
             val detail = (container.catalogRepository.detail(item.serverId, item.bookId) as? Outcome.Success)
@@ -180,9 +182,9 @@ class HomeState(
                 container.openReader(detail, item.serverId, item.bookId, onOpenReader)
                 return@launch
             }
-            val hasLocalCopy = container.downloadRepository.localFile(item.serverId, item.bookId) != null
-            if (hasLocalCopy) {
-                onOpenReader(item.serverId, item.bookId, item.format, "", null, false, item.title, null)
+            val localFile = container.downloadRepository.localFile(item.serverId, item.bookId)
+            if (localFile != null) {
+                onOpenReader(item.serverId, item.bookId, item.format, "file://$localFile", null, false, item.title, null)
             }
         }
     }

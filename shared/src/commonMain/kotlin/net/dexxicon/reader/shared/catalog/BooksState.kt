@@ -167,12 +167,27 @@ class BooksState(
 
     /** A cover tap when [coverTapAction] is `OPEN_BOOK` — fetches the full detail, then hands
      * off through the same [net.dexxicon.reader.shared.openReader] helper every other
-     * tap-to-read site uses. */
+     * tap-to-read site uses.
+     *
+     * issue #248: don't gate on that (network) fetch succeeding — offline, it used to fail
+     * and this silently returned before [onOpenReader] ever fired, same bug as Home's
+     * Continue reading/listening cards had. A downloaded copy still opens using [book]'s own
+     * cached metadata; see [net.dexxicon.reader.shared.home.HomeState.continueReading]'s doc
+     * comment for why this is safe on Android (the one platform this shared code can't
+     * confirm at compile time) and issue #250 for why the url is a real `file://` path,
+     * not empty, since iOS's native readers use it directly. */
     fun openBook(book: BookSummary, onOpenReader: OnOpenReader) {
         scope.launch {
             val detail = (container.catalogRepository.detail(serverId, book.id) as? Outcome.Success)
-                ?.value ?: return@launch
-            container.openReader(detail, serverId, book.id, onOpenReader)
+                ?.value
+            if (detail != null) {
+                container.openReader(detail, serverId, book.id, onOpenReader)
+                return@launch
+            }
+            val localFile = container.downloadRepository.localFile(serverId, book.id)
+            if (localFile != null) {
+                onOpenReader(serverId, book.id, book.format, "file://$localFile", null, false, book.title, null)
+            }
         }
     }
 

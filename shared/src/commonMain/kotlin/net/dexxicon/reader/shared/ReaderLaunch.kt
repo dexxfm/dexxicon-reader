@@ -79,7 +79,7 @@ data class AudiobookLaunchInfo(
  * launches a specific copy while [detail]'s own acquisition/category/audio data is shared
  * across every copy of the same title.
  */
-fun AppContainer.openReader(
+suspend fun AppContainer.openReader(
     detail: BookDetail,
     serverId: String,
     bookId: String,
@@ -89,7 +89,20 @@ fun AppContainer.openReader(
         ?: detail.primaryAcquisition
         ?: return
     bookActions.noteOpened(serverId, bookId, detail)
-    val header = authHeaderProvider.authHeader(Url(acquisition.href))
+    // issue #250: prefer a downloaded copy's local file over the remote acquisition URL —
+    // unlike Android (whose native reader ViewModels ignore this [url] entirely and always
+    // re-resolve their own local-vs-remote source independently — see PlayerViewModel's own
+    // doc comment on why #246/#247 needed a Kotlin-side fix there instead), iOS's Swift
+    // readers (EpubReaderViewController/PdfReaderViewController/ComicPagerViewController/
+    // AudiobookPlaybackController) all use exactly the [url] this function hands them, with
+    // no independent local-file check of their own — so *this* is the one place that needs
+    // to prefer local for iOS to ever play/read offline at all. A `file://` URL is the
+    // portable way to say "local" across this boundary: Readium's streamer already accepts
+    // one transparently for EPUB/PDF/comic; AudiobookPlaybackController needed a matching
+    // Swift-side fix (skip the remote-only AudiobookStreamLoader for a file:// digestUrl).
+    val localFile = downloadRepository.localFile(serverId, bookId)
+    val url = localFile?.let { "file://$it" } ?: acquisition.href
+    val header = if (localFile != null) null else authHeaderProvider.authHeader(Url(acquisition.href))
     // issue #108 — same genre-tag check as Android's ComicReaderViewModel.mangaGenre.
     val isManga = detail.categories.any { it.contains("manga", ignoreCase = true) }
     // issue #114 — same metadata Android's PlayerViewModel.load() resolves from this exact
@@ -106,5 +119,5 @@ fun AppContainer.openReader(
                 chapters = it.chapters,
             )
         }
-    onOpenReader(serverId, bookId, detail.summary.format, acquisition.href, header, isManga, detail.summary.title, audiobook)
+    onOpenReader(serverId, bookId, detail.summary.format, url, header, isManga, detail.summary.title, audiobook)
 }

@@ -158,14 +158,29 @@ class LibraryState(
     /** A cover tap when [LibraryUiState.coverTapAction] is `OPEN_BOOK` — unlike Book
      * Detail's "Read" button, a grid card only has [AggregatedBook]'s lightweight metadata,
      * so this fetches the full detail first, then hands off through the same
-     * [net.dexxicon.reader.shared.openReader] helper every other tap-to-read site uses. */
+     * [net.dexxicon.reader.shared.openReader] helper every other tap-to-read site uses.
+     *
+     * issue #248: don't gate on that (network) fetch succeeding — offline, it used to fail
+     * and this silently returned before [onOpenReader] ever fired, same bug as Home's
+     * Continue reading/listening cards had. A downloaded copy still opens using [book]'s own
+     * cached metadata; see [net.dexxicon.reader.shared.home.HomeState.continueReading]'s doc
+     * comment for why this is safe on Android (the one platform this shared code can't
+     * confirm at compile time) and issue #250 for why the url is a real `file://` path,
+     * not empty, since iOS's native readers use it directly. */
     fun openBook(book: AggregatedBook, onOpenReader: OnOpenReader) {
         val serverId = book.primary.serverId
         val bookId = book.primary.bookId
         scope.launch {
             val detail = (container.catalogRepository.detail(serverId, bookId) as? Outcome.Success)
-                ?.value ?: return@launch
-            container.openReader(detail, serverId, bookId, onOpenReader)
+                ?.value
+            if (detail != null) {
+                container.openReader(detail, serverId, bookId, onOpenReader)
+                return@launch
+            }
+            val localFile = container.downloadRepository.localFile(serverId, bookId)
+            if (localFile != null) {
+                onOpenReader(serverId, bookId, book.format, "file://$localFile", null, false, book.title, null)
+            }
         }
     }
 
