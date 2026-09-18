@@ -9,19 +9,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
-import net.dexxicon.reader.core.model.Acquisition
-import net.dexxicon.reader.core.model.AcquisitionRelation
 import net.dexxicon.reader.core.model.BookCopy
 import net.dexxicon.reader.core.model.BookDetail
-import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
-import net.dexxicon.reader.core.model.fileExtension
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.openReader
+import net.dexxicon.reader.shared.toBookDetail
 
 /**
  * Phase 4 restructure (issue #126) — the one Book Detail state class, replacing *both*
@@ -102,31 +99,6 @@ class BookDetailState(
             )
         }
 
-    private fun Download.toBookDetail(): BookDetail = BookDetail(
-        summary = BookSummary(
-            id = bookId,
-            serverId = serverId,
-            title = title,
-            authors = authors,
-            series = series,
-            coverUrl = coverUrl,
-            format = format,
-        ),
-        fileExtension = localPath?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
-            ?: format.fileExtension,
-        fileSizeBytes = totalBytes,
-        acquisitions = localPath?.let {
-            listOf(
-                Acquisition(
-                    href = it,
-                    mediaType = format.name,
-                    format = format,
-                    relation = AcquisitionRelation.OPEN_ACCESS,
-                ),
-            )
-        } ?: emptyList(),
-    )
-
     fun onDownload() {
         val d = detail ?: return
         scope.launch { container.downloadRepository.enqueue(d) }
@@ -156,5 +128,9 @@ class BookDetailState(
         serverId: String,
         bookId: String,
         onOpenReader: OnOpenReader,
-    ) = container.openReader(detail, serverId, bookId, onOpenReader)
+    ) {
+        // issue #250: openReader() became a suspend fun (it now checks
+        // DownloadRepository.localFile()) -- this UI click callback isn't itself a coroutine.
+        scope.launch { container.openReader(detail, serverId, bookId, onOpenReader) }
+    }
 }

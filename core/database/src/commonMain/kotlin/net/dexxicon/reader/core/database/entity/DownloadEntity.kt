@@ -30,6 +30,8 @@ data class DownloadEntity(
     /** When the download was first queued. Fixed for the row's life — the list orders by it
      *  so tiles don't jump around as progress changes. */
     @ColumnInfo(defaultValue = "0") val createdAt: Long = 0L,
+    /** See [Download.durationMs]'s own doc comment. */
+    @ColumnInfo(defaultValue = "NULL") val durationMs: Long? = null,
 ) {
     fun toDomain(): Download = Download(
         serverId = serverId,
@@ -45,6 +47,7 @@ data class DownloadEntity(
         localPath = localPath,
         error = error,
         updatedAt = updatedAt,
+        durationMs = durationMs,
     )
 
     companion object {
@@ -58,6 +61,7 @@ data class DownloadEntity(
             coverUrl: String?,
             format: ContentFormat,
             sourceUrl: String,
+            durationMs: Long? = null,
         ): DownloadEntity = DownloadEntity(
             key = "$serverId::$bookId",
             serverId = serverId,
@@ -75,6 +79,7 @@ data class DownloadEntity(
             error = null,
             updatedAt = Clock.System.now().toEpochMilliseconds(),
             createdAt = Clock.System.now().toEpochMilliseconds(),
+            durationMs = durationMs,
         )
     }
 }

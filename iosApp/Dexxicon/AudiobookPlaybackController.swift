@@ -138,12 +138,29 @@ final class AudiobookPlaybackController: NSObject {
             NSLog("DEXXICON_AUDIO_SESSION setActive failed: %@", "\(error)")
         }
 
-        let newLoader = AudiobookStreamLoader(authHeader: authHeader)
-        loader = newLoader
-        let loaderURL = AudiobookStreamLoader.loaderURL(for: remoteURL)
-        let asset = AVURLAsset(url: loaderURL)
-        newLoader.attach(to: asset)
-        let item = AVPlayerItem(asset: asset)
+        // issue #250: a downloaded book's digestUrl is a real `file://` URL (see
+        // ReaderLaunch.kt's openReader() doc comment for why) — AVFoundation reads a local
+        // file directly with no resource loader at all, so AudiobookStreamLoader (which
+        // always assumes a *remote* URL and makes real HTTP range requests for every byte
+        // range AVFoundation asks for) must be skipped entirely for one, not just handed a
+        // local path it was never built to understand. Before this, every download played
+        // was still attempted as a live stream: with no network reachable, the loader's
+        // requests failed/hung silently, the player showed a normal "playing" state (`state`
+        // below is always set optimistically, before any of this can actually fail) that was
+        // never really progressing — confirmed live, reproduced with a downloaded book and
+        // an unreachable server: stuck at 0:00/0:00 indefinitely.
+        let item: AVPlayerItem
+        if remoteURL.isFileURL {
+            loader = nil
+            item = AVPlayerItem(asset: AVURLAsset(url: remoteURL))
+        } else {
+            let newLoader = AudiobookStreamLoader(authHeader: authHeader)
+            loader = newLoader
+            let loaderURL = AudiobookStreamLoader.loaderURL(for: remoteURL)
+            let asset = AVURLAsset(url: loaderURL)
+            newLoader.attach(to: asset)
+            item = AVPlayerItem(asset: asset)
+        }
 
         let newPlayer = player ?? AVPlayer()
         player = newPlayer

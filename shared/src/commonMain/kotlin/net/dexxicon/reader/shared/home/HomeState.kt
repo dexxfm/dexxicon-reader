@@ -19,6 +19,7 @@ import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.openReader
+import net.dexxicon.reader.shared.toBookDetail
 
 data class ContinueItem(
     val serverId: String,
@@ -160,11 +161,34 @@ class HomeState(
      * Detail), this needs the full [net.dexxicon.reader.core.model.BookDetail] to resolve a
      * reader launch (a [ContinueItem] only carries the lightweight metadata the shelf itself
      * needs), so it fetches first, then hands off through the same
-     * [net.dexxicon.reader.shared.openReader] helper Book Detail's "Read"/"Play" button uses. */
+     * [net.dexxicon.reader.shared.openReader] helper Book Detail's "Read"/"Play" button uses.
+     *
+     * issue #248: that network fetch used to gate the whole tap — offline, it failed and this
+     * silently returned before [onOpenReader] ever fired, so a downloaded book's own card did
+     * nothing at all (no error, unlike #246/#247's now-fixed in-reader failure, since the
+     * reader screen never even opened). Android's reader Activities ignore every argument here
+     * except [ContinueItem.serverId]/[ContinueItem.bookId]/[ContinueItem.format] — see
+     * `MainActivity`'s `onOpenReader` wiring — and resolve everything else themselves,
+     * including a local download (issue #246/#247), so it's safe to still call [onOpenReader]
+     * with [item]'s own cached metadata once a local copy is confirmed. issue #250: iOS's
+     * native readers *do* use the passed url/authHeader directly (no independent local-file
+     * check of their own) — the offline branch below reconstructs a real
+     * [net.dexxicon.reader.core.model.BookDetail] via
+     * [toBookDetail] and routes it through the same [container.openReader] every other call
+     * site uses, rather than hand-building a partial [OnOpenReader] call, so it picks up
+     * [net.dexxicon.reader.core.model.Download.durationMs] the same way Book Detail's own
+     * Play button does — an earlier version of this fix called [onOpenReader] directly with
+     * a hardcoded null `audiobook`, which quietly left a downloaded audiobook's Continue
+     * Listening card stuck showing 0:00/0:00 even though it played correctly from Book
+     * Detail. */
     fun continueReading(item: ContinueItem, onOpenReader: OnOpenReader) {
         scope.launch {
             val detail = (container.catalogRepository.detail(item.serverId, item.bookId) as? Outcome.Success)
-                ?.value ?: return@launch
+                ?.value
+                ?: container.downloadRepository.get(item.serverId, item.bookId)
+                    ?.takeIf { it.status == DownloadStatus.DONE }
+                    ?.toBookDetail()
+                ?: return@launch
             container.openReader(detail, item.serverId, item.bookId, onOpenReader)
         }
     }

@@ -27,6 +27,7 @@ import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.openReader
+import net.dexxicon.reader.shared.toBookDetail
 
 data class LibraryUiState(
     val query: String = "",
@@ -158,13 +159,26 @@ class LibraryState(
     /** A cover tap when [LibraryUiState.coverTapAction] is `OPEN_BOOK` — unlike Book
      * Detail's "Read" button, a grid card only has [AggregatedBook]'s lightweight metadata,
      * so this fetches the full detail first, then hands off through the same
-     * [net.dexxicon.reader.shared.openReader] helper every other tap-to-read site uses. */
+     * [net.dexxicon.reader.shared.openReader] helper every other tap-to-read site uses.
+     *
+     * issue #248: don't gate on that (network) fetch succeeding — offline, it used to fail
+     * and this silently returned before [onOpenReader] ever fired, same bug as Home's
+     * Continue reading/listening cards had. issue #250 follow-up: the offline branch
+     * reconstructs a real `BookDetail` via [net.dexxicon.reader.shared.toBookDetail] and
+     * routes it through [container.openReader] like every other call site, rather than
+     * hand-building a partial [OnOpenReader] call with a hardcoded null `audiobook` — see
+     * [net.dexxicon.reader.shared.home.HomeState.continueReading]'s doc comment for why that
+     * silently broke a downloaded audiobook's duration/position display. */
     fun openBook(book: AggregatedBook, onOpenReader: OnOpenReader) {
         val serverId = book.primary.serverId
         val bookId = book.primary.bookId
         scope.launch {
             val detail = (container.catalogRepository.detail(serverId, bookId) as? Outcome.Success)
-                ?.value ?: return@launch
+                ?.value
+                ?: container.downloadRepository.get(serverId, bookId)
+                    ?.takeIf { it.status == DownloadStatus.DONE }
+                    ?.toBookDetail()
+                ?: return@launch
             container.openReader(detail, serverId, bookId, onOpenReader)
         }
     }

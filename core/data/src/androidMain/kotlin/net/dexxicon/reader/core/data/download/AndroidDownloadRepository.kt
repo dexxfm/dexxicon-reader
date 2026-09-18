@@ -102,6 +102,7 @@ class AndroidDownloadRepository @Inject constructor(
             coverUrl = s.coverUrl,
             format = s.format,
             sourceUrl = acquisition.href,
+            durationMs = detail.audio?.durationMs,
         )
         dao.upsert(entity)
         workManager.enqueueUniqueWork(

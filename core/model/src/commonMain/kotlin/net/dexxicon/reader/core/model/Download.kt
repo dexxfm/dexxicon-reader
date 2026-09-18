@@ -15,6 +15,12 @@ data class Download(
     val localPath: String? = null,
     val error: String? = null,
     val updatedAt: Long = 0L,
+    /** [AudiobookInfo.durationMs][net.dexxicon.reader.core.model.AudiobookInfo] at the time
+     *  this was downloaded — only meaningful for [ContentFormat.AUDIOBOOK]. Captured because
+     *  the offline degraded [net.dexxicon.reader.core.model.BookDetail] this reconstructs into
+     *  (issue #250) has no server round-trip to pull it from otherwise, and the shared player
+     *  screen refuses to show a position against an unknown (zero) duration. */
+    val durationMs: Long? = null,
 ) {
     val key: String get() = "$serverId::$bookId"
     val authorLine: String get() = authors.joinToString(", ")

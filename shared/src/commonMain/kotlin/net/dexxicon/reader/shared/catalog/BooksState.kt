@@ -23,6 +23,7 @@ import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.library.BookOverlays
 import net.dexxicon.reader.shared.openReader
+import net.dexxicon.reader.shared.toBookDetail
 
 /**
  * [BooksScreen]'s state + behaviour (issue #80, extended in Stage E1 follow-up per the user's
@@ -167,11 +168,24 @@ class BooksState(
 
     /** A cover tap when [coverTapAction] is `OPEN_BOOK` — fetches the full detail, then hands
      * off through the same [net.dexxicon.reader.shared.openReader] helper every other
-     * tap-to-read site uses. */
+     * tap-to-read site uses.
+     *
+     * issue #248: don't gate on that (network) fetch succeeding — offline, it used to fail
+     * and this silently returned before [onOpenReader] ever fired, same bug as Home's
+     * Continue reading/listening cards had. issue #250 follow-up: the offline branch
+     * reconstructs a real `BookDetail` via [net.dexxicon.reader.shared.toBookDetail] and
+     * routes it through [container.openReader] like every other call site, rather than
+     * hand-building a partial [OnOpenReader] call with a hardcoded null `audiobook` — see
+     * [net.dexxicon.reader.shared.home.HomeState.continueReading]'s doc comment for why that
+     * silently broke a downloaded audiobook's duration/position display. */
     fun openBook(book: BookSummary, onOpenReader: OnOpenReader) {
         scope.launch {
             val detail = (container.catalogRepository.detail(serverId, book.id) as? Outcome.Success)
-                ?.value ?: return@launch
+                ?.value
+                ?: container.downloadRepository.get(serverId, book.id)
+                    ?.takeIf { it.status == DownloadStatus.DONE }
+                    ?.toBookDetail()
+                ?: return@launch
             container.openReader(detail, serverId, book.id, onOpenReader)
         }
     }

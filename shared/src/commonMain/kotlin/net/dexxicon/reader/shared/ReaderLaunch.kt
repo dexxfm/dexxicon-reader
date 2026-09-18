@@ -1,9 +1,15 @@
 package net.dexxicon.reader.shared
 
 import io.ktor.http.Url
+import net.dexxicon.reader.core.model.Acquisition
+import net.dexxicon.reader.core.model.AcquisitionRelation
+import net.dexxicon.reader.core.model.AudiobookInfo
 import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.Chapter
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.Download
+import net.dexxicon.reader.core.model.fileExtension
 import net.dexxicon.reader.shared.di.AppContainer
 
 /**
@@ -79,7 +85,7 @@ data class AudiobookLaunchInfo(
  * launches a specific copy while [detail]'s own acquisition/category/audio data is shared
  * across every copy of the same title.
  */
-fun AppContainer.openReader(
+suspend fun AppContainer.openReader(
     detail: BookDetail,
     serverId: String,
     bookId: String,
@@ -89,7 +95,20 @@ fun AppContainer.openReader(
         ?: detail.primaryAcquisition
         ?: return
     bookActions.noteOpened(serverId, bookId, detail)
-    val header = authHeaderProvider.authHeader(Url(acquisition.href))
+    // issue #250: prefer a downloaded copy's local file over the remote acquisition URL —
+    // unlike Android (whose native reader ViewModels ignore this [url] entirely and always
+    // re-resolve their own local-vs-remote source independently — see PlayerViewModel's own
+    // doc comment on why #246/#247 needed a Kotlin-side fix there instead), iOS's Swift
+    // readers (EpubReaderViewController/PdfReaderViewController/ComicPagerViewController/
+    // AudiobookPlaybackController) all use exactly the [url] this function hands them, with
+    // no independent local-file check of their own — so *this* is the one place that needs
+    // to prefer local for iOS to ever play/read offline at all. A `file://` URL is the
+    // portable way to say "local" across this boundary: Readium's streamer already accepts
+    // one transparently for EPUB/PDF/comic; AudiobookPlaybackController needed a matching
+    // Swift-side fix (skip the remote-only AudiobookStreamLoader for a file:// digestUrl).
+    val localFile = downloadRepository.localFile(serverId, bookId)
+    val url = localFile?.let { "file://$it" } ?: acquisition.href
+    val header = if (localFile != null) null else authHeaderProvider.authHeader(Url(acquisition.href))
     // issue #108 — same genre-tag check as Android's ComicReaderViewModel.mangaGenre.
     val isManga = detail.categories.any { it.contains("manga", ignoreCase = true) }
     // issue #114 — same metadata Android's PlayerViewModel.load() resolves from this exact
@@ -106,5 +125,48 @@ fun AppContainer.openReader(
                 chapters = it.chapters,
             )
         }
-    onOpenReader(serverId, bookId, detail.summary.format, acquisition.href, header, isManga, detail.summary.title, audiobook)
+    onOpenReader(serverId, bookId, detail.summary.format, url, header, isManga, detail.summary.title, audiobook)
 }
+
+/**
+ * Reconstructs a degraded [BookDetail] from a completed [Download] — the offline fallback
+ * every tap-to-read site (Home's Continue reading/listening shelves, Library/Books grids,
+ * Book Detail's own init) falls back to when a fresh `catalogRepository.detail()` fetch fails.
+ * One implementation shared by all of them (issue #250 follow-up — these used to each build a
+ * partial [OnOpenReader] call by hand, skipping this and always passing a null `audiobook`,
+ * which quietly undid the duration fix below for every entry point except Book Detail's own
+ * Play button) rather than each hand-rolling the same mapping and drifting out of sync.
+ */
+fun Download.toBookDetail(): BookDetail = BookDetail(
+    summary = BookSummary(
+        id = bookId,
+        serverId = serverId,
+        title = title,
+        authors = authors,
+        series = series,
+        coverUrl = coverUrl,
+        format = format,
+    ),
+    fileExtension = localPath?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
+        ?: format.fileExtension,
+    fileSizeBytes = totalBytes,
+    acquisitions = localPath?.let {
+        listOf(
+            Acquisition(
+                href = it,
+                mediaType = format.name,
+                format = format,
+                relation = AcquisitionRelation.OPEN_ACCESS,
+            ),
+        )
+    } ?: emptyList(),
+    // issue #250: without this, iOS's shared player screen refuses to show a resumed
+    // position against an unknown (zero) duration — see PlayerScreen.kt's own
+    // durationKnown guard — so a downloaded audiobook looked stuck at 0:00 even while
+    // genuinely playing. Chapters aren't captured at download time, so chapter
+    // navigation stays unavailable offline; only duration is needed to unblock the
+    // position display.
+    audio = durationMs
+        ?.takeIf { format == ContentFormat.AUDIOBOOK }
+        ?.let { AudiobookInfo(durationMs = it) },
+)
