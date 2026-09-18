@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.0 — 2026-09-18
+
+- **Fixed: downloaded audiobooks wouldn't play with no signal or in airplane mode.** The
+  player always tried to stream from the server first, even for a book already sitting on
+  the device — offline, that failed outright instead of falling back to the local copy.
+  It now checks for a downloaded file before ever touching the network, matching how the
+  EPUB/PDF/comic readers and Android Auto already behaved. A downloaded book also now
+  always plays from disk, even when you do have a connection, instead of needlessly
+  re-streaming it.
+
 ## 1.0.0 — 2026-09-16
 
 **First stable release — and the first with Android and iOS truly at parity.** CarPlay
