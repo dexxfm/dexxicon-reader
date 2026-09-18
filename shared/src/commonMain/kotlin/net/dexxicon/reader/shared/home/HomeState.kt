@@ -160,12 +160,30 @@ class HomeState(
      * Detail), this needs the full [net.dexxicon.reader.core.model.BookDetail] to resolve a
      * reader launch (a [ContinueItem] only carries the lightweight metadata the shelf itself
      * needs), so it fetches first, then hands off through the same
-     * [net.dexxicon.reader.shared.openReader] helper Book Detail's "Read"/"Play" button uses. */
+     * [net.dexxicon.reader.shared.openReader] helper Book Detail's "Read"/"Play" button uses.
+     *
+     * issue #248: that network fetch used to gate the whole tap — offline, it failed and this
+     * silently returned before [onOpenReader] ever fired, so a downloaded book's own card did
+     * nothing at all (no error, unlike #246/#247's now-fixed in-reader failure, since the
+     * reader screen never even opened). Android's reader Activities ignore every argument here
+     * except [ContinueItem.serverId]/[ContinueItem.bookId]/[ContinueItem.format] — see
+     * `MainActivity`'s `onOpenReader` wiring — and resolve everything else themselves,
+     * including a local download (issue #246/#247), so it's safe to still call [onOpenReader]
+     * with [item]'s own cached metadata once a local copy is confirmed. iOS's native readers
+     * do use the passed url/authHeader directly and still need a real [detail] fetch to open —
+     * unchanged (and no worse than before this fix) when offline. */
     fun continueReading(item: ContinueItem, onOpenReader: OnOpenReader) {
         scope.launch {
             val detail = (container.catalogRepository.detail(item.serverId, item.bookId) as? Outcome.Success)
-                ?.value ?: return@launch
-            container.openReader(detail, item.serverId, item.bookId, onOpenReader)
+                ?.value
+            if (detail != null) {
+                container.openReader(detail, item.serverId, item.bookId, onOpenReader)
+                return@launch
+            }
+            val hasLocalCopy = container.downloadRepository.localFile(item.serverId, item.bookId) != null
+            if (hasLocalCopy) {
+                onOpenReader(item.serverId, item.bookId, item.format, "", null, false, item.title, null)
+            }
         }
     }
 
