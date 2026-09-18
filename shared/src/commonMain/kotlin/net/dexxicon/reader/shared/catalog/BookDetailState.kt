@@ -9,21 +9,16 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
-import net.dexxicon.reader.core.model.Acquisition
-import net.dexxicon.reader.core.model.AcquisitionRelation
-import net.dexxicon.reader.core.model.AudiobookInfo
 import net.dexxicon.reader.core.model.BookCopy
 import net.dexxicon.reader.core.model.BookDetail
-import net.dexxicon.reader.core.model.BookSummary
-import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
-import net.dexxicon.reader.core.model.fileExtension
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.openReader
+import net.dexxicon.reader.shared.toBookDetail
 
 /**
  * Phase 4 restructure (issue #126) — the one Book Detail state class, replacing *both*
@@ -103,40 +98,6 @@ class BookDetailState(
                 bookId = bid,
             )
         }
-
-    private fun Download.toBookDetail(): BookDetail = BookDetail(
-        summary = BookSummary(
-            id = bookId,
-            serverId = serverId,
-            title = title,
-            authors = authors,
-            series = series,
-            coverUrl = coverUrl,
-            format = format,
-        ),
-        fileExtension = localPath?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
-            ?: format.fileExtension,
-        fileSizeBytes = totalBytes,
-        acquisitions = localPath?.let {
-            listOf(
-                Acquisition(
-                    href = it,
-                    mediaType = format.name,
-                    format = format,
-                    relation = AcquisitionRelation.OPEN_ACCESS,
-                ),
-            )
-        } ?: emptyList(),
-        // issue #250: without this, iOS's shared player screen refuses to show a resumed
-        // position against an unknown (zero) duration — see PlayerScreen.kt's own
-        // durationKnown guard — so a downloaded audiobook looked stuck at 0:00 even while
-        // genuinely playing. Chapters aren't captured at download time, so chapter
-        // navigation stays unavailable offline; only duration is needed to unblock the
-        // position display.
-        audio = durationMs
-            ?.takeIf { format == ContentFormat.AUDIOBOOK }
-            ?.let { AudiobookInfo(durationMs = it) },
-    )
 
     fun onDownload() {
         val d = detail ?: return

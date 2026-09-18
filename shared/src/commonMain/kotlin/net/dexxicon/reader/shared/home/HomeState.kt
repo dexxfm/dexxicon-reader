@@ -19,6 +19,7 @@ import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.openReader
+import net.dexxicon.reader.shared.toBookDetail
 
 data class ContinueItem(
     val serverId: String,
@@ -171,21 +172,24 @@ class HomeState(
      * including a local download (issue #246/#247), so it's safe to still call [onOpenReader]
      * with [item]'s own cached metadata once a local copy is confirmed. issue #250: iOS's
      * native readers *do* use the passed url/authHeader directly (no independent local-file
-     * check of their own), so this builds a real `file://` url here too — see
-     * [net.dexxicon.reader.shared.openReader]'s own doc comment for why that's the portable
-     * "use the local copy" signal across the Kotlin/Swift boundary. */
+     * check of their own) — the offline branch below reconstructs a real
+     * [net.dexxicon.reader.core.model.BookDetail] via
+     * [toBookDetail] and routes it through the same [container.openReader] every other call
+     * site uses, rather than hand-building a partial [OnOpenReader] call, so it picks up
+     * [net.dexxicon.reader.core.model.Download.durationMs] the same way Book Detail's own
+     * Play button does — an earlier version of this fix called [onOpenReader] directly with
+     * a hardcoded null `audiobook`, which quietly left a downloaded audiobook's Continue
+     * Listening card stuck showing 0:00/0:00 even though it played correctly from Book
+     * Detail. */
     fun continueReading(item: ContinueItem, onOpenReader: OnOpenReader) {
         scope.launch {
             val detail = (container.catalogRepository.detail(item.serverId, item.bookId) as? Outcome.Success)
                 ?.value
-            if (detail != null) {
-                container.openReader(detail, item.serverId, item.bookId, onOpenReader)
-                return@launch
-            }
-            val localFile = container.downloadRepository.localFile(item.serverId, item.bookId)
-            if (localFile != null) {
-                onOpenReader(item.serverId, item.bookId, item.format, "file://$localFile", null, false, item.title, null)
-            }
+                ?: container.downloadRepository.get(item.serverId, item.bookId)
+                    ?.takeIf { it.status == DownloadStatus.DONE }
+                    ?.toBookDetail()
+                ?: return@launch
+            container.openReader(detail, item.serverId, item.bookId, onOpenReader)
         }
     }
 

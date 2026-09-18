@@ -1,9 +1,15 @@
 package net.dexxicon.reader.shared
 
 import io.ktor.http.Url
+import net.dexxicon.reader.core.model.Acquisition
+import net.dexxicon.reader.core.model.AcquisitionRelation
+import net.dexxicon.reader.core.model.AudiobookInfo
 import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.Chapter
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.Download
+import net.dexxicon.reader.core.model.fileExtension
 import net.dexxicon.reader.shared.di.AppContainer
 
 /**
@@ -121,3 +127,46 @@ suspend fun AppContainer.openReader(
         }
     onOpenReader(serverId, bookId, detail.summary.format, url, header, isManga, detail.summary.title, audiobook)
 }
+
+/**
+ * Reconstructs a degraded [BookDetail] from a completed [Download] — the offline fallback
+ * every tap-to-read site (Home's Continue reading/listening shelves, Library/Books grids,
+ * Book Detail's own init) falls back to when a fresh `catalogRepository.detail()` fetch fails.
+ * One implementation shared by all of them (issue #250 follow-up — these used to each build a
+ * partial [OnOpenReader] call by hand, skipping this and always passing a null `audiobook`,
+ * which quietly undid the duration fix below for every entry point except Book Detail's own
+ * Play button) rather than each hand-rolling the same mapping and drifting out of sync.
+ */
+fun Download.toBookDetail(): BookDetail = BookDetail(
+    summary = BookSummary(
+        id = bookId,
+        serverId = serverId,
+        title = title,
+        authors = authors,
+        series = series,
+        coverUrl = coverUrl,
+        format = format,
+    ),
+    fileExtension = localPath?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
+        ?: format.fileExtension,
+    fileSizeBytes = totalBytes,
+    acquisitions = localPath?.let {
+        listOf(
+            Acquisition(
+                href = it,
+                mediaType = format.name,
+                format = format,
+                relation = AcquisitionRelation.OPEN_ACCESS,
+            ),
+        )
+    } ?: emptyList(),
+    // issue #250: without this, iOS's shared player screen refuses to show a resumed
+    // position against an unknown (zero) duration — see PlayerScreen.kt's own
+    // durationKnown guard — so a downloaded audiobook looked stuck at 0:00 even while
+    // genuinely playing. Chapters aren't captured at download time, so chapter
+    // navigation stays unavailable offline; only duration is needed to unblock the
+    // position display.
+    audio = durationMs
+        ?.takeIf { format == ContentFormat.AUDIOBOOK }
+        ?.let { AudiobookInfo(durationMs = it) },
+)

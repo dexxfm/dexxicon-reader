@@ -23,6 +23,7 @@ import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.library.BookOverlays
 import net.dexxicon.reader.shared.openReader
+import net.dexxicon.reader.shared.toBookDetail
 
 /**
  * [BooksScreen]'s state + behaviour (issue #80, extended in Stage E1 follow-up per the user's
@@ -171,23 +172,21 @@ class BooksState(
      *
      * issue #248: don't gate on that (network) fetch succeeding — offline, it used to fail
      * and this silently returned before [onOpenReader] ever fired, same bug as Home's
-     * Continue reading/listening cards had. A downloaded copy still opens using [book]'s own
-     * cached metadata; see [net.dexxicon.reader.shared.home.HomeState.continueReading]'s doc
-     * comment for why this is safe on Android (the one platform this shared code can't
-     * confirm at compile time) and issue #250 for why the url is a real `file://` path,
-     * not empty, since iOS's native readers use it directly. */
+     * Continue reading/listening cards had. issue #250 follow-up: the offline branch
+     * reconstructs a real `BookDetail` via [net.dexxicon.reader.shared.toBookDetail] and
+     * routes it through [container.openReader] like every other call site, rather than
+     * hand-building a partial [OnOpenReader] call with a hardcoded null `audiobook` — see
+     * [net.dexxicon.reader.shared.home.HomeState.continueReading]'s doc comment for why that
+     * silently broke a downloaded audiobook's duration/position display. */
     fun openBook(book: BookSummary, onOpenReader: OnOpenReader) {
         scope.launch {
             val detail = (container.catalogRepository.detail(serverId, book.id) as? Outcome.Success)
                 ?.value
-            if (detail != null) {
-                container.openReader(detail, serverId, book.id, onOpenReader)
-                return@launch
-            }
-            val localFile = container.downloadRepository.localFile(serverId, book.id)
-            if (localFile != null) {
-                onOpenReader(serverId, book.id, book.format, "file://$localFile", null, false, book.title, null)
-            }
+                ?: container.downloadRepository.get(serverId, book.id)
+                    ?.takeIf { it.status == DownloadStatus.DONE }
+                    ?.toBookDetail()
+                ?: return@launch
+            container.openReader(detail, serverId, book.id, onOpenReader)
         }
     }
 
