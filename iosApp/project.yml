@@ -82,22 +82,24 @@ targets:
         # Development — automatic signing defaults to a Development profile even when
         # archiving, which then requires a registered device (there are none registered on
         # this team, and App Store distribution doesn't need any). Manual signing here points
-        # at the SHA-1 of the "iPhone Distribution: Damien Ball (XG622A3783)" certificate
-        # specifically (a name-prefix value like "iPhone Distribution" gets resolved by Xcode
-        # as an alias of the "Apple Distribution" identity class and silently picks the *other*
-        # distribution cert on this team — confirmed live 2026-09-16, the hash is the only
-        # reliable way to pin one exact cert when two exist) because this cert's private key
-        # lives in a dedicated CI keychain (~/.dexxiroll-ci/signing.keychain-db) usable for
-        # codesign over a headless SSH session without unlocking the login keychain — the login
-        # keychain has no attached security session over SSH on this Mac ("User interaction is
-        # not allowed" / errSecInternalComponent), so its own Apple Distribution identity can't
-        # sign here at all. The regenerated "Dexxicon Reader App Store v2" profile was created
-        # against this same certificate for exactly that reason.
+        # at the SHA-1 of the "Apple Distribution: Damien Ball (XG622A3783)" certificate
+        # specifically (a name-prefix value like "Apple Distribution" gets resolved by Xcode as
+        # an alias of the identity class and can silently pick a *different* distribution cert
+        # on this team if more than one is present — the hash is the only reliable way to pin
+        # one exact cert). issue #250 v1.1.1 release: the previous cert this pointed at
+        # (6471802D27...) lived only in a since-lost dedicated CI keychain
+        # (~/.dexxiroll-ci/signing.keychain-db, password no longer known) — its identity no
+        # longer resolves at all over a fresh SSH session (`security find-identity` against the
+        # login keychain doesn't list it), so archiving failed with errSecInternalComponent.
+        # Regenerated against this cert (which *is* in the login keychain, confirmed present
+        # via `security find-identity -v -p codesigning`) and a matching fresh profile
+        # ("Dexxicon Reader App Store v3", created via the App Store Connect API — see
+        # [[dexxicon-ios-release-signing]]) instead of chasing the old keychain's password.
         Release:
           CODE_SIGN_STYLE: Manual
-          CODE_SIGN_IDENTITY: 6471802D27C39A0B657FA56E13399B6004CFC948
+          CODE_SIGN_IDENTITY: A27705A164006B8657753E96F4AAB1BBF43F5F45
           CODE_SIGN_ENTITLEMENTS: Dexxicon/Dexxicon.entitlements
-          PROVISIONING_PROFILE_SPECIFIER: Dexxicon Reader App Store v2
+          PROVISIONING_PROFILE_SPECIFIER: Dexxicon Reader App Store v3
     dependencies:
       - package: ReadiumSwiftToolkit
         product: ReadiumShared
