@@ -97,13 +97,13 @@ private fun formatGigabytes(bytes: Long): String {
  * account, same as native's version) — see [SettingsState]'s doc comment for exactly what
  * backs each.
  *
- * [onReportProblem] is the one section Stage H didn't port: native's version emails a zip of
- * Android-only log files (`CrashReporter`/`DiagnosticsArchive`), and no iOS equivalent has
- * ever been designed. Rather than block the rest of this screen on that design work, it's an
- * optional platform callback — Android's thin wrapper passes a real implementation reusing
- * that existing Intent+zip logic (the same shape [net.dexxicon.reader.shared.OnOpenReader]
- * already uses for a platform capability `:shared` doesn't implement itself); leaving it null
- * (iOS, for now) simply omits the section rather than showing a broken one.
+ * [onReportProblem] emails a zip of Android-only log files (`CrashReporter`/
+ * `DiagnosticsArchive`); no iOS equivalent has ever been designed. It's an optional platform
+ * callback — Android's thin wrapper (`DexxiconApp.kt`, wired through [App]'s own
+ * `onReportProblem` param, issue #262) passes a real implementation reusing that existing
+ * Intent+zip logic (the same shape [net.dexxicon.reader.shared.OnOpenReader] already uses for
+ * a platform capability `:shared` doesn't implement itself); leaving it null (iOS, for now)
+ * simply omits the section rather than showing a broken one.
  *
  * **Servers**: Stage D (issue #133) relocated [net.dexxicon.reader.shared.servers]'s server
  * list here — [onManageServers] just navigates to it.

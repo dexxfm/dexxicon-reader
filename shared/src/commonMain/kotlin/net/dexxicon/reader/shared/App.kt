@@ -167,6 +167,12 @@ fun App(
      * this NavHost's [nav] leaking outside this composable. iOS never has anything to emit
      * here, hence the no-op default. */
     reauthRequests: Flow<String> = emptyFlow(),
+    /** issue #262 — threads through to [SettingsScreen]'s own `onReportProblem` param; see
+     * its doc comment for why this stays null on iOS. This was never actually connected here
+     * after Stage H (issue #145) moved Settings into this shared NavHost, silently dropping
+     * the "Report a problem" button on every platform despite the rest of the screen porting
+     * cleanly. */
+    onReportProblem: (() -> Unit)? = null,
 ) {
     // Phase 4 Stage E1 (issue #136) — Settings' theme chips need this to actually do
     // something; a control that doesn't visibly change anything is worse than no control.
@@ -296,6 +302,7 @@ fun App(
                                 onManageServers = { nav.navigate(ManageServersRoute) },
                                 onOpenAudiobookDefaults = { nav.navigate(AudiobookDefaultsRoute) },
                                 onOpenBookDefaults = { nav.navigate(BookDefaultsRoute) },
+                                onReportProblem = onReportProblem,
                             )
                         }
                         composable<AudiobookDefaultsRoute> {

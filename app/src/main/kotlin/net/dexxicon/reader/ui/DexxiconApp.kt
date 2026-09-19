@@ -36,6 +36,7 @@ import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.theme.DexxiconTheme
 import net.dexxicon.reader.crash.CrashReportSheet
 import net.dexxicon.reader.crash.shareCrashReport
+import net.dexxicon.reader.crash.shareProblemReport
 import net.dexxicon.reader.shared.App
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
@@ -91,7 +92,19 @@ fun DexxiconApp(
     }
     DexxiconTheme(darkTheme = darkTheme) {
         Box(Modifier.fillMaxSize()) {
-            App(container = container, onOpenReader = onOpenReader, reauthRequests = shellViewModel.reauthRequests)
+            App(
+                container = container,
+                onOpenReader = onOpenReader,
+                reauthRequests = shellViewModel.reauthRequests,
+                // issue #262 — Settings › Report a problem, dropped when Stage H (issue #145)
+                // moved this screen into :shared and never actually connected it here.
+                onReportProblem = {
+                    scope.launch {
+                        val logsZip = shellViewModel.buildLogArchive()
+                        shareProblemReport(context, logsZip)
+                    }
+                },
+            )
 
             Column(Modifier.fillMaxWidth()) {
                 signInPrompts.forEach { prompt ->
