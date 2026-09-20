@@ -19,6 +19,7 @@ import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import io.ktor.client.plugins.ResponseException
 import io.ktor.http.URLBuilder
 import kotlinx.io.IOException
+import kotlin.math.roundToInt
 
 /** Browses Grimmory / BookLore via its native REST API (uses the JWT bearer). */
 class GrimmoryCatalogSource(
@@ -114,6 +115,7 @@ class GrimmoryCatalogSource(
             narrators = listOfNotNull(book.metadata.narrator?.takeIf { it.isNotBlank() }),
             categories = book.metadata.categories,
             readingStatus = net.dexxicon.reader.core.model.ReadingStatus.fromServer(book.readStatus),
+            rating = book.personalRating?.roundToInt(),
             fileExtension = book.primaryFile?.let { f ->
                 f.extension?.trim()?.lowercase()?.takeIf { it.isNotBlank() }
                     ?: f.bookType?.trim()?.lowercase()?.takeIf { it.isNotBlank() }

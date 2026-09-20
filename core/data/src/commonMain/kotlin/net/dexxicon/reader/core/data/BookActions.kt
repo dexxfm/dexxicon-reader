@@ -56,6 +56,22 @@ class BookActions(
         }
     }
 
+    /** Set the server's per-user 1–5 star rating (issue #264). */
+    fun setRating(serverId: String, bookId: String, rating: Int) =
+        setRating(listOf(serverId to bookId), rating)
+
+    /** Set the rating on **every** copy of a book — same reasoning as [setReadingStatus]'s
+     *  multi-copy overload: a merged Browse entry shouldn't have servers disagree. */
+    fun setRating(copies: List<Pair<String, String>>, rating: Int) {
+        scope.launch {
+            copies.distinct().forEach { (serverId, bookId) ->
+                val server = serverRepository.get(serverId) ?: return@forEach
+                runCatching { nativeProgressSync.pushRating(server, bookId, rating) }
+                    .onFailure { Logger.w("BookActions", "set rating failed: ${it.message}") }
+            }
+        }
+    }
+
     /** "Mark as read" / "Mark as unread" — the quick toggle; also sets the status. */
     fun markFinished(serverId: String, bookId: String, finished: Boolean) =
         markFinished(listOf(serverId to bookId), finished)

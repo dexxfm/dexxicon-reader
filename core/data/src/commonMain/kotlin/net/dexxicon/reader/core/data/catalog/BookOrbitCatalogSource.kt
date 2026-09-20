@@ -95,6 +95,7 @@ class BookOrbitCatalogSource(
             narrators = book.narrators,
             categories = book.genres,
             readingStatus = net.dexxicon.reader.core.model.ReadingStatus.fromServer(book.readStatus?.status),
+            rating = book.rating,
             fileExtension = fileExtensionOf(file?.format, file?.filename),
             fileSizeBytes = file?.sizeBytes,
             audio = book.audioMetadata?.takeIf { summary.format == ContentFormat.AUDIOBOOK }?.let { am ->

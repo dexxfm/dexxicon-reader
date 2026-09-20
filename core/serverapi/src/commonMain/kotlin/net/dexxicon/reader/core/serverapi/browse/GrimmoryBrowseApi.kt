@@ -105,6 +105,14 @@ data class GrimmoryBook(
     val readStatus: String? = null,
     val metadata: GrimmoryMetadata = GrimmoryMetadata(),
     val primaryFile: GrimmoryFile? = null,
+    /** The current user's own rating (issue #264), 1–5 on the wire despite the `Double` type —
+     *  a top-level field on the book itself (confirmed against a live server), *not* nested
+     *  under [metadata] despite every other rating-ish field living there. Distinct from the
+     *  separate per-provider fields (`goodreadsRating`, `hardcoverRating`, etc. — all inside
+     *  `metadata`), which this app doesn't surface. The write side's `PersonalRatingUpdateRequest`
+     *  body field is a differently-named `rating`, see [net.dexxicon.reader.core.serverapi
+     *  .progress.GrimmoryRatingUpdate]. */
+    val personalRating: Double? = null,
 )
 
 @Serializable

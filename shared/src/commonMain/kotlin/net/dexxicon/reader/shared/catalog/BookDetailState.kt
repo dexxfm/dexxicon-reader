@@ -114,6 +114,14 @@ class BookDetailState(
         detail = detail?.copy(readingStatus = status)
     }
 
+    /** Sets the current user's own 1–5 star rating (issue #264) — same optimistic-update
+     *  shape as [setReadingStatus]. */
+    fun setRating(rating: Int) {
+        val pairs = copies.map { it.serverId to it.bookId }.ifEmpty { listOf(serverId to bookId) }
+        container.bookActions.setRating(pairs, rating)
+        detail = detail?.copy(rating = rating)
+    }
+
     /** Whether the offline/download button should show at all — [DownloadRepository
      * .supportsDownloads][net.dexxicon.reader.core.data.download.DownloadRepository.supportsDownloads],
      * not "which app launched this screen" (native `:app` and `:shared` resolve to the same
