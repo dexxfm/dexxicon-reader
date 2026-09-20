@@ -20,7 +20,9 @@ import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.progress.BookOrbitAudioProgressUpdate
 import net.dexxicon.reader.core.serverapi.progress.BookOrbitFileProgress
 import net.dexxicon.reader.core.serverapi.progress.BookOrbitPlaybackStateUpdate
+import net.dexxicon.reader.core.serverapi.progress.BookOrbitRatingUpdate
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryFileProgress
+import net.dexxicon.reader.core.serverapi.progress.GrimmoryRatingUpdate
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryUpdateProgress
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import net.dexxicon.reader.core.serverapi.progress.ServerStatusUpdate
@@ -93,6 +95,38 @@ class NativeProgressSync(
             syncStateStore.markSynced(server.id)
             Logger.i(TAG, "pushStatus ${server.type} $bookId -> $status ok")
         }.onFailure { Logger.w(TAG, "pushStatus ${server.type} $bookId failed: ${it.message}") }
+        Unit
+    }
+
+    /** Set the current user's own 1–5 rating on the server (issue #264, BookOrbit / Grimmory
+     *  only). No "clear my rating" path yet — both servers' clear semantics differ enough from
+     *  their set semantics (BookOrbit needs an explicit `null` the shared client's
+     *  `explicitNulls = false` JSON config would drop; Grimmory has a wholly separate
+     *  reset-personal-rating route) that it's better scoped as its own follow-up than bolted on
+     *  here. [bookId] must parse as a `Long` for Grimmory's route, which addresses books by
+     *  numeric id — every Grimmory book id already is one (see [GrimmoryAppBook.id]); a
+     *  non-numeric id here would only happen for a BookOrbit call, which never reaches this
+     *  branch. */
+    suspend fun pushRating(server: Server, bookId: String, rating: Int) = withContext(io) {
+        runCatching {
+            val response = when (server.type) {
+                ServerType.BOOKORBIT -> api.bookOrbitSetRating(
+                    server.resolve("/api/v1/books/$bookId/metadata"),
+                    BookOrbitRatingUpdate(rating),
+                )
+                ServerType.GRIMMORY -> api.grimmorySetRating(
+                    server.resolve("/api/v1/books/personal-rating"),
+                    GrimmoryRatingUpdate(ids = listOf(bookId.toLong()), rating = rating),
+                )
+                else -> return@runCatching
+            }
+            if (!response.isSuccessful) {
+                error("rating ${server.type} $bookId -> HTTP ${response.code()}")
+            }
+        }.onSuccess {
+            syncStateStore.markSynced(server.id)
+            Logger.i(TAG, "pushRating ${server.type} $bookId -> $rating ok")
+        }.onFailure { Logger.w(TAG, "pushRating ${server.type} $bookId failed: ${it.message}") }
         Unit
     }
 

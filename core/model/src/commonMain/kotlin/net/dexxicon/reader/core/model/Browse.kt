@@ -83,6 +83,10 @@ data class BookDetail(
     val audio: AudiobookInfo? = null,
     /** The server's per-user reading status, if it has one set. */
     val readingStatus: ReadingStatus? = null,
+    /** The server's per-user 1–5 star rating, if one has been set. BookOrbit and Grimmory
+     *  both support this natively (issue #264) — null on any other server type, or when this
+     *  user hasn't rated the book yet. */
+    val rating: Int? = null,
 ) {
     val narratorLine: String get() = narrators.joinToString(", ")
 

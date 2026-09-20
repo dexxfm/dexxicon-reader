@@ -112,6 +112,9 @@ data class BookOrbitBook(
     val readStatus: BookOrbitReadStatus? = null,
     /** Overall progression 0–1, present on dashboard scroller cards. */
     val readingProgress: Double? = null,
+    /** The current user's own 1–5 rating (issue #264) — distinct from `communityRatings`
+     *  (external providers' aggregate scores), which this app doesn't surface. */
+    val rating: Int? = null,
     val files: List<BookOrbitFile> = emptyList(),
     val audioMetadata: BookOrbitAudioMeta? = null,
 ) {

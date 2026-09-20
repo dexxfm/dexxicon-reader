@@ -2,6 +2,7 @@ package net.dexxicon.reader.shared.catalog
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -33,6 +34,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -136,6 +139,7 @@ fun BookDetailContent(
                     onDownload = state::onDownload,
                     onRemoveDownload = state::onRemoveDownload,
                     onSetStatus = state::setReadingStatus,
+                    onSetRating = state::setRating,
                     modifier = Modifier.padding(padding),
                 )
             }
@@ -155,6 +159,7 @@ private fun DetailContent(
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
     onSetStatus: (ReadingStatus) -> Unit,
+    onSetRating: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
@@ -177,7 +182,7 @@ private fun DetailContent(
                 ) {
                     BackPill(onBack)
                     Spacer(Modifier.height(12.dp))
-                    HeroBlock(detail, copies, onSetStatus, stacked = true)
+                    HeroBlock(detail, copies, onSetStatus, onSetRating, stacked = true)
                     Spacer(Modifier.height(16.dp))
                     ActionButtons(
                         detail, copies, download, progress, supportsDownloads,
@@ -206,7 +211,7 @@ private fun DetailContent(
                 ) {
                     BackPill(onBack)
                     Spacer(Modifier.height(12.dp))
-                    HeroBlock(detail, copies, onSetStatus, stacked = false)
+                    HeroBlock(detail, copies, onSetStatus, onSetRating, stacked = false)
                     Spacer(Modifier.height(20.dp))
                     ActionButtons(
                         detail, copies, download, progress, supportsDownloads,
@@ -228,6 +233,7 @@ private fun HeroBlock(
     detail: BookDetail,
     copies: List<BookCopy>,
     onSetStatus: (ReadingStatus) -> Unit,
+    onSetRating: (Int) -> Unit,
     stacked: Boolean,
 ) {
     val s = detail.summary
@@ -310,6 +316,8 @@ private fun HeroBlock(
                 AssistChip(onClick = {}, shape = Pill, label = { Text(formatLabel(detail)) })
                 ReadingStatusChip(detail.readingStatus, onSetStatus)
             }
+            Spacer(Modifier.height(6.dp))
+            RatingRow(detail.rating, onSetRating)
             val serverNames = copies.map { it.serverName }.distinct()
             if (serverNames.isNotEmpty()) {
                 FlowRow(
@@ -376,6 +384,31 @@ private fun ReadingStatusChip(current: ReadingStatus?, onSet: (ReadingStatus) ->
                     onClick = { open = false; onSet(status) },
                 )
             }
+        }
+    }
+}
+
+/** Tappable 1–5 star row (issue #264) — tapping star N sets the rating to N; there's no way to
+ *  clear a rating from here (see [BookDetailState.setRating]'s doc comment on why "clear" was
+ *  scoped out of v1). */
+@Composable
+private fun RatingRow(rating: Int?, onSetRating: (Int) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+        for (star in 1..5) {
+            val filled = rating != null && star <= rating
+            Icon(
+                if (filled) Icons.Filled.Star else Icons.Filled.StarBorder,
+                contentDescription = "Rate $star star${if (star == 1) "" else "s"}",
+                tint = if (filled) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier
+                    .clickable { onSetRating(star) }
+                    .padding(6.dp)
+                    .size(20.dp),
+            )
         }
     }
 }

@@ -104,10 +104,39 @@ class NativeProgressApi(private val client: HttpClient) {
             contentType(ContentType.Application.Json)
             setBody(body)
         }
+
+    // ---- personal rating (issue #264) ----
+    //  BookOrbit  PATCH  /api/v1/books/{id}/metadata      {rating:1-5}     (part of the general
+    //                                                                      metadata-update body)
+    //  Grimmory   PUT    /api/v1/books/personal-rating    {ids:[id],rating:1-5}
+
+    suspend fun bookOrbitSetRating(url: String, body: BookOrbitRatingUpdate): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Patch
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+
+    suspend fun grimmorySetRating(url: String, body: GrimmoryRatingUpdate): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Put
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 }
 
 @Serializable
 data class ServerStatusUpdate(val status: String)
+
+/** Sent as a partial body to BookOrbit's general `PATCH .../metadata` route (every field of
+ *  the server's own `UpdateBookMetadataDto` is optional) — omitting every field but `rating`
+ *  leaves the rest of the book's metadata untouched. */
+@Serializable
+data class BookOrbitRatingUpdate(val rating: Int)
+
+/** Grimmory's rating route is bulk-shaped even for a single book. */
+@Serializable
+data class GrimmoryRatingUpdate(val ids: List<Long>, val rating: Int)
 
 // ---- BookOrbit ----
 
