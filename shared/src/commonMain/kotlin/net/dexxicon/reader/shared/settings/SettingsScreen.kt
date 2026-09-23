@@ -115,6 +115,7 @@ fun SettingsScreen(
     onManageServers: () -> Unit,
     onOpenAudiobookDefaults: () -> Unit,
     onOpenBookDefaults: () -> Unit,
+    onOpenHomeLayout: () -> Unit,
     onReportProblem: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
@@ -146,6 +147,14 @@ fun SettingsScreen(
                     title = "Manage servers",
                     subtitle = "Add, edit, remove, or reorder your servers.",
                     onClick = onManageServers,
+                )
+            }
+
+            SettingsSection("Home screen") {
+                NavRow(
+                    title = "Arrange Home",
+                    subtitle = "Reorder or hide Continue reading, On Deck, Downloaded and the rest.",
+                    onClick = onOpenHomeLayout,
                 )
             }
 
@@ -316,13 +325,21 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSection("Format badges") {
-                Text(
-                    "The coloured tag on a cover's bottom-right corner shows its file type.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                FormatLegend(Modifier.padding(top = 8.dp))
+            SettingsSection("Cover badges") {
+                SettingRow(
+                    title = "Show series number",
+                    subtitle = "A book's place in its series (#3) on the cover's top-left corner, " +
+                        "and next to the author in list view.",
+                ) {
+                    Switch(checked = prefs.showSeriesNumbers, onCheckedChange = state::setShowSeriesNumbers)
+                }
+                SettingRow(
+                    title = "Show format badges",
+                    subtitle = "The coloured tag on a cover's bottom-right corner shows its file type.",
+                ) {
+                    Switch(checked = prefs.showFormatBadges, onCheckedChange = state::setShowFormatBadges)
+                }
+                if (prefs.showFormatBadges) FormatLegend(Modifier.padding(top = 8.dp))
             }
 
             if (onReportProblem != null) {

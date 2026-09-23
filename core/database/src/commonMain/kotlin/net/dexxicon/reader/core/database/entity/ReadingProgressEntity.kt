@@ -24,6 +24,9 @@ data class ReadingProgressEntity(
      *  advanced" from "just hasn't synced" by percent alone, so reconciliation trusts this
      *  flag instead: dirty rows get pushed, clean rows always adopt whatever the server says. */
     val dirty: Boolean = false,
+    /** issue #257 — see [ReadingProgress.series]. */
+    val series: String? = null,
+    val seriesIndex: Double? = null,
 ) {
     fun toDomain(): ReadingProgress = ReadingProgress(
         serverId = serverId,
@@ -36,6 +39,8 @@ data class ReadingProgressEntity(
         coverUrl = coverUrl,
         format = format?.let { runCatching { ContentFormat.valueOf(it) }.getOrNull() },
         digestUrl = digestUrl,
+        series = series,
+        seriesIndex = seriesIndex,
     )
 
     companion object {
@@ -51,6 +56,8 @@ data class ReadingProgressEntity(
             coverUrl = progress.coverUrl,
             format = progress.format?.name,
             digestUrl = progress.digestUrl,
+            series = progress.series,
+            seriesIndex = progress.seriesIndex,
         )
     }
 }

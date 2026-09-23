@@ -6,6 +6,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import net.dexxicon.reader.core.designsystem.component.CoverBadges
+import net.dexxicon.reader.core.designsystem.component.LocalCoverBadges
 
 // Phase 4 (issue #115): primary/tertiary now carry the Aqua accent (the mockup's confirmed
 // pick) instead of the old Navy/Blue brand color — background/surface/secondary are
@@ -70,17 +73,21 @@ private val DarkColors = darkColorScheme(
 fun DexxiconTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
+    /** The user's cover-overlay settings (issue #252) — see [CoverBadges]. */
+    coverBadges: CoverBadges = CoverBadges(),
     content: @Composable () -> Unit,
 ) {
     val dynamicScheme = if (dynamicColor) resolveDynamicColorScheme(darkTheme) else null
     val colorScheme = dynamicScheme ?: if (darkTheme) DarkColors else LightColors
 
-    MaterialTheme(
-        colorScheme = colorScheme,
-        typography = dexxiconTypography(),
-        shapes = DexxiconShapes,
-        content = content,
-    )
+    CompositionLocalProvider(LocalCoverBadges provides coverBadges) {
+        MaterialTheme(
+            colorScheme = colorScheme,
+            typography = dexxiconTypography(),
+            shapes = DexxiconShapes,
+            content = content,
+        )
+    }
 }
 
 /** Android 12+ wallpaper-seeded color scheme — genuinely platform-specific (no iOS

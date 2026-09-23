@@ -91,6 +91,7 @@ import net.dexxicon.reader.core.designsystem.nav.PillNavigationRail
 import net.dexxicon.reader.core.datastore.AppPreferences
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.component.BackPill
+import net.dexxicon.reader.core.designsystem.component.CoverBadges
 import net.dexxicon.reader.core.designsystem.theme.DexxiconTheme
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.GlassIntensity
@@ -104,6 +105,7 @@ import net.dexxicon.reader.shared.nav.TopLevelDestination
 import net.dexxicon.reader.shared.player.MiniPlayer
 import net.dexxicon.reader.shared.settings.AudiobookDefaultsScreen
 import net.dexxicon.reader.shared.settings.BookDefaultsScreen
+import net.dexxicon.reader.shared.settings.HomeLayoutScreen
 import net.dexxicon.reader.shared.settings.SettingsScreen
 import net.dexxicon.reader.shared.servers.AddServerState
 import net.dexxicon.reader.shared.servers.ServersState
@@ -128,6 +130,7 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 @Serializable private object SettingsRoute
 @Serializable private object AudiobookDefaultsRoute
 @Serializable private object BookDefaultsRoute
+@Serializable private object HomeLayoutRoute
 @Serializable private data class BooksRoute(val serverId: String)
 @Serializable private data class BookDetailRoute(val serverId: String, val bookId: String)
 
@@ -197,7 +200,13 @@ fun App(
         platformGlassQuality
     }
     val glassState = rememberLiquidGlassState(glassQuality)
-    DexxiconTheme(darkTheme = darkTheme) {
+    DexxiconTheme(
+        darkTheme = darkTheme,
+        coverBadges = CoverBadges(
+            showFormat = theme.showFormatBadges,
+            showSeriesNumber = theme.showSeriesNumbers,
+        ),
+    ) {
         val nav = rememberNavController()
         val backStackEntry by nav.currentBackStackEntryAsState()
         val currentDestination: NavDestination? = backStackEntry?.destination
@@ -302,6 +311,7 @@ fun App(
                                 onManageServers = { nav.navigate(ManageServersRoute) },
                                 onOpenAudiobookDefaults = { nav.navigate(AudiobookDefaultsRoute) },
                                 onOpenBookDefaults = { nav.navigate(BookDefaultsRoute) },
+                                onOpenHomeLayout = { nav.navigate(HomeLayoutRoute) },
                                 onReportProblem = onReportProblem,
                             )
                         }
@@ -310,6 +320,9 @@ fun App(
                         }
                         composable<BookDefaultsRoute> {
                             BookDefaultsScreen(container = container, onBack = { nav.popBackStack() })
+                        }
+                        composable<HomeLayoutRoute> {
+                            HomeLayoutScreen(container = container, onBack = { nav.popBackStack() })
                         }
                         composable<AddServerRoute> {
                             AddServerScreen(

@@ -41,6 +41,14 @@ data class Server(
     /** The kosync base URL actually used: a custom override, else the assumed one. */
     val effectiveKoSyncUrl: String
         get() = koSyncUrl?.trimEnd('/')?.takeIf { it.isNotBlank() } ?: assumedKoSyncUrl
+
+    /**
+     * issue #260 — this book's page in the server's own web app. Both families happen to use
+     * the same route (BookOrbit's `client/src/router` and Grimmory's `app.routes.ts` both
+     * declare `/book/:bookId`). Null for generic OPDS servers, which have no known web UI.
+     */
+    fun webBookUrl(bookId: String): String? =
+        if (type.supportsNativeApi && bookId.isNotBlank()) resolve("/book/$bookId") else null
 }
 
 /** How the app authenticates to a server. */

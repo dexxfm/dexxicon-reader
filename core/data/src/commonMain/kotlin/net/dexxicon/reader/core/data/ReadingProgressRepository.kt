@@ -111,6 +111,8 @@ class ReadingProgressRepository(
                         runCatching { ContentFormat.valueOf(it) }.getOrNull()
                     },
                 digestUrl = progress.digestUrl ?: existing?.digestUrl,
+                series = progress.series ?: existing?.series,
+                seriesIndex = progress.seriesIndex ?: existing?.seriesIndex,
                 percent = progress.percent ?: existing?.percent,
                 locator = progress.locator ?: existing?.locator,
             ),
@@ -163,6 +165,7 @@ class ReadingProgressRepository(
      */
     private suspend fun persistSeeded(server: Server, rows: List<ReadingProgress>) {
         val now = currentTimeMillis()
+        backfillSeries(rows)
         val eligible = rows.filter { it.percent != null && dao.find(it.key) == null }
         if (eligible.isEmpty()) return
 
@@ -184,6 +187,21 @@ class ReadingProgressRepository(
         for (row in eligible) {
             val updatedAt = realUpdatedAt[row.key] ?: now
             dao.upsert(ReadingProgressEntity.fromDomain(row.copy(updatedAt = updatedAt)))
+        }
+    }
+
+    /**
+     * issue #257 — rows tracked before series numbers were cached (or first seen by a reader
+     * that didn't know the series) pick it up from the server's own "continue" list, without
+     * touching anything else about the row — position, recency and `dirty` all stay exactly
+     * as they were.
+     */
+    private suspend fun backfillSeries(rows: List<ReadingProgress>) {
+        for (row in rows) {
+            if (row.series == null && row.seriesIndex == null) continue
+            val existing = dao.find(row.key) ?: continue
+            if (existing.series != null || existing.seriesIndex != null) continue
+            dao.upsert(existing.copy(series = row.series, seriesIndex = row.seriesIndex))
         }
     }
 

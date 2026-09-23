@@ -14,6 +14,20 @@ class ServerTest {
     )
 
     @Test
+    fun `web book url points at the server's own book page`() {
+        assertThat(server(ServerType.BOOKORBIT).webBookUrl("42"))
+            .isEqualTo("https://books.example.com/book/42")
+        assertThat(server(ServerType.GRIMMORY).webBookUrl("42"))
+            .isEqualTo("https://books.example.com/book/42")
+    }
+
+    @Test
+    fun `generic servers and blank ids have no web book url`() {
+        assertThat(server(ServerType.GENERIC).webBookUrl("42")).isNull()
+        assertThat(server(ServerType.BOOKORBIT).webBookUrl("")).isNull()
+    }
+
+    @Test
     fun `normalizedBaseUrl trims trailing slash`() {
         assertThat(server(ServerType.BOOKORBIT).normalizedBaseUrl)
             .isEqualTo("https://books.example.com")

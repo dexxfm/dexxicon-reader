@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
@@ -14,6 +15,7 @@ import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.HomeLayout
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.OnOpenReader
@@ -29,6 +31,11 @@ data class ContinueItem(
     val coverUrl: String?,
     val format: ContentFormat,
     val percent: Float,
+    /** issue #257 — cover's series-number badge. */
+    val seriesIndex: Double? = null,
+    /** issue #258 — this book's offline copy, if any, so the card can show the same
+     * "downloaded" badge and download/remove menu state every other shelf does. */
+    val downloadStatus: DownloadStatus? = null,
 )
 
 /** A book the user flagged "Want to read" on a server — shown in the On Deck shelf. */
@@ -39,6 +46,10 @@ data class OnDeckItem(
     val author: String?,
     val coverUrl: String?,
     val format: ContentFormat,
+    /** issue #257 — cover's series-number badge. */
+    val seriesIndex: Double? = null,
+    /** issue #258 — see [ContinueItem.downloadStatus]. */
+    val downloadStatus: DownloadStatus? = null,
 )
 
 data class HomeUiState(
@@ -48,6 +59,9 @@ data class HomeUiState(
     val downloads: List<Download> = emptyList(),
     /** Reading progress (0–1) for the Downloaded grid, keyed by "serverId::bookId". */
     val downloadProgress: Map<String, Float> = emptyMap(),
+    /** issue #257 — series position for the Downloaded grid's covers, keyed the same way.
+     *  Taken from the progress row's cached snapshot; downloads don't store it themselves. */
+    val downloadSeriesIndex: Map<String, Double> = emptyMap(),
     val loading: Boolean = true,
     val refreshing: Boolean = false,
     /** When the last sync pass ran; null before the first one completes. */
@@ -91,23 +105,37 @@ class HomeState(
             val inProgress = progressByKey.values
                 .filter { it.isInProgress }
                 .sortedByDescending { it.updatedAt }
-            val items = inProgress.mapNotNull { it.toContinueItem() }
+            // issue #258 — Continue/On Deck cards never learned about downloads at all, so a
+            // downloaded book showed no badge there and its long-press menu offered to download
+            // it again instead of removing it.
+            val downloadStatusByKey = downloads.associate { it.key to it.status }
+            val items = inProgress.mapNotNull { it.toContinueItem(downloadStatusByKey[it.key]) }
             val inProgressKeys = inProgress.map { "${it.serverId}::${it.bookId}" }.toSet()
             HomeUiState(
                 // A book that's been started isn't "on deck" any more, whatever the server says.
-                onDeck = onDeckItems.filter { "${it.serverId}::${it.bookId}" !in inProgressKeys },
+                onDeck = onDeckItems
+                    .filter { "${it.serverId}::${it.bookId}" !in inProgressKeys }
+                    .map { it.copy(downloadStatus = downloadStatusByKey["${it.serverId}::${it.bookId}"]) },
                 continueReading = items.filter { it.format != ContentFormat.AUDIOBOOK },
                 continueListening = items.filter { it.format == ContentFormat.AUDIOBOOK },
                 downloads = downloads,
                 downloadProgress = progressByKey
                     .mapValues { (_, p) -> (p.percent ?: 0.0).toFloat().coerceIn(0f, 1f) }
                     .filterValues { it > 0f },
+                downloadSeriesIndex = progressByKey
+                    .mapNotNull { (key, p) -> p.seriesIndex?.let { key to it } }
+                    .toMap(),
                 loading = false,
                 refreshing = isRefreshing,
                 lastSyncedAt = report?.at,
                 syncFailures = report?.failures.orEmpty(),
             )
         }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+
+    /** The user's shelf order and hidden shelves (issue #255), from Settings › Home screen. */
+    val layout: StateFlow<HomeLayout> = container.appPreferences.preferences
+        .map { it.homeLayout }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), HomeLayout())
 
     /** Whether the offline/download shelf should show at all — same platform-capability
      * check [net.dexxicon.reader.shared.catalog.BookDetailState.supportsDownloads] uses. */
@@ -144,6 +172,7 @@ class HomeState(
         author = authorLine.takeIf { it.isNotBlank() },
         coverUrl = coverUrl,
         format = format,
+        seriesIndex = seriesIndex,
     )
 
     fun markRead(serverId: String, bookId: String) = container.bookActions.markFinished(serverId, bookId, true)
@@ -193,7 +222,7 @@ class HomeState(
         }
     }
 
-    private fun ReadingProgress.toContinueItem(): ContinueItem? {
+    private fun ReadingProgress.toContinueItem(downloadStatus: DownloadStatus?): ContinueItem? {
         val fmt = format ?: return null
         val name = title?.takeIf { it.isNotBlank() } ?: return null
         return ContinueItem(
@@ -204,6 +233,8 @@ class HomeState(
             coverUrl = coverUrl,
             format = fmt,
             percent = (percent ?: 0.0).toFloat().coerceIn(0f, 1f),
+            seriesIndex = seriesIndex,
+            downloadStatus = downloadStatus,
         )
     }
 }

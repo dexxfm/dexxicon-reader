@@ -55,6 +55,7 @@ import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.HomeSection
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.OnOpenReader
 
@@ -85,23 +86,24 @@ fun HomeContent(
     modifier: Modifier = Modifier,
 ) {
     val uiState by state.uiState.collectAsState()
+    val layout by state.layout.collectAsState()
 
     fun continueActions(entry: ContinueItem) = HomeItemActions(
-        downloadStatus = null,
+        downloadStatus = entry.downloadStatus,
         onMarkRead = { state.markRead(entry.serverId, entry.bookId) },
         onMarkUnread = { state.markUnread(entry.serverId, entry.bookId) },
         onSetStatus = { state.setReadingStatus(entry.serverId, entry.bookId, it) },
         onDetails = { onOpenBook(entry.serverId, entry.bookId) },
-        onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, null) },
+        onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, entry.downloadStatus) },
     )
 
     fun onDeckActions(entry: OnDeckItem) = HomeItemActions(
-        downloadStatus = null,
+        downloadStatus = entry.downloadStatus,
         onMarkRead = { state.markRead(entry.serverId, entry.bookId) },
         onMarkUnread = { state.markUnread(entry.serverId, entry.bookId) },
         onSetStatus = { state.setReadingStatus(entry.serverId, entry.bookId, it) },
         onDetails = { onOpenBook(entry.serverId, entry.bookId) },
-        onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, null) },
+        onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, entry.downloadStatus) },
     )
 
     fun downloadActions(download: Download): HomeItemActions {
@@ -162,10 +164,16 @@ fun HomeContent(
         // Scaffold reserves it again and leaves a dead strip above the title.
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
     ) { padding ->
-        val empty = uiState.downloads.isEmpty() &&
-            uiState.onDeck.isEmpty() &&
-            uiState.continueReading.isEmpty() &&
-            uiState.continueListening.isEmpty()
+        // issue #255 — only the shelves the user hasn't hidden count; hiding the only
+        // non-empty one should land on the empty state, not a blank screen.
+        val empty = layout.visible.none { section ->
+            when (section) {
+                HomeSection.CONTINUE_READING -> uiState.continueReading.isNotEmpty()
+                HomeSection.CONTINUE_LISTENING -> uiState.continueListening.isNotEmpty()
+                HomeSection.ON_DECK -> uiState.onDeck.isNotEmpty()
+                HomeSection.DOWNLOADED -> uiState.downloads.isNotEmpty()
+            }
+        }
         Column(Modifier.fillMaxSize().padding(padding)) {
             PullToRefreshBox(
                 isRefreshing = uiState.refreshing,
@@ -184,7 +192,11 @@ fun HomeContent(
                         Alignment.Center,
                     ) {
                         Text(
-                            "Books you read or make available offline show up here.",
+                            if (layout.visible.isEmpty()) {
+                                "Every Home shelf is hidden. Turn them back on in Settings › Arrange Home."
+                            } else {
+                                "Books you read or make available offline show up here."
+                            },
                             textAlign = TextAlign.Center,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -204,25 +216,50 @@ fun HomeContent(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        continueShelf("Continue reading", uiState.continueReading, state, onOpenReader, ::continueActions)
-                        continueShelf("Continue listening", uiState.continueListening, state, onOpenReader, ::continueActions)
-                        onDeckShelf(uiState.onDeck, onOpenBook, ::onDeckActions)
-
-                        if (uiState.downloads.isNotEmpty()) {
-                            fullWidthItem { SectionHeader("Downloaded") }
-                            items(uiState.downloads, key = { it.key }) { download ->
-                                DownloadCard(
-                                    download = download,
-                                    readingProgress = uiState.downloadProgress[download.key],
-                                    onClick = { onOpenBook(download.serverId, download.bookId) },
-                                    actions = downloadActions(download),
+                        // issue #255 — shelves in the user's order, hidden ones skipped.
+                        layout.visible.forEach { section ->
+                            when (section) {
+                                HomeSection.CONTINUE_READING -> continueShelf(
+                                    section.title, uiState.continueReading, state, onOpenReader, ::continueActions,
                                 )
+                                HomeSection.CONTINUE_LISTENING -> continueShelf(
+                                    section.title, uiState.continueListening, state, onOpenReader, ::continueActions,
+                                )
+                                HomeSection.ON_DECK -> onDeckShelf(uiState.onDeck, onOpenBook, ::onDeckActions)
+                                HomeSection.DOWNLOADED -> downloadedShelf(uiState, onOpenBook, ::downloadActions)
                             }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** Home's shelf headings — also how Settings › Arrange Home lists them. */
+val HomeSection.title: String
+    get() = when (this) {
+        HomeSection.CONTINUE_READING -> "Continue reading"
+        HomeSection.CONTINUE_LISTENING -> "Continue listening"
+        HomeSection.ON_DECK -> "On Deck"
+        HomeSection.DOWNLOADED -> "Downloaded"
+    }
+
+private fun LazyGridScope.downloadedShelf(
+    uiState: HomeUiState,
+    onOpenBook: (String, String) -> Unit,
+    actionsFor: (Download) -> HomeItemActions,
+) {
+    if (uiState.downloads.isEmpty()) return
+    fullWidthItem { SectionHeader(HomeSection.DOWNLOADED.title) }
+    items(uiState.downloads, key = { it.key }) { download ->
+        DownloadCard(
+            download = download,
+            readingProgress = uiState.downloadProgress[download.key],
+            seriesIndex = uiState.downloadSeriesIndex[download.key],
+            onClick = { onOpenBook(download.serverId, download.bookId) },
+            actions = actionsFor(download),
+        )
     }
 }
 
@@ -309,13 +346,16 @@ private fun OnDeckCard(entry: OnDeckItem, onClick: () -> Unit, actions: HomeItem
                         append(entry.title)
                         entry.author?.let { append(", ").append(it) }
                         append(", want to read")
+                        if (entry.downloadStatus == DownloadStatus.DONE) append(", downloaded")
                     }
                 },
         ) {
             CoverImage(
                 coverUrl = entry.coverUrl,
                 contentDescription = null,
+                downloaded = entry.downloadStatus == DownloadStatus.DONE,
                 format = entry.format,
+                seriesIndex = entry.seriesIndex,
             )
             Text(
                 entry.title,
@@ -350,14 +390,16 @@ private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit, actions: Home
                 .semantics(mergeDescendants = true) {
                     contentDescription = "${entry.title}, $pct% ${
                         if (entry.format == ContentFormat.AUDIOBOOK) "listened" else "read"
-                    }"
+                    }" + if (entry.downloadStatus == DownloadStatus.DONE) ", downloaded" else ""
                 },
         ) {
             CoverImage(
                 coverUrl = entry.coverUrl,
                 contentDescription = null,
                 progress = entry.percent,
+                downloaded = entry.downloadStatus == DownloadStatus.DONE,
                 format = entry.format,
+                seriesIndex = entry.seriesIndex,
             )
             Text(
                 entry.title,
@@ -377,6 +419,7 @@ private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit, actions: Home
 private fun DownloadCard(
     download: Download,
     readingProgress: Float?,
+    seriesIndex: Double?,
     onClick: () -> Unit,
     actions: HomeItemActions,
 ) {
@@ -408,6 +451,7 @@ private fun DownloadCard(
                     progress = if (done) readingProgress else null,
                     downloaded = done,
                     format = download.format,
+                    seriesIndex = seriesIndex,
                 )
                 DownloadStatusOverlay(download)
             }

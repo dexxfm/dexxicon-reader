@@ -152,6 +152,10 @@ class AudiobookProgressSync(
                 coverUrl = coverUrl ?: existing?.coverUrl,
                 format = ContentFormat.AUDIOBOOK.name,
                 digestUrl = digestUrl ?: existing?.digestUrl,
+                // issue #257 — this builds the row from scratch, so anything not carried over
+                // here is silently wiped on every audiobook position save.
+                series = existing?.series,
+                seriesIndex = existing?.seriesIndex,
             ),
         )
     }

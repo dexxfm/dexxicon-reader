@@ -20,6 +20,8 @@ data class BookCopy(
     val serverId: String,
     val serverName: String,
     val bookId: String,
+    /** This copy's page in its server's web app (issue #260), when the server has one. */
+    val webUrl: String? = null,
 )
 
 /**

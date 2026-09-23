@@ -32,11 +32,12 @@ import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
 import net.dexxicon.reader.core.designsystem.theme.CoverShapeSmall
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.seriesNumberLabel
 
 /**
  * A book cover with optional overlays: a reading-progress bar along the bottom, a
- * "downloaded" badge (top-right), and a color-coded format badge (bottom-right). Used on
- * the catalog and library grids so both look the same.
+ * "downloaded" badge (top-right), a color-coded format badge (bottom-right), and the book's
+ * series number (top-left). Used on the catalog and library grids so both look the same.
  */
 @Composable
 fun CoverImage(
@@ -46,8 +47,12 @@ fun CoverImage(
     /** 0f–1f reading progress; null hides the bar. */
     progress: Float? = null,
     downloaded: Boolean = false,
-    /** Content type — shows a color-coded badge bottom-right; null / UNKNOWN hides it. */
+    /** Content type — shows a color-coded badge bottom-right; null / UNKNOWN hides it, as
+     *  does the user turning format badges off ([LocalCoverBadges], issue #252). */
     format: ContentFormat? = null,
+    /** Position in its series — shows "#3" top-left when the user has series numbers turned
+     *  on ([LocalCoverBadges], issue #257); null hides it. */
+    seriesIndex: Double? = null,
 ) {
     Box(
         modifier
@@ -106,7 +111,21 @@ fun CoverImage(
             )
         }
 
-        if (format != null && format != ContentFormat.UNKNOWN) {
+        val seriesLabel = seriesNumberLabel(seriesIndex)
+        if (seriesLabel != null && LocalCoverBadges.current.showSeriesNumber) {
+            Text(
+                "#$seriesLabel",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(4.dp)
+                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.85f), CircleShape)
+                    .padding(horizontal = 6.dp, vertical = 1.dp),
+            )
+        }
+
+        if (format != null && format != ContentFormat.UNKNOWN && LocalCoverBadges.current.showFormat) {
             FormatBadge(
                 format = format,
                 modifier = Modifier

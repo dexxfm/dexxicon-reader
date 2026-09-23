@@ -92,10 +92,12 @@ class BookDetailState(
 
     private suspend fun resolveCopies(ids: List<Pair<String, String>>): List<BookCopy> =
         ids.map { (sid, bid) ->
+            val server = container.serverRepository.get(sid)
             BookCopy(
                 serverId = sid,
-                serverName = container.serverRepository.get(sid)?.displayName ?: "Library",
+                serverName = server?.displayName ?: "Library",
                 bookId = bid,
+                webUrl = server?.webBookUrl(bid),
             )
         }
 
