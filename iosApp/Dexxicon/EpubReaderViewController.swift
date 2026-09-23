@@ -51,6 +51,10 @@ final class EpubReaderViewController: UIViewController {
     /// last highlights applied, to re-apply them when the theme changes.
     private var darkPage = false
     private var lastHighlights: [ModelHighlight] = []
+    /// issue #278: bumped on every `applyDecorations`, and part of each decoration's id — see
+    /// there. `decoratedHref` is the resource the highlights were last re-applied for.
+    private var decorationGeneration = 0
+    private var decoratedHref: String?
 
     init(url: URL, authHeader: String?, isManga: Bool, serverId: String, bookId: String, digestUrl: String?) {
         self.url = url
@@ -220,7 +224,7 @@ final class EpubReaderViewController: UIViewController {
         // issue #183: registered once here (not inside applyDecorations, which can run many
         // times) — the tap listener itself doesn't depend on the current highlights list.
         nav.observeDecorationInteractions(inGroup: "highlights") { event in
-            MainViewControllerKt.epubReaderSetActiveHighlight(id: event.decoration.id)
+            MainViewControllerKt.epubReaderSetActiveHighlight(id: Self.highlightId(fromDecorationId: event.decoration.id))
         }
 
         let chrome = MainViewControllerKt.EpubReaderViewController(
@@ -343,22 +347,38 @@ final class EpubReaderViewController: UIViewController {
     /// `LaunchedEffect(navigator, highlights) { nav.applyDecorations(...) }`; called from
     /// `:shared`'s Compose code whenever the collected highlights list changes (issue #183 —
     /// Swift can't collect a Kotlin `Flow` directly, so this is a push, not a pull).
+    ///
+    /// issue #278: Readium Swift 3.11 can drop decorations applied while the navigator's first
+    /// resource is still loading — the resource reads the (still empty) decoration list as it
+    /// loads, but isn't marked loaded yet when `apply` looks for it — and its diffing then never
+    /// re-sends an identical list, so highlights never showed at all. Each call therefore stamps
+    /// a new generation into the decoration ids (Readium sees a fresh set and adds them to every
+    /// loaded resource), and `locationDidChange` re-applies once a new resource is on screen.
+    /// The generation also lets a slower, older call (its locators are resolved async) bail out.
     private func applyDecorations(for highlights: [ModelHighlight]) {
         lastHighlights = highlights
         guard let navigator else { return }
+        decorationGeneration += 1
+        let generation = decorationGeneration
         let darkPage = darkPage
         Task {
             var decorations: [Decoration] = []
             for h in highlights {
                 guard let locator = await locator(for: h) else { continue }
                 decorations.append(Decoration(
-                    id: h.id,
+                    id: "\(h.id)#\(generation)",
                     locator: locator,
                     style: Self.highlightStyle(tint: UIColor(argb: h.color.argb), darkPage: darkPage)
                 ))
             }
-            try? await navigator.apply(decorations: decorations, in: "highlights")
+            guard generation == decorationGeneration else { return }
+            navigator.apply(decorations: decorations, in: "highlights")
         }
+    }
+
+    /// The highlight id inside a decoration id stamped by `applyDecorations`.
+    private static func highlightId(fromDecorationId id: String) -> String {
+        String(id[..<(id.lastIndex(of: "#") ?? id.endIndex)])
     }
 
     /// issue #278: a highlight's locator, to paint it or go to it. One made in BookOrbit's web
@@ -493,6 +513,14 @@ extension EpubReaderViewController: EPUBNavigatorDelegate {
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {
         currentLocator = locator
         pushState()
+
+        // issue #278: a newly displayed resource gets the highlights re-applied (see
+        // `applyDecorations` for the Readium race this works around).
+        let href = locator.href.string
+        if href != decoratedHref {
+            decoratedHref = href
+            applyDecorations(for: lastHighlights)
+        }
 
         saveTask?.cancel()
         saveTask = Task { [serverId, bookId] in
