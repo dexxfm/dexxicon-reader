@@ -49,6 +49,7 @@ import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.GlassIntensity
+import net.dexxicon.reader.shared.KOREADER_SYNC_UI
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.relativeTime
 
@@ -339,9 +340,14 @@ fun SettingsScreen(
 
             SettingsSection("Reading sync") {
                 Text(
-                    "Reading & listening position syncs with each server. BookOrbit and Grimmory " +
-                        "sync through their own library API (same as the web reader); other OPDS " +
-                        "servers use a KOReader sync account.",
+                    if (KOREADER_SYNC_UI) {
+                        "Reading & listening position syncs with each server. BookOrbit and Grimmory " +
+                            "sync through their own library API (same as the web reader); other OPDS " +
+                            "servers use a KOReader sync account."
+                    } else {
+                        "Reading & listening position syncs with BookOrbit and Grimmory servers " +
+                            "through their own library API (same as the web reader)."
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -355,6 +361,10 @@ fun SettingsScreen(
                 syncRows.forEach { row ->
                     if (row.usesNative) {
                         NativeSyncRow(row)
+                    } else if (!KOREADER_SYNC_UI) {
+                        // issue #277 — KOReader setup is hidden for now; just say where this
+                        // server stands (an account set up earlier keeps syncing).
+                        KoSyncStatusRow(row)
                     } else {
                         KoSyncServerCard(
                             row = row,
@@ -427,6 +437,21 @@ private fun NativeSyncRow(row: SyncServerRow) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
+        }
+    }
+}
+
+/** issue #277 — a non-native server's sync status while KOReader setup is hidden. */
+@Composable
+private fun KoSyncStatusRow(row: SyncServerRow) {
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp)) {
+            Text(row.name, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                if (row.configured) "Syncs with KOReader" else "Reading position stays on this device",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }
