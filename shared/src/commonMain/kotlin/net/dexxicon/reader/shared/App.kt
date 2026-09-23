@@ -95,12 +95,19 @@ import net.dexxicon.reader.core.designsystem.component.CoverBadges
 import net.dexxicon.reader.core.designsystem.theme.DexxiconTheme
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.GlassIntensity
+import net.dexxicon.reader.core.model.BookGroup
+import net.dexxicon.reader.core.model.BookGroupKind
+import net.dexxicon.reader.core.model.SeriesEntry
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.shared.catalog.BookDetailScreen
 import net.dexxicon.reader.shared.catalog.BooksScreen
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.HomeScreen
 import net.dexxicon.reader.shared.library.LibraryScreen
+import net.dexxicon.reader.shared.library.label
+import net.dexxicon.reader.shared.library.LibraryState
+import net.dexxicon.reader.shared.library.LibraryScope
+import net.dexxicon.reader.shared.library.BookGroupScreen
 import net.dexxicon.reader.shared.nav.TopLevelDestination
 import net.dexxicon.reader.shared.player.MiniPlayer
 import net.dexxicon.reader.shared.settings.AudiobookDefaultsScreen
@@ -133,6 +140,24 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 @Serializable private object HomeLayoutRoute
 @Serializable private data class BooksRoute(val serverId: String)
 @Serializable private data class BookDetailRoute(val serverId: String, val bookId: String)
+
+/** Batch B (issues #253, #254) — one library, collection or smart shelf. */
+@Serializable private data class GroupRoute(
+    val serverId: String,
+    val kind: String,
+    val id: String,
+    val name: String,
+    val serverName: String? = null,
+)
+
+/** issue #256 — one series, merged across servers. [serverIds]/[ids] (parallel lists) are the
+ *  per-server groups when the caller already knows them (the Series tab); empty means "look it
+ *  up by name" (a book's own series line). */
+@Serializable private data class SeriesRoute(
+    val name: String,
+    val serverIds: List<String> = emptyList(),
+    val ids: List<String> = emptyList(),
+)
 
 /** Same breakpoint as native's `DexxiconApp.kt` — Material's "medium" window-width class. */
 private val RAIL_BREAKPOINT = 600.dp
@@ -186,6 +211,10 @@ fun App(
         AppTheme.SYSTEM -> isSystemInDarkTheme()
     }
     val nowPlaying by container.nowPlaying.collectAsState()
+    // Batch B — one LibraryState for both the Library tab and the two-pane layout's Library
+    // pane (see LibraryScreen's doc comment). Lazy so nothing loads until Library is opened.
+    val appScope = rememberCoroutineScope()
+    val libraryState = remember { lazy { LibraryState(container, appScope) } }
     // Issue #224 — shared between the pill nav's glass surface and this Box's own content as
     // its backdrop source (see below). GlassIntensity.OFF forces the library's own
     // zero-allocation Fallback tier regardless of what the device would otherwise auto-detect
@@ -208,6 +237,14 @@ fun App(
         ),
     ) {
         val nav = rememberNavController()
+        val openSeries: (SeriesEntry) -> Unit = { entry ->
+            nav.navigate(SeriesRoute(entry.name, entry.groups.map { it.serverId }, entry.groups.map { it.id }))
+        }
+        val openSeriesNamed: (String) -> Unit = { name -> nav.navigate(SeriesRoute(name)) }
+        val openGroup: (BookGroup) -> Unit = { group ->
+            nav.navigate(GroupRoute(group.serverId, group.kind.name, group.id, group.name, group.serverName))
+        }
+        val openBookDetail: (String, String) -> Unit = { serverId, bookId -> nav.navigate(BookDetailRoute(serverId, bookId)) }
         val backStackEntry by nav.currentBackStackEntryAsState()
         val currentDestination: NavDestination? = backStackEntry?.destination
         val currentTopLevel = TopLevelDestination.entries.firstOrNull { destination ->
@@ -270,9 +307,11 @@ fun App(
                             // survives navigating between different books' Detail screens.
                             Box(Modifier.width(LIBRARY_PANE_WIDTH).fillMaxSize()) {
                                 LibraryScreen(
-                                    container = container,
+                                    state = libraryState.value,
                                     onOpenBook = { book -> nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId)) },
                                     onOpenReader = onOpenReader,
+                                    onOpenSeries = openSeries,
+                                    onOpenGroup = openGroup,
                                 )
                             }
                             Spacer(Modifier.width(16.dp))
@@ -291,7 +330,46 @@ fun App(
                         }
                         composable<LibraryRoute> {
                             LibraryScreen(
+                                state = libraryState.value,
+                                onOpenBook = { book -> nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId)) },
+                                onOpenReader = onOpenReader,
+                                onOpenSeries = openSeries,
+                                onOpenGroup = openGroup,
+                            )
+                        }
+                        composable<GroupRoute> { entry ->
+                            val route = entry.toRoute<GroupRoute>()
+                            val kind = BookGroupKind.valueOf(route.kind)
+                            val group = BookGroup(route.serverId, kind, route.id, route.name, serverName = route.serverName)
+                            BookGroupScreen(
                                 container = container,
+                                scope = LibraryScope.Groups(route.name, listOf(group)),
+                                title = route.name,
+                                subtitle = listOfNotNull(kind.label(), route.serverName).joinToString(" · "),
+                                onBack = { nav.popBackStack() },
+                                onOpenBook = { book -> nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId)) },
+                                onOpenReader = onOpenReader,
+                                pinnable = group.takeIf { kind != BookGroupKind.SERIES },
+                            )
+                        }
+                        composable<SeriesRoute> { entry ->
+                            val route = entry.toRoute<SeriesRoute>()
+                            val scope = if (route.serverIds.isEmpty()) {
+                                LibraryScope.SeriesNamed(route.name)
+                            } else {
+                                LibraryScope.Groups(
+                                    route.name,
+                                    route.serverIds.zip(route.ids) { serverId, id ->
+                                        BookGroup(serverId, BookGroupKind.SERIES, id, route.name)
+                                    },
+                                )
+                            }
+                            BookGroupScreen(
+                                container = container,
+                                scope = scope,
+                                title = route.name,
+                                subtitle = "Series",
+                                onBack = { nav.popBackStack() },
                                 onOpenBook = { book -> nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId)) },
                                 onOpenReader = onOpenReader,
                             )
@@ -360,6 +438,8 @@ fun App(
                                 bookId = route.bookId,
                                 onBack = { nav.popBackStack() },
                                 onOpenReader = onOpenReader,
+                                onOpenSeries = openSeriesNamed,
+                                onOpenBook = openBookDetail,
                             )
                         }
                     }

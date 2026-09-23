@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.BookCopy
+import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
@@ -48,6 +50,11 @@ class BookDetailState(
     var error by mutableStateOf<String?>(null)
         private set
 
+    /** issue #256 — the rest of this book's series (every server's copy of it, merged), for
+     *  the "More in <series>" shelf. Empty until loaded, and for a book in no series. */
+    var seriesBooks by mutableStateOf<List<AggregatedBook>>(emptyList())
+        private set
+
     /** Every server carrying this exact book. Size 1 unless opened from merged Browse. */
     var copies by mutableStateOf<List<BookCopy>>(emptyList())
         private set
@@ -73,6 +80,7 @@ class BookDetailState(
                 is Outcome.Success -> {
                     detail = result.value
                     loading = false
+                    loadSeries(result.value)
                 }
                 is Outcome.Failure -> {
                     // Offline? Fall back to what the downloaded copy remembers.
@@ -100,6 +108,18 @@ class BookDetailState(
                 webUrl = server?.webBookUrl(bid),
             )
         }
+
+    private fun loadSeries(detail: BookDetail) {
+        val name = detail.summary.series?.takeIf { it.isNotBlank() } ?: return
+        scope.launch {
+            val groups = container.catalogRepository.seriesNamed(name)
+            val page = container.catalogRepository.groupBooks(groups, null, BookSort.SERIES, page = 0)
+            val books = (page as? Outcome.Success)?.value?.books ?: return@launch
+            seriesBooks = books.filterNot { book ->
+                book.copies.any { it.serverId == serverId && it.bookId == bookId }
+            }
+        }
+    }
 
     fun onDownload() {
         val d = detail ?: return

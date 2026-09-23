@@ -56,6 +56,7 @@ import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.HomeSection
+import net.dexxicon.reader.core.model.HomeShelf
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.OnOpenReader
 
@@ -87,6 +88,7 @@ fun HomeContent(
 ) {
     val uiState by state.uiState.collectAsState()
     val layout by state.layout.collectAsState()
+    val pinned by state.pinnedShelves.collectAsState()
 
     fun continueActions(entry: ContinueItem) = HomeItemActions(
         downloadStatus = entry.downloadStatus,
@@ -166,12 +168,15 @@ fun HomeContent(
     ) { padding ->
         // issue #255 — only the shelves the user hasn't hidden count; hiding the only
         // non-empty one should land on the empty state, not a blank screen.
-        val empty = layout.visible.none { section ->
-            when (section) {
-                HomeSection.CONTINUE_READING -> uiState.continueReading.isNotEmpty()
-                HomeSection.CONTINUE_LISTENING -> uiState.continueListening.isNotEmpty()
-                HomeSection.ON_DECK -> uiState.onDeck.isNotEmpty()
-                HomeSection.DOWNLOADED -> uiState.downloads.isNotEmpty()
+        val empty = layout.visible.none { shelf ->
+            when (shelf) {
+                is HomeShelf.Pinned -> pinned[shelf.key].orEmpty().isNotEmpty()
+                is HomeShelf.Section -> when (shelf.section) {
+                    HomeSection.CONTINUE_READING -> uiState.continueReading.isNotEmpty()
+                    HomeSection.CONTINUE_LISTENING -> uiState.continueListening.isNotEmpty()
+                    HomeSection.ON_DECK -> uiState.onDeck.isNotEmpty()
+                    HomeSection.DOWNLOADED -> uiState.downloads.isNotEmpty()
+                }
             }
         }
         Column(Modifier.fillMaxSize().padding(padding)) {
@@ -216,17 +221,25 @@ fun HomeContent(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        // issue #255 — shelves in the user's order, hidden ones skipped.
-                        layout.visible.forEach { section ->
-                            when (section) {
-                                HomeSection.CONTINUE_READING -> continueShelf(
-                                    section.title, uiState.continueReading, state, onOpenReader, ::continueActions,
+                        // issues #255/#254 — shelves in the user's order, hidden ones skipped,
+                        // pinned groups mixed in wherever they were dragged to.
+                        layout.visible.forEach { shelf ->
+                            when (shelf) {
+                                is HomeShelf.Pinned -> onDeckShelf(
+                                    shelf.title, pinned[shelf.key].orEmpty(), onOpenBook, ::onDeckActions,
                                 )
-                                HomeSection.CONTINUE_LISTENING -> continueShelf(
-                                    section.title, uiState.continueListening, state, onOpenReader, ::continueActions,
-                                )
-                                HomeSection.ON_DECK -> onDeckShelf(uiState.onDeck, onOpenBook, ::onDeckActions)
-                                HomeSection.DOWNLOADED -> downloadedShelf(uiState, onOpenBook, ::downloadActions)
+                                is HomeShelf.Section -> when (val section = shelf.section) {
+                                    HomeSection.CONTINUE_READING -> continueShelf(
+                                        section.title, uiState.continueReading, state, onOpenReader, ::continueActions,
+                                    )
+                                    HomeSection.CONTINUE_LISTENING -> continueShelf(
+                                        section.title, uiState.continueListening, state, onOpenReader, ::continueActions,
+                                    )
+                                    HomeSection.ON_DECK -> onDeckShelf(
+                                        section.title, uiState.onDeck, onOpenBook, ::onDeckActions, wantToRead = true,
+                                    )
+                                    HomeSection.DOWNLOADED -> downloadedShelf(uiState, onOpenBook, ::downloadActions)
+                                }
                             }
                         }
                     }
@@ -235,6 +248,13 @@ fun HomeContent(
         }
     }
 }
+
+/** A shelf's heading on Home — also how Settings › Arrange Home lists it. */
+val HomeShelf.title: String
+    get() = when (this) {
+        is HomeShelf.Section -> section.title
+        is HomeShelf.Pinned -> group.name
+    }
 
 /** Home's shelf headings — also how Settings › Arrange Home lists them. */
 val HomeSection.title: String
@@ -280,13 +300,18 @@ private fun syncFailureText(failures: List<ServerSyncFailure>): String {
 private fun LazyGridScope.fullWidthItem(content: @Composable () -> Unit) =
     item(span = { GridItemSpan(maxLineSpan) }) { content() }
 
+/** A row of books that open Book Detail when tapped — On Deck, and every pinned group's
+ * shelf (issue #254). */
 private fun LazyGridScope.onDeckShelf(
+    title: String,
     items: List<OnDeckItem>,
     onOpenBook: (String, String) -> Unit,
     actionsFor: (OnDeckItem) -> HomeItemActions,
+    /** On Deck's books are ones the user flagged; a pinned shelf's books aren't. */
+    wantToRead: Boolean = false,
 ) {
     if (items.isEmpty()) return
-    fullWidthItem { SectionHeader("On Deck") }
+    fullWidthItem { SectionHeader(title) }
     fullWidthItem {
         val listState = rememberLazyListState()
         EdgeFadeRow(listState) {
@@ -296,6 +321,7 @@ private fun LazyGridScope.onDeckShelf(
                         entry = entry,
                         onClick = { onOpenBook(entry.serverId, entry.bookId) },
                         actions = actionsFor(entry),
+                        wantToRead = wantToRead,
                     )
                 }
             }
@@ -335,7 +361,7 @@ private fun SectionHeader(text: String) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun OnDeckCard(entry: OnDeckItem, onClick: () -> Unit, actions: HomeItemActions) {
+private fun OnDeckCard(entry: OnDeckItem, onClick: () -> Unit, actions: HomeItemActions, wantToRead: Boolean) {
     var menuOpen by remember { mutableStateOf(false) }
     Box(Modifier.width(112.dp)) {
         Column(
@@ -345,7 +371,7 @@ private fun OnDeckCard(entry: OnDeckItem, onClick: () -> Unit, actions: HomeItem
                     contentDescription = buildString {
                         append(entry.title)
                         entry.author?.let { append(", ").append(it) }
-                        append(", want to read")
+                        if (wantToRead) append(", want to read")
                         if (entry.downloadStatus == DownloadStatus.DONE) append(", downloaded")
                     }
                 },

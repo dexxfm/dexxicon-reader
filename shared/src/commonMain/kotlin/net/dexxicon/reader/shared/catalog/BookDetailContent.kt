@@ -83,6 +83,16 @@ import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.OnOpenReader
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextOverflow
+import net.dexxicon.reader.core.designsystem.component.CoverImage
+import net.dexxicon.reader.core.designsystem.component.LocalCoverBadges
+import net.dexxicon.reader.core.model.AggregatedBook
+import net.dexxicon.reader.core.model.seriesNumberLabel
 
 /**
  * Phase 4 restructure (issue #126) — the one Book Detail render, replacing both platforms'
@@ -108,6 +118,8 @@ fun BookDetailContent(
     onBack: () -> Unit,
     onOpenReader: OnOpenReader,
     modifier: Modifier = Modifier,
+    onOpenSeries: (String) -> Unit = {},
+    onOpenBook: (serverId: String, bookId: String) -> Unit = { _, _ -> },
 ) {
     val download by state.download.collectAsState()
     val progress by state.progress.collectAsState()
@@ -143,6 +155,9 @@ fun BookDetailContent(
                     onRemoveDownload = state::onRemoveDownload,
                     onSetStatus = state::setReadingStatus,
                     onSetRating = state::setRating,
+                    seriesBooks = state.seriesBooks,
+                    onOpenSeries = onOpenSeries,
+                    onOpenBook = onOpenBook,
                     modifier = Modifier.padding(padding),
                 )
             }
@@ -163,8 +178,17 @@ private fun DetailContent(
     onRemoveDownload: () -> Unit,
     onSetStatus: (ReadingStatus) -> Unit,
     onSetRating: (Int) -> Unit,
+    seriesBooks: List<AggregatedBook>,
+    onOpenSeries: (String) -> Unit,
+    onOpenBook: (serverId: String, bookId: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val seriesShelf: @Composable () -> Unit = {
+        detail.summary.series?.takeIf { seriesBooks.isNotEmpty() }?.let { name ->
+            Spacer(Modifier.height(20.dp))
+            SeriesShelf(name, seriesBooks, onSeeAll = { onOpenSeries(name) }, onOpenBook = onOpenBook)
+        }
+    }
     BoxWithConstraints(modifier.fillMaxSize()) {
         // On a tablet / unfolded foldable, put the cover + actions in a fixed side column
         // and let the description + details fill the rest; otherwise stack in one column.
@@ -185,7 +209,7 @@ private fun DetailContent(
                 ) {
                     BackPill(onBack)
                     Spacer(Modifier.height(12.dp))
-                    HeroBlock(detail, copies, onSetStatus, onSetRating, stacked = true)
+                    HeroBlock(detail, copies, onSetStatus, onSetRating, onOpenSeries, stacked = true)
                     Spacer(Modifier.height(16.dp))
                     ActionButtons(
                         detail, copies, download, progress, supportsDownloads,
@@ -201,6 +225,7 @@ private fun DetailContent(
                     AboutSection(detail)
                     Spacer(Modifier.height(20.dp))
                     DetailsSection(detail)
+                    seriesShelf()
                 }
             }
         } else {
@@ -214,7 +239,7 @@ private fun DetailContent(
                 ) {
                     BackPill(onBack)
                     Spacer(Modifier.height(12.dp))
-                    HeroBlock(detail, copies, onSetStatus, onSetRating, stacked = false)
+                    HeroBlock(detail, copies, onSetStatus, onSetRating, onOpenSeries, stacked = false)
                     Spacer(Modifier.height(20.dp))
                     ActionButtons(
                         detail, copies, download, progress, supportsDownloads,
@@ -224,7 +249,59 @@ private fun DetailContent(
                     AboutSection(detail)
                     Spacer(Modifier.height(20.dp))
                     DetailsSection(detail)
+                    seriesShelf()
                 }
+            }
+        }
+    }
+}
+
+/**
+ * issue #256 — "More in <series>": the series' other volumes in series order, merged across
+ * servers, as a scrollable shelf at the bottom of Book Detail. "See all" opens the series.
+ */
+@Composable
+private fun SeriesShelf(
+    name: String,
+    books: List<AggregatedBook>,
+    onSeeAll: () -> Unit,
+    onOpenBook: (serverId: String, bookId: String) -> Unit,
+) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.weight(1f)) { SectionHeader("More in $name") }
+        TextButton(onClick = onSeeAll) { Text("See all") }
+    }
+    Spacer(Modifier.height(8.dp))
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        items(books, key = { it.key }) { book ->
+            Column(
+                Modifier
+                    .width(96.dp)
+                    .clickable { onOpenBook(book.primary.serverId, book.primary.bookId) }
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = listOfNotNull(
+                            book.title,
+                            seriesNumberLabel(book.seriesIndex)?.let { "book $it" },
+                        ).joinToString(", ")
+                    },
+            ) {
+                // Always numbered here, whatever the cover-badge setting — the position in the
+                // series is the whole point of this shelf.
+                CompositionLocalProvider(LocalCoverBadges provides LocalCoverBadges.current.copy(showSeriesNumber = true)) {
+                    CoverImage(
+                        coverUrl = book.coverUrl,
+                        contentDescription = null,
+                        format = book.format,
+                        seriesIndex = book.seriesIndex,
+                    )
+                }
+                Text(
+                    book.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 4.dp),
+                )
             }
         }
     }
@@ -237,6 +314,7 @@ private fun HeroBlock(
     copies: List<BookCopy>,
     onSetStatus: (ReadingStatus) -> Unit,
     onSetRating: (Int) -> Unit,
+    onOpenSeries: (String) -> Unit,
     stacked: Boolean,
 ) {
     val s = detail.summary
@@ -306,12 +384,17 @@ private fun HeroBlock(
                 )
             }
             s.series?.let {
+                // issue #256 — tap the series to see the whole thing, in order.
                 Text(
                     buildString {
                         append(it)
                         s.seriesIndex?.let { n -> append("  #${n.toString().removeSuffix(".0")}") }
                     },
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier
+                        .clickable(onClickLabel = "Open series") { onOpenSeries(it) }
+                        .padding(vertical = 4.dp),
                 )
             }
             Spacer(Modifier.height(8.dp))

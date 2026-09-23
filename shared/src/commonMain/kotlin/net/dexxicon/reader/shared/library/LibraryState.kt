@@ -1,5 +1,8 @@
 package net.dexxicon.reader.shared.library
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -19,6 +22,9 @@ import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.model.AggregatedBook
+import net.dexxicon.reader.core.model.AggregatedBookPage
+import net.dexxicon.reader.core.model.BookGroup
+import net.dexxicon.reader.core.model.BookGroupKind
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.ContentFilter
@@ -29,7 +35,32 @@ import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.openReader
 import net.dexxicon.reader.shared.toBookDetail
 
+/**
+ * What a [LibraryState] lists (issues #253, #254, #256). The main Library tab starts at [All]
+ * and can narrow to one library; the collection/series screens are each a fixed scope.
+ */
+sealed interface LibraryScope {
+    /** Every book on every server, merged. */
+    data object All : LibraryScope
+
+    /** The books in [groups] — one library or collection, or one series across servers. */
+    data class Groups(val title: String, val groups: List<BookGroup>) : LibraryScope
+
+    /** A series known only by name (opened from a book's series line), looked up on every
+     *  server the first time it loads — see [net.dexxicon.reader.core.data.CatalogRepository.seriesNamed]. */
+    data class SeriesNamed(val name: String) : LibraryScope
+
+    /** Series come back in series order and can't be searched on every server, so screens
+     *  hide their sort chip and search field. */
+    val isSeries: Boolean
+        get() = this is SeriesNamed || (this is Groups && groups.isNotEmpty() && groups.all { it.kind == BookGroupKind.SERIES })
+}
+
+/** The main Library's tabs (Batch B — issues #253, #254, #256). */
+enum class LibraryTab(val label: String) { BOOKS("Books"), SERIES("Series"), COLLECTIONS("Collections") }
+
 data class LibraryUiState(
+    val scope: LibraryScope = LibraryScope.All,
     val query: String = "",
     val sort: BookSort = BookSort.RECENT,
     val filter: ContentFilter = ContentFilter.ALL,
@@ -66,9 +97,27 @@ data class BookOverlays(
 class LibraryState(
     private val container: AppContainer,
     private val scope: CoroutineScope,
+    initialScope: LibraryScope = LibraryScope.All,
 ) {
-    private val _uiState = MutableStateFlow(LibraryUiState())
+    private val _uiState = MutableStateFlow(LibraryUiState(scope = initialScope))
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
+
+    /** issue #253 — every server's libraries, for the Books tab's library picker. Only the
+     *  main Library (an [LibraryScope.All]-rooted state) ever loads these. */
+    private val _libraries = MutableStateFlow<List<BookGroup>>(emptyList())
+    val libraries: StateFlow<List<BookGroup>> = _libraries.asStateFlow()
+    private val browsesAll = initialScope == LibraryScope.All
+
+    /** [LibraryScope.SeriesNamed] resolves to real groups once, then reuses them. */
+    private var resolvedSeries: List<BookGroup>? = null
+
+    /** Which tab the main Library shows. Held here rather than in the composable so it
+     *  survives the two-pane layout's Library pane coming and going (see `App.kt`). */
+    var tab by mutableStateOf(LibraryTab.BOOKS)
+
+    /** Created on first use, i.e. the first time each tab is opened. */
+    val series: SeriesListState by lazy { SeriesListState(container, scope) }
+    val collections: CollectionsState by lazy { CollectionsState(container, scope) }
 
     val overlays: StateFlow<BookOverlays> =
         combine(
@@ -94,6 +143,7 @@ class LibraryState(
 
     init {
         reload()
+        if (browsesAll) loadLibraries()
         scope.launch {
             container.appPreferences.preferences.map { it.browseView }.distinctUntilChanged().collect { mode ->
                 _uiState.update { it.copy(viewMode = mode) }
@@ -123,8 +173,34 @@ class LibraryState(
             container.catalogRepository.serverIds
                 .distinctUntilChanged()
                 .drop(1)
-                .collect { reload() }
+                .collect {
+                    // A removed server's library can't stay selected.
+                    val current = _uiState.value.scope
+                    if (browsesAll && current is LibraryScope.Groups &&
+                        current.groups.any { g -> g.serverId !in it }
+                    ) {
+                        _uiState.update { s -> s.copy(scope = LibraryScope.All) }
+                    }
+                    resolvedSeries = null
+                    reload()
+                    if (browsesAll) loadLibraries()
+                }
         }
+    }
+
+    private fun loadLibraries() {
+        scope.launch {
+            (container.catalogRepository.groups(BookGroupKind.LIBRARY) as? Outcome.Success)
+                ?.let { _libraries.value = it.value }
+        }
+    }
+
+    /** issue #253 — narrow the Books tab to one library, or back to everything (null). */
+    fun selectLibrary(library: BookGroup?) {
+        val next = library?.let { LibraryScope.Groups(it.name, listOf(it)) } ?: LibraryScope.All
+        if (next == _uiState.value.scope) return
+        _uiState.update { it.copy(scope = next) }
+        reload()
     }
 
     fun onQueryChange(value: String) = _uiState.update { it.copy(query = value) }
@@ -213,16 +289,31 @@ class LibraryState(
         fetchPage(replace = false)
     }
 
-    private fun fetchPage(replace: Boolean): Job = scope.launch {
-        val state = _uiState.value
-        when (
-            val result = container.catalogRepository.allBooks(
-                query = state.query.takeIf { it.isNotBlank() },
+    private suspend fun fetch(state: LibraryUiState): Outcome<AggregatedBookPage> {
+        val query = state.query.takeIf { it.isNotBlank() }
+        val groups = when (val s = state.scope) {
+            LibraryScope.All -> return container.catalogRepository.allBooks(
+                query = query,
                 sort = state.sort,
                 page = nextPage,
                 formats = state.filter.formats,
             )
-        ) {
+            is LibraryScope.Groups -> s.groups
+            is LibraryScope.SeriesNamed -> resolvedSeries
+                ?: container.catalogRepository.seriesNamed(s.name).also { resolvedSeries = it }
+        }
+        return container.catalogRepository.groupBooks(
+            groups = groups,
+            query = query.takeUnless { state.scope.isSeries },
+            sort = state.sort,
+            page = nextPage,
+            formats = state.filter.formats,
+        )
+    }
+
+    private fun fetchPage(replace: Boolean): Job = scope.launch {
+        val state = _uiState.value
+        when (val result = fetch(state)) {
             is Outcome.Success -> {
                 nextPage += 1
                 val endReached = !result.value.hasMore
