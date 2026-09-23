@@ -196,17 +196,11 @@ private fun ReaderContent(
         }
     }
 
-    fun goToLocatorJson(json: String) {
-        runCatching { Locator.fromJSON(org.json.JSONObject(json)) }.getOrNull()?.let { navigator?.go(it, true) }
-    }
-
     // Render highlight decorations and react to taps on them.
     LaunchedEffect(navigator, highlights) {
         val nav = navigator ?: return@LaunchedEffect
         val decorations = highlights.mapNotNull { h ->
-            val locator = runCatching {
-                Locator.fromJSON(org.json.JSONObject(h.locatorJson))
-            }.getOrNull() ?: return@mapNotNull null
+            val locator = state.publication.locatorOf(h) ?: return@mapNotNull null
             Decoration(
                 id = h.id,
                 locator = locator,
@@ -263,7 +257,7 @@ private fun ReaderContent(
         onDeleteBookmark = onDeleteBookmark,
         onGoToBookmark = ::goToBookmark,
         onGoToToc = { entry -> flatToc.getOrNull(entry.ref.toIntOrNull() ?: -1)?.let { (_, link) -> navigator?.go(link, true) } },
-        onGoToHighlight = { h -> goToLocatorJson(h.locatorJson) },
+        onGoToHighlight = { h -> state.publication.locatorOf(h)?.let { navigator?.go(it, true) } },
         onSetNote = onSetNote,
         onSetColor = onSetColor,
         onDeleteHighlight = onDeleteHighlight,

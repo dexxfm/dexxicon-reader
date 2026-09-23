@@ -12,12 +12,14 @@ import net.dexxicon.reader.core.model.ReadingProgress
  * the first usable of a Readium [locatorJson], the reading-order index a foreign EPUB CFI points
  * into ([spineIndex]), then a whole-book [progression] (0–1). Each platform's reader resolves it
  * against the opened publication (Android in `EpubReaderViewModel`, iOS in Swift's
- * `EpubReaderViewController`); nothing usable means the start of the book.
+ * `EpubReaderViewController`); nothing usable means the start of the book. [text] goes with
+ * [spineIndex]: the highlighted text, which lets Readium find the exact spot in that chapter.
  */
 data class ReaderStart(
     val locatorJson: String?,
     val spineIndex: Int?,
     val progression: Double?,
+    val text: String? = null,
 ) {
     val isEmpty: Boolean get() = locatorJson == null && spineIndex == null && progression == null
 
@@ -27,8 +29,10 @@ data class ReaderStart(
 }
 
 /** issue #274 — a tapped highlight's jump as a [ReaderStart]: a BookOrbit CFI opens its chapter. */
-fun ReaderJumpTarget.toStart(): ReaderStart =
-    ReaderStart(locatorJson, cfi?.let(::cfiSpineIndex), progression?.takeIf { it > 0.0 })
+fun ReaderJumpTarget.toStart(): ReaderStart {
+    val spine = cfi?.let(::cfiSpineIndex)
+    return ReaderStart(locatorJson, spine, progression?.takeIf { it > 0.0 }, text?.takeIf { spine != null && it.isNotBlank() })
+}
 
 /**
  * issue #275 — where to reopen a book from its progress row. The saved locator, while it still

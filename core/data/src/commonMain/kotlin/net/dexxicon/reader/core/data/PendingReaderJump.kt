@@ -7,12 +7,14 @@ import kotlinx.coroutines.flow.update
  * issue #266 — where a reader should open for one book, just this once (a tapped highlight).
  * Whichever is usable wins, in order: a Readium [locatorJson] (highlights made in this app, or
  * synced from Grimmory), a foreign EPUB [cfi] (BookOrbit's web reader), resolved to its chapter,
- * then a bare [progression].
+ * then a bare [progression]. [text] is the highlighted text: with a CFI's chapter it pins the
+ * exact spot (issue #278 — Readium finds a locator's range from its text quote).
  */
 data class ReaderJumpTarget(
     val locatorJson: String?,
     val cfi: String?,
     val progression: Double?,
+    val text: String? = null,
 )
 
 /**

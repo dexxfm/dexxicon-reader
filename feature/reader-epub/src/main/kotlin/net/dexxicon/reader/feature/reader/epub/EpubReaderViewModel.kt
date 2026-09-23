@@ -205,7 +205,7 @@ class EpubReaderViewModel @Inject constructor(
     /** issues #266/#275 — see [ReaderStart] for the order these are tried in. */
     private suspend fun Publication.locate(start: ReaderStart): Locator? =
         start.locatorJson?.let { json -> runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull() }
-            ?: start.spineIndex?.let { readingOrder.getOrNull(it) }?.let(::locatorFromLink)
+            ?: start.spineIndex?.let { chapterLocator(it, start.text) }
             ?: start.progression?.let { locateProgression(it) }
 
     fun onLocatorChanged(locator: Locator) {

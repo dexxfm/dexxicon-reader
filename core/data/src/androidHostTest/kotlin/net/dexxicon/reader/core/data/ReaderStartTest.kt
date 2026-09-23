@@ -48,9 +48,15 @@ class ReaderStartTest {
     }
 
     @Test
-    fun `a BookOrbit CFI highlight jumps to its chapter`() {
-        val start = ReaderJumpTarget(locatorJson = null, cfi = "epubcfi(/6/6!/4/2/1:0)", progression = 0.0).toStart()
-        assertThat(start).isEqualTo(ReaderStart(null, 2, null))
+    fun `a BookOrbit CFI highlight jumps to its text in its chapter`() {
+        val start = ReaderJumpTarget(locatorJson = null, cfi = "epubcfi(/6/6!/4/2/1:0)", progression = 0.0, text = "ash fell")
+            .toStart()
+        assertThat(start).isEqualTo(ReaderStart(null, 2, null, "ash fell"))
+    }
+
+    @Test
+    fun `text only rides along with a chapter`() {
+        assertThat(ReaderJumpTarget(null, null, 0.3, text = "ash fell").toStart()).isEqualTo(ReaderStart(null, null, 0.3, null))
     }
 
     @Test

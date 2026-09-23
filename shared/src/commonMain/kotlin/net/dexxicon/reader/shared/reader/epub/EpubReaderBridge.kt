@@ -10,6 +10,7 @@ import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import net.dexxicon.reader.core.data.OpeningPositionHold
+import net.dexxicon.reader.core.data.cfiSpineIndex
 import net.dexxicon.reader.core.data.PendingReaderJump
 import net.dexxicon.reader.core.data.resumeStart
 import net.dexxicon.reader.core.data.toStart
@@ -91,7 +92,7 @@ class EpubProgressBridge(
             positionHolds["$serverId::$bookId"] = OpeningPositionHold()
             val jump = PendingReaderJump.take(serverId, bookId)?.toStart()?.takeUnless { it.isEmpty }
             val start = jump ?: progressRepository.get(serverId, bookId).resumeStart()
-            val result = EpubStart(start.locatorJson, start.spineIndex, start.progression, isJump = jump != null)
+            val result = EpubStart(start.locatorJson, start.spineIndex, start.progression, start.text, isJump = jump != null)
             withContext(Dispatchers.Main) { onResolved(result) }
         }
     }
@@ -133,14 +134,20 @@ class EpubProgressBridge(
 /**
  * issues #274/#275 — [EpubProgressBridge.initialStart]'s answer, a Swift-friendly copy of
  * [net.dexxicon.reader.core.data.ReaderStart]: Swift opens at the first usable of [locatorJson],
- * the reading-order item at [spineIndex], then whole-book [progression]; none means the start.
+ * the reading-order item at [spineIndex] (pinned to [text], issue #278), then whole-book
+ * [progression]; none means the start.
  */
 class EpubStart(
     val locatorJson: String?,
     val spineIndex: Int?,
     val progression: Double?,
+    val text: String?,
     val isJump: Boolean,
 )
+
+/** issue #278 — the reading-order index a BookOrbit (CFI-only) highlight sits in, for Swift to
+ *  build its locator from; null for a highlight with its own locator, or no usable CFI. */
+fun cfiChapterIndex(highlight: Highlight): Int? = highlight.cfi?.let(::cfiSpineIndex)
 
 /** A Readium `Locator` JSON string's `locations.totalProgression` (0.0–1.0) — pure string
  * parsing so the iOS embed can compute [Bookmark]-matching progress without a real `Locator`

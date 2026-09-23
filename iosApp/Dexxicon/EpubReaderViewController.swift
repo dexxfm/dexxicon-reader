@@ -201,7 +201,7 @@ final class EpubReaderViewController: UIViewController {
         pushState()
         MainViewControllerKt.setEpubReaderActions(
             goToBookmark: { [weak self] bookmark in self?.goToBookmark(bookmark) },
-            goToHighlight: { [weak self] highlight in self?.goToLocatorJson(highlight.locatorJson) },
+            goToHighlight: { [weak self] highlight in self?.goToHighlight(highlight) },
             goToToc: { [weak self] entry in self?.goToToc(entry) },
             jumpToRemoteResume: { [weak self] in
                 guard let self, let target = self.remoteResumeLocator else { return }
@@ -260,6 +260,14 @@ final class EpubReaderViewController: UIViewController {
     private func goToToc(_ entry: TocEntry) {
         guard let index = Int(entry.ref), flatToc.indices.contains(index) else { return }
         Task { _ = await navigator?.go(to: flatToc[index].link, options: .init()) }
+    }
+
+    /// issue #278: a BookOrbit (CFI-only) highlight has no locator of its own — see `locator(for:)`.
+    private func goToHighlight(_ highlight: ModelHighlight) {
+        Task {
+            guard let locator = await locator(for: highlight) else { return }
+            _ = await navigator?.go(to: locator, options: .init())
+        }
     }
 
     private func goToLocatorJson(_ json: String) {
@@ -325,15 +333,41 @@ final class EpubReaderViewController: UIViewController {
     /// Swift can't collect a Kotlin `Flow` directly, so this is a push, not a pull).
     private func applyDecorations(for highlights: [ModelHighlight]) {
         guard let navigator else { return }
-        let decorations: [Decoration] = highlights.compactMap { h in
-            guard let locator = try? Locator(jsonString: h.locatorJson) else { return nil }
-            return Decoration(
-                id: h.id,
-                locator: locator,
-                style: .highlight(tint: UIColor(argb: h.color.argb), isActive: false)
-            )
+        Task {
+            var decorations: [Decoration] = []
+            for h in highlights {
+                guard let locator = await locator(for: h) else { continue }
+                decorations.append(Decoration(
+                    id: h.id,
+                    locator: locator,
+                    style: .highlight(tint: UIColor(argb: h.color.argb), isActive: false)
+                ))
+            }
+            try? await navigator.apply(decorations: decorations, in: "highlights")
         }
-        Task { try? await navigator.apply(decorations: decorations, in: "highlights") }
+    }
+
+    /// issue #278: a highlight's locator, to paint it or go to it. One made in BookOrbit's web
+    /// reader has only an EPUB CFI (its stored locator is `{}`), so it gets its chapter's locator
+    /// carrying the highlighted text — Readium finds a locator's exact range from that quote.
+    private func locator(for highlight: ModelHighlight) async -> Locator? {
+        if let locator = try? Locator(jsonString: highlight.locatorJson) {
+            return locator
+        }
+        guard let publication, let index = EpubReaderBridgeKt.cfiChapterIndex(highlight: highlight)?.intValue else {
+            return nil
+        }
+        return await Self.chapterLocator(index, text: highlight.text, in: publication)
+    }
+
+    /// issues #274/#278: the reading-order item at `index`, pinned to `text` when there is one.
+    private static func chapterLocator(_ index: Int, text: String?, in publication: Publication) async -> Locator? {
+        guard publication.readingOrder.indices.contains(index),
+              let chapter = await publication.locate(publication.readingOrder[index]) else {
+            return nil
+        }
+        guard let text, !text.isEmpty else { return chapter }
+        return chapter.copy(text: { $0.highlight = text })
     }
 
     /// Adds a "Highlight" item to the text-selection menu (see `Configuration.editingActions`
@@ -389,8 +423,8 @@ extension EpubReaderViewController {
         if let json = start.locatorJson, let locator = try? Locator(jsonString: json) {
             return locator
         }
-        if let index = start.spineIndex?.intValue, publication.readingOrder.indices.contains(index),
-           let locator = await publication.locate(publication.readingOrder[index]) {
+        if let index = start.spineIndex?.intValue,
+           let locator = await chapterLocator(index, text: start.text, in: publication) {
             return locator
         }
         if let progression = start.progression?.doubleValue {
