@@ -47,6 +47,10 @@ final class EpubReaderViewController: UIViewController {
     private var tocEntries: [TocEntry] = []
     private var remoteResumePercentValue: Double?
     private var saveTask: Task<Void, Never>?
+    /// issue #279: whether the page is dark (highlights then use `.strongHighlight`), and the
+    /// last highlights applied, to re-apply them when the theme changes.
+    private var darkPage = false
+    private var lastHighlights: [ModelHighlight] = []
 
     init(url: URL, authHeader: String?, isManga: Bool, serverId: String, bookId: String, digestUrl: String?) {
         self.url = url
@@ -169,12 +173,15 @@ final class EpubReaderViewController: UIViewController {
             // issue #183: the custom "Highlight" text-selection menu item — its handler
             // (`highlight(_:)` below) reads `navigator.currentSelection` on tap, the pull-API
             // shape confirmed for Readium Swift (no selection-created event exists).
-            let config = EPUBNavigatorViewController.Configuration(
+            var config = EPUBNavigatorViewController.Configuration(
                 preferences: EPUBPreferences(readingProgression: isManga ? .rtl : nil),
                 editingActions: EditingAction.defaultActions + [
                     EditingAction(title: "Highlight", action: #selector(highlight(_:))),
                 ]
             )
+            // issue #279: Readium's own highlight template again at a stronger tint, for dark
+            // pages (see `.strongHighlight`).
+            config.decorationTemplates[.strongHighlight] = HTMLDecorationTemplate.defaultTemplates(alpha: 0.5)[.highlight]
             let nav = try EPUBNavigatorViewController(
                 publication: publication,
                 initialLocation: initialLocator,
@@ -294,6 +301,11 @@ final class EpubReaderViewController: UIViewController {
         } else {
             resolvedTheme = traitCollection.userInterfaceStyle == .dark ? Theme.dark : Theme.light
         }
+        // issue #279: a stronger highlight tint on a dark page — re-applied when that changes.
+        if (resolvedTheme == Theme.dark) != darkPage {
+            darkPage = resolvedTheme == Theme.dark
+            applyDecorations(for: lastHighlights)
+        }
         var epubPrefs = EPUBPreferences(
             fontSize: prefs.fontScale,
             scroll: prefs.scroll,
@@ -332,7 +344,9 @@ final class EpubReaderViewController: UIViewController {
     /// `:shared`'s Compose code whenever the collected highlights list changes (issue #183 —
     /// Swift can't collect a Kotlin `Flow` directly, so this is a push, not a pull).
     private func applyDecorations(for highlights: [ModelHighlight]) {
+        lastHighlights = highlights
         guard let navigator else { return }
+        let darkPage = darkPage
         Task {
             var decorations: [Decoration] = []
             for h in highlights {
@@ -340,7 +354,7 @@ final class EpubReaderViewController: UIViewController {
                 decorations.append(Decoration(
                     id: h.id,
                     locator: locator,
-                    style: .highlight(tint: UIColor(argb: h.color.argb), isActive: false)
+                    style: Self.highlightStyle(tint: UIColor(argb: h.color.argb), darkPage: darkPage)
                 ))
             }
             try? await navigator.apply(decorations: decorations, in: "highlights")
@@ -508,5 +522,21 @@ private extension UIColor {
         let g = CGFloat((value >> 8) & 0xFF) / 255
         let b = CGFloat(value & 0xFF) / 255
         self.init(red: r, green: g, blue: b, alpha: a)
+    }
+}
+
+/// issue #279: a highlight painted at a stronger tint (Readium's highlight template at 50%
+/// alpha), for dark pages — at the default 30% a yellow highlight read as dim olive on black.
+/// A style of its own because the navigator's templates are fixed once it's created, while the
+/// reader theme can change mid-book.
+private extension Decoration.Style.Id {
+    static let strongHighlight: Decoration.Style.Id = "strongHighlight"
+}
+
+private extension EpubReaderViewController {
+    static func highlightStyle(tint: UIColor, darkPage: Bool) -> Decoration.Style {
+        darkPage
+            ? Decoration.Style(id: .strongHighlight, config: Decoration.Style.HighlightConfig(tint: tint, isActive: false))
+            : .highlight(tint: tint, isActive: false)
     }
 }
