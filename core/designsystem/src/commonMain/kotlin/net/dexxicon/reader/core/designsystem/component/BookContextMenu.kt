@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.outlined.Circle
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -37,6 +38,8 @@ fun BookContextMenu(
     onSetStatus: (ReadingStatus) -> Unit,
     onDetails: () -> Unit,
     onDownloadOrRemove: () -> Unit,
+    /** issue #251 — only Home's Continue shelves pass this: hide the book from them. */
+    onRemoveFromContinue: (() -> Unit)? = null,
 ) {
     var showStatuses by remember(expanded) { mutableStateOf(false) }
 
@@ -73,6 +76,13 @@ fun BookContextMenu(
                 leadingIcon = { Icon(icon, contentDescription = null) },
                 onClick = { onDismiss(); onDownloadOrRemove() },
             )
+            if (onRemoveFromContinue != null) {
+                DropdownMenuItem(
+                    text = { Text("Remove from Continue") },
+                    leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
+                    onClick = { onDismiss(); onRemoveFromContinue() },
+                )
+            }
         } else {
             DropdownMenuItem(
                 text = { Text("Reading status") },
