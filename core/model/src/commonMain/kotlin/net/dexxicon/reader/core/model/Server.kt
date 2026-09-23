@@ -97,6 +97,9 @@ sealed interface ServerProbeResult {
         val detectedAuthMode: AuthMode,
         val serverName: String?,
         val serverVersion: String?,
+        /** The address that actually answered, scheme included — what to save (issue #267:
+         *  may be `http://` when the user typed no scheme and HTTPS couldn't connect). */
+        val baseUrl: String,
     ) : ServerProbeResult
 
     data class InvalidCredentials(val message: String) : ServerProbeResult

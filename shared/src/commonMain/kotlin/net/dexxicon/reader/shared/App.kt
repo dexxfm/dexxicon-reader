@@ -821,6 +821,9 @@ fun AddServerScreen(
                     onValueChange = state::onBaseUrlChange,
                     label = { Text("Server URL") },
                     placeholder = { Text("books.example.com") },
+                    // issue #267 — say what a scheme-less address does, so http:// vs
+                    // https:// isn't a guess.
+                    supportingText = { Text("Without http:// or https://, HTTPS is tried first, then HTTP.") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )

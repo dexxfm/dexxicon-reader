@@ -22,6 +22,15 @@
 	<string>41</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<!-- issue #267: self-hosted servers are often plain HTTP on the local network. ATS already
+	     exempts raw IP addresses (http://192.168.1.200:3001); this also allows plain HTTP to
+	     local hostnames (.local names and single-label names like http://nas:3001). HTTP to a
+	     fully-qualified public hostname stays blocked, as ATS intends. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<!-- Export compliance: the app only ever uses HTTPS/TLS to talk to a user-configured
 	     server, the OS Keychain for credential storage, and hashing (SHA-256 for OIDC PKCE,
 	     MD5 for KOReader sync digests — not encryption) — no custom/non-exempt encryption.

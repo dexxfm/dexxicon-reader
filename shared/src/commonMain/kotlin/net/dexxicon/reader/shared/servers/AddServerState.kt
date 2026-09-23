@@ -130,8 +130,12 @@ class AddServerState(
             // everywhere else, since save() would have trimmed it but test() never got that far.
             testState = when (val result = serverProber.probe(baseUrl, username.trim(), password)) {
                 is ServerProbeResult.Success -> {
-                    if (displayName.isBlank()) displayName = prettyHost(baseUrl)
-                    TestState.Success(result.detectedType, connectedLabel(result.detectedType))
+                    if (displayName.isBlank()) displayName = prettyHost(result.baseUrl)
+                    // issue #267 — show the address that actually worked (the scheme may have
+                    // been filled in), so what's saved is what the user sees. Set directly
+                    // rather than via onBaseUrlChange, which would reset this very result.
+                    baseUrl = result.baseUrl
+                    TestState.Success(result.detectedType, connectedLabel(result.detectedType, result.baseUrl), result.baseUrl)
                 }
                 is ServerProbeResult.InvalidCredentials -> TestState.Failure(result.message)
                 is ServerProbeResult.Unreachable -> TestState.Failure(result.message)
@@ -153,7 +157,7 @@ class AddServerState(
                 server = (base ?: Server(id = "", displayName = "", baseUrl = "")).copy(
                     id = editingId ?: "",
                     displayName = displayName.trim(),
-                    baseUrl = normalizeUrl(baseUrl),
+                    baseUrl = success?.baseUrl ?: normalizeUrl(baseUrl),
                     type = success?.type ?: base?.type ?: ServerType.GENERIC,
                     // Keep an existing server's auth mode — editing a field shouldn't
                     // silently downgrade an SSO server to password auth. An OIDC server can
@@ -234,17 +238,22 @@ class AddServerState(
             // ServerRepository.save.
             id = editingId ?: "",
             displayName = displayName.trim().ifBlank { prettyHost(baseUrl) },
-            baseUrl = normalizeUrl(baseUrl),
+            baseUrl = (testState as? TestState.Success)?.baseUrl ?: normalizeUrl(baseUrl),
             authMode = AuthMode.OIDC,
         )
     }
 
-    private fun connectedLabel(type: ServerType): String =
-        type.name.lowercase().replaceFirstChar(Char::uppercase) + " · connected"
+    /** "Bookorbit · connected", plus a nudge when that connection is plain HTTP (issue #267)
+     *  — worth knowing on a LAN, worth fixing if the server is reachable from the internet. */
+    private fun connectedLabel(type: ServerType, url: String): String =
+        type.name.lowercase().replaceFirstChar(Char::uppercase) + " · connected" +
+            if (url.startsWith("http://", ignoreCase = true)) " (not encrypted — HTTP)" else ""
 
+    /** Only for a URL that was never tested (editing a saved server): a missing scheme
+     *  defaults to https, same as before issue #267. A tested URL uses [TestState.Success.baseUrl]. */
     private fun normalizeUrl(raw: String): String {
         val trimmed = raw.trim().trimEnd('/')
-        return if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+        return if (trimmed.startsWith("http://", ignoreCase = true) || trimmed.startsWith("https://", ignoreCase = true)) {
             trimmed
         } else {
             "https://$trimmed"
@@ -258,7 +267,7 @@ class AddServerState(
 sealed interface TestState {
     data object Idle : TestState
     data object Testing : TestState
-    data class Success(val type: ServerType, val detail: String) : TestState
+    data class Success(val type: ServerType, val detail: String, val baseUrl: String) : TestState
     data class Failure(val message: String) : TestState
 }
 
