@@ -91,6 +91,7 @@ import net.dexxicon.reader.core.designsystem.nav.PillNavigationRail
 import net.dexxicon.reader.core.datastore.AppPreferences
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.designsystem.component.BackPill
+import net.dexxicon.reader.core.designsystem.component.CoverBadges
 import net.dexxicon.reader.core.designsystem.theme.DexxiconTheme
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.GlassIntensity
@@ -197,7 +198,10 @@ fun App(
         platformGlassQuality
     }
     val glassState = rememberLiquidGlassState(glassQuality)
-    DexxiconTheme(darkTheme = darkTheme) {
+    DexxiconTheme(
+        darkTheme = darkTheme,
+        coverBadges = CoverBadges(showFormat = theme.showFormatBadges),
+    ) {
         val nav = rememberNavController()
         val backStackEntry by nav.currentBackStackEntryAsState()
         val currentDestination: NavDestination? = backStackEntry?.destination

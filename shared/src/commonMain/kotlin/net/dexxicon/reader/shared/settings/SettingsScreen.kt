@@ -317,12 +317,13 @@ fun SettingsScreen(
             }
 
             SettingsSection("Format badges") {
-                Text(
-                    "The coloured tag on a cover's bottom-right corner shows its file type.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                FormatLegend(Modifier.padding(top = 8.dp))
+                SettingRow(
+                    title = "Show format badges",
+                    subtitle = "The coloured tag on a cover's bottom-right corner shows its file type.",
+                ) {
+                    Switch(checked = prefs.showFormatBadges, onCheckedChange = state::setShowFormatBadges)
+                }
+                if (prefs.showFormatBadges) FormatLegend(Modifier.padding(top = 8.dp))
             }
 
             if (onReportProblem != null) {

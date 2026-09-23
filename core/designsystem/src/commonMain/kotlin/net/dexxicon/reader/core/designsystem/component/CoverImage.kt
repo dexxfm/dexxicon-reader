@@ -46,7 +46,8 @@ fun CoverImage(
     /** 0f–1f reading progress; null hides the bar. */
     progress: Float? = null,
     downloaded: Boolean = false,
-    /** Content type — shows a color-coded badge bottom-right; null / UNKNOWN hides it. */
+    /** Content type — shows a color-coded badge bottom-right; null / UNKNOWN hides it, as
+     *  does the user turning format badges off ([LocalCoverBadges], issue #252). */
     format: ContentFormat? = null,
 ) {
     Box(
@@ -106,7 +107,7 @@ fun CoverImage(
             )
         }
 
-        if (format != null && format != ContentFormat.UNKNOWN) {
+        if (format != null && format != ContentFormat.UNKNOWN && LocalCoverBadges.current.showFormat) {
             FormatBadge(
                 format = format,
                 modifier = Modifier

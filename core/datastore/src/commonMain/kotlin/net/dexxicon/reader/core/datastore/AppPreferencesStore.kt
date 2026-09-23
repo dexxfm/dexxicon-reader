@@ -45,6 +45,8 @@ data class AppPreferences(
     val coverTapAction: CoverTapAction = CoverTapAction.OPEN_DETAILS,
     /** Floating pill nav's liquid-glass strength (issue #224). */
     val glassIntensity: GlassIntensity = GlassIntensity.STANDARD,
+    /** Colour-coded file-type tag on covers (issue #252). */
+    val showFormatBadges: Boolean = true,
 )
 
 /**
@@ -84,6 +86,7 @@ class AppPreferencesStore(context: PlatformStorageContext) {
         val CATALOG_SORT = stringPreferencesKey("book_sort_catalog")
         val COVER_TAP_ACTION = stringPreferencesKey("cover_tap_action")
         val GLASS_INTENSITY = stringPreferencesKey("glass_intensity")
+        val SHOW_FORMAT_BADGES = booleanPreferencesKey("show_format_badges")
     }
 
     val preferences: Flow<AppPreferences> = dataStore.data.map { p ->
@@ -111,6 +114,7 @@ class AppPreferencesStore(context: PlatformStorageContext) {
             glassIntensity = p[Keys.GLASS_INTENSITY]
                 ?.let { runCatching { GlassIntensity.valueOf(it) }.getOrNull() }
                 ?: GlassIntensity.STANDARD,
+            showFormatBadges = p[Keys.SHOW_FORMAT_BADGES] ?: true,
         )
     }
 
@@ -177,6 +181,10 @@ class AppPreferencesStore(context: PlatformStorageContext) {
 
     suspend fun setGlassIntensity(intensity: GlassIntensity) {
         dataStore.edit { it[Keys.GLASS_INTENSITY] = intensity.name }
+    }
+
+    suspend fun setShowFormatBadges(show: Boolean) {
+        dataStore.edit { it[Keys.SHOW_FORMAT_BADGES] = show }
     }
 
     private companion object {

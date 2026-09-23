@@ -82,6 +82,10 @@ class SettingsState(
         scope.launch { container.appPreferences.setGlassIntensity(intensity) }
     }
 
+    fun setShowFormatBadges(show: Boolean) {
+        scope.launch { container.appPreferences.setShowFormatBadges(show) }
+    }
+
     fun setDownloadsWifiOnly(enabled: Boolean) {
         scope.launch { container.appPreferences.setDownloadsWifiOnly(enabled) }
     }
