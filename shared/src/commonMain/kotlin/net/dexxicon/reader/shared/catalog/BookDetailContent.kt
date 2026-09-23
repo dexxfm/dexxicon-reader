@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
@@ -51,6 +52,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -61,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -462,6 +465,8 @@ private fun ActionButtons(
         DownloadButton(download, onDownload, onRemoveDownload)
     }
 
+    ServerLinks(copies)
+
     if (showPicker) {
         ModalBottomSheet(onDismissRequest = { showPicker = false }) {
             Column(
@@ -643,6 +648,26 @@ private fun RowScope.LeftAligned(
         // does that, and passing an explicit TextStyle here (even TextStyle.Unspecified) would
         // bypass that inheritance instead of merging with it.
         if (style != null) Text(label, style = style) else Text(label)
+    }
+}
+
+/** issue #260 — "View on <server>" for every copy whose server has a web app, opening that
+ * book's own page there in the browser. One per copy, so a book merged from two servers
+ * links to both. */
+@Composable
+private fun ServerLinks(copies: List<BookCopy>) {
+    val uriHandler = LocalUriHandler.current
+    copies.forEach { copy ->
+        val url = copy.webUrl ?: return@forEach
+        TextButton(
+            onClick = { runCatching { uriHandler.openUri(url) } },
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+        ) {
+            LeftAligned(
+                { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
+                "View on ${copy.serverName}",
+            )
+        }
     }
 }
 
