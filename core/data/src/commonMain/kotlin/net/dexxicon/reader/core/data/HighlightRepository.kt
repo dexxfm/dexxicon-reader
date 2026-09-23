@@ -16,7 +16,9 @@ import net.dexxicon.reader.core.database.entity.HighlightEntity
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.core.model.ServerType
+import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.serverapi.annotation.AnnotationApi
+import net.dexxicon.reader.core.serverapi.annotation.BookOrbitAnnotationDto
 import net.dexxicon.reader.core.serverapi.annotation.CreateAnnotationDto
 import net.dexxicon.reader.core.serverapi.annotation.UpdateAnnotationDto
 import kotlin.uuid.ExperimentalUuidApi
@@ -108,58 +110,104 @@ class HighlightRepository(
         push(serverId)
         val remote = runCatching {
             when (server.type) {
-                ServerType.BOOKORBIT ->
-                    api.listBookOrbit(server.resolve("/api/v1/annotations?bookId=$bookId")).items
-                        .map { dto ->
-                            RemoteHighlight(
-                                remoteId = dto.id ?: return@map null,
-                                text = dto.text.orEmpty(),
-                                note = dto.note,
-                                color = HighlightColor.fromHex(dto.color),
-                                chapter = dto.chapterTitle,
-                                locatorJson = null,
-                                progression = 0.0,
-                            )
-                        }.filterNotNull()
+                ServerType.BOOKORBIT -> bookOrbitAnnotations(server, bookId).mapNotNull { dto ->
+                    RemoteHighlight(
+                        remoteId = dto.id ?: return@mapNotNull null,
+                        text = dto.text.orEmpty(),
+                        note = dto.note,
+                        color = HighlightColor.fromHex(dto.color),
+                        chapter = dto.chapterTitle,
+                        locatorJson = null,
+                        progression = 0.0,
+                        // issue #266 — BookOrbit's positions are real EPUB CFIs, not Readium
+                        // locators; kept so the reader can still jump to the right chapter.
+                        cfi = dto.cfi?.takeIf { it.isNotBlank() },
+                        pageNumber = dto.pageno,
+                        createdAt = parseServerTime(dto.highlightedAt ?: dto.createdAt),
+                    )
+                }
 
                 else ->
-                    api.listForBook(server.resolve("/api/v1/annotations/book/$bookId")).map { dto ->
+                    api.listForBook(server.resolve("/api/v1/annotations/book/$bookId")).mapNotNull { dto ->
                         val (loc, prog) = unpackCfi(dto.cfi)
                         RemoteHighlight(
-                            remoteId = dto.id?.toString() ?: return@map null,
+                            remoteId = dto.id?.toString() ?: return@mapNotNull null,
                             text = dto.text.orEmpty(),
                             note = dto.note,
                             color = HighlightColor.fromHex(dto.color),
                             chapter = dto.chapterTitle,
                             locatorJson = loc,
                             progression = prog,
+                            // A CFI written by BookLore's own web reader rather than this app's
+                            // packed locator.
+                            cfi = dto.cfi?.takeIf { loc == null && it.isNotBlank() },
+                            pageNumber = null,
+                            createdAt = parseServerTime(dto.createdAt),
                         )
-                    }.filterNotNull()
+                    }
             }
         }.getOrNull() ?: return@withContext
 
         val local = dao.forBook(serverId, bookId)
-        val knownRemoteIds = local.mapNotNull { it.remoteId }.toSet()
-        remote.filter { it.remoteId !in knownRemoteIds }.forEach { r ->
-            val now = currentTimeMillis()
-            dao.upsert(
-                HighlightEntity(
-                    id = Uuid.random().toString(),
-                    serverId = serverId,
-                    bookId = bookId,
-                    locatorJson = r.locatorJson ?: "{}",
-                    progression = r.progression,
-                    text = r.text,
-                    note = r.note,
+        val byRemoteId = local.filter { it.remoteId != null }.associateBy { it.remoteId }
+        remote.forEach { r ->
+            val existing = byRemoteId[r.remoteId]
+            if (existing == null) {
+                val now = currentTimeMillis()
+                dao.upsert(
+                    HighlightEntity(
+                        id = Uuid.random().toString(),
+                        serverId = serverId,
+                        bookId = bookId,
+                        locatorJson = r.locatorJson ?: "{}",
+                        progression = r.progression,
+                        text = r.text,
+                        note = r.note,
+                        color = r.color.name,
+                        chapterTitle = r.chapter,
+                        // issue #266 — when it was actually highlighted, not when this device
+                        // first synced it (which is what "date highlighted" used to show).
+                        createdAt = r.createdAt ?: now,
+                        updatedAt = now,
+                        remoteId = r.remoteId,
+                        dirty = false,
+                        cfi = r.cfi,
+                        pageNumber = r.pageNumber,
+                    ),
+                )
+            } else if (!existing.dirty) {
+                // issue #266 — rows synced before these fields were kept pick them up now, and
+                // the server's colour/note win (it owns them unless there's an unpushed local
+                // edit, which is left alone).
+                val backfilled = existing.copy(
                     color = r.color.name,
-                    chapterTitle = r.chapter,
-                    createdAt = now,
-                    updatedAt = now,
-                    remoteId = r.remoteId,
-                    dirty = false,
-                ),
-            )
+                    note = r.note,
+                    createdAt = r.createdAt ?: existing.createdAt,
+                    cfi = existing.cfi ?: r.cfi,
+                    pageNumber = existing.pageNumber ?: r.pageNumber,
+                    chapterTitle = existing.chapterTitle ?: r.chapter,
+                )
+                if (backfilled != existing) dao.upsert(backfilled)
+            }
         }
+    }
+
+    /** issue #266 — every page of a book's BookOrbit annotations (EPUB highlights only: PDF
+     *  ones carry no text position this app can use). The first page alone used to be all
+     *  that was ever fetched. */
+    private suspend fun bookOrbitAnnotations(server: Server, bookId: String): List<BookOrbitAnnotationDto> {
+        val all = mutableListOf<BookOrbitAnnotationDto>()
+        var page = 1
+        while (page <= MAX_ANNOTATION_PAGES) {
+            val response = api.listBookOrbit(
+                server.resolve("/api/v1/annotations?bookId=$bookId&page=$page&pageSize=$ANNOTATION_PAGE_SIZE&sortBy=position&sortDir=asc"),
+            )
+            all += response.items
+            val total = response.total ?: break
+            if (response.items.isEmpty() || all.size >= total) break
+            page++
+        }
+        return all
     }
 
     private suspend fun push(serverId: String) {
@@ -227,5 +275,26 @@ class HighlightRepository(
         val chapter: String?,
         val locatorJson: String?,
         val progression: Double,
+        val cfi: String?,
+        val pageNumber: Int?,
+        val createdAt: Long?,
     )
+
+    private companion object {
+        const val ANNOTATION_PAGE_SIZE = 100
+        /** Safety stop — 5,000 highlights in one book is well past any real reader. */
+        const val MAX_ANNOTATION_PAGES = 50
+    }
+}
+
+/**
+ * issue #266 — a server timestamp as epoch millis. BookOrbit sends ISO-8601 instants
+ * (`2026-09-20T14:03:11.000Z`); Grimmory sends a zoneless `LocalDateTime`
+ * (`2026-09-20T14:03:11`), read as UTC. Null for anything unparseable.
+ */
+@OptIn(kotlin.time.ExperimentalTime::class)
+internal fun parseServerTime(value: String?): Long? {
+    val raw = value?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    val hasZone = raw.endsWith("Z", ignoreCase = true) || Regex("[+-]\\d{2}:?\\d{2}$").containsMatchIn(raw.substringAfter('T', ""))
+    return runCatching { kotlin.time.Instant.parse(if (hasZone) raw else raw + "Z").toEpochMilliseconds() }.getOrNull()
 }

@@ -99,6 +99,7 @@ import net.dexxicon.reader.core.model.BookGroup
 import net.dexxicon.reader.core.model.BookGroupKind
 import net.dexxicon.reader.core.model.SeriesEntry
 import net.dexxicon.reader.core.model.Server
+import net.dexxicon.reader.shared.catalog.HighlightsScreen
 import net.dexxicon.reader.shared.catalog.BookDetailScreen
 import net.dexxicon.reader.shared.catalog.BooksScreen
 import net.dexxicon.reader.shared.di.AppContainer
@@ -140,6 +141,9 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 @Serializable private object HomeLayoutRoute
 @Serializable private data class BooksRoute(val serverId: String)
 @Serializable private data class BookDetailRoute(val serverId: String, val bookId: String)
+
+/** issue #266 — one EPUB's highlights. */
+@Serializable private data class HighlightsRoute(val serverId: String, val bookId: String, val title: String)
 
 /** Batch B (issues #253, #254) — one library, collection or smart shelf. */
 @Serializable private data class GroupRoute(
@@ -201,6 +205,8 @@ fun App(
      * the "Report a problem" button on every platform despite the rest of the screen porting
      * cleanly. */
     onReportProblem: (() -> Unit)? = null,
+    /** issue #259 — threads through to [SettingsScreen]'s `onPickSaveFolder`; null on iOS. */
+    onPickSaveFolder: (() -> Unit)? = null,
 ) {
     // Phase 4 Stage E1 (issue #136) — Settings' theme chips need this to actually do
     // something; a control that doesn't visibly change anything is worse than no control.
@@ -391,6 +397,7 @@ fun App(
                                 onOpenBookDefaults = { nav.navigate(BookDefaultsRoute) },
                                 onOpenHomeLayout = { nav.navigate(HomeLayoutRoute) },
                                 onReportProblem = onReportProblem,
+                                onPickSaveFolder = onPickSaveFolder,
                             )
                         }
                         composable<AudiobookDefaultsRoute> {
@@ -440,6 +447,18 @@ fun App(
                                 onOpenReader = onOpenReader,
                                 onOpenSeries = openSeriesNamed,
                                 onOpenBook = openBookDetail,
+                                onOpenHighlights = { title -> nav.navigate(HighlightsRoute(route.serverId, route.bookId, title)) },
+                            )
+                        }
+                        composable<HighlightsRoute> { entry ->
+                            val route = entry.toRoute<HighlightsRoute>()
+                            HighlightsScreen(
+                                container = container,
+                                serverId = route.serverId,
+                                bookId = route.bookId,
+                                bookTitle = route.title,
+                                onBack = { nav.popBackStack() },
+                                onOpenReader = onOpenReader,
                             )
                         }
                     }

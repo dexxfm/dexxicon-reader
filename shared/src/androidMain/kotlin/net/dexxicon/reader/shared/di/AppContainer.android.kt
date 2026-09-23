@@ -95,6 +95,7 @@ fun createAppContainer(
         appPreferences = appPreferences,
         readerPreferences = ReaderPreferencesStore(PlatformStorageContext(appContext)),
         playerPreferences = PlayerPreferencesStore(PlatformStorageContext(appContext)),
+        bookFileWriter = AndroidBookFileWriter(appContext),
         appVersionName = runCatching {
             appContext.packageManager.getPackageInfo(appContext.packageName, 0).versionName
         }.getOrNull() ?: "unknown",

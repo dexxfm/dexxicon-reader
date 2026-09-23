@@ -24,6 +24,8 @@ fun BookDetailScreen(
     onOpenSeries: (String) -> Unit = {},
     /** issue #256 — another book from the series shelf. */
     onOpenBook: (serverId: String, bookId: String) -> Unit = { _, _ -> },
+    /** issue #266 — this book's Highlights list. */
+    onOpenHighlights: (title: String) -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
     val state = remember(serverId, bookId) {
@@ -35,5 +37,6 @@ fun BookDetailScreen(
         onOpenReader = onOpenReader,
         onOpenSeries = onOpenSeries,
         onOpenBook = onOpenBook,
+        onOpenHighlights = onOpenHighlights,
     )
 }

@@ -95,6 +95,14 @@ class SettingsState(
         scope.launch { container.appPreferences.setHomeLayout(layout) }
     }
 
+    /** issue #259 — whether this device has Book Detail's "save a copy" button at all. */
+    val canSaveCopies: Boolean get() = container.bookFileWriter != null
+
+    /** issue #259 — back to saving copies in the Downloads folder. */
+    fun useDownloadsForCopies() {
+        scope.launch { container.appPreferences.setSaveCopiesFolder(null, null) }
+    }
+
     fun setDownloadsWifiOnly(enabled: Boolean) {
         scope.launch { container.appPreferences.setDownloadsWifiOnly(enabled) }
     }

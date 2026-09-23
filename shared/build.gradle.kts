@@ -62,6 +62,8 @@ kotlin {
             implementation(compose.materialIconsExtended)
             implementation(libs.navigation.compose.multiplatform)
             implementation(libs.kotlinx.serialization.json)
+            // issue #266 — the Highlights list's "Sep 20, 2026" dates, in the device's time zone.
+            implementation(libs.kotlinx.datetime)
             implementation(libs.kotlinx.coroutines.core)
             implementation(libs.ktor.client.core)
             // Pkce (Slice 2, issue #70) — pure-Kotlin SHA-256 + secure random, works

@@ -14,9 +14,20 @@ class HighlightColorTest {
     }
 
     @Test
-    fun `fromHex defaults to yellow for unknown or null`() {
+    fun `fromHex defaults to yellow for null or malformed`() {
         assertThat(HighlightColor.fromHex(null)).isEqualTo(HighlightColor.YELLOW)
-        assertThat(HighlightColor.fromHex("#123456")).isEqualTo(HighlightColor.YELLOW)
+        assertThat(HighlightColor.fromHex("yellowish")).isEqualTo(HighlightColor.YELLOW)
+        assertThat(HighlightColor.fromHex("#12345")).isEqualTo(HighlightColor.YELLOW)
+    }
+
+    @Test
+    fun `other palettes map to the nearest of ours (issue 266)`() {
+        // BookOrbit's ANNOTATION_HIGHLIGHT_COLORS
+        assertThat(HighlightColor.fromHex("#4ADE80")).isEqualTo(HighlightColor.GREEN)
+        assertThat(HighlightColor.fromHex("#38BDF8")).isEqualTo(HighlightColor.BLUE)
+        assertThat(HighlightColor.fromHex("#C084FC")).isEqualTo(HighlightColor.PURPLE)
+        // KOReader's exact yellow
+        assertThat(HighlightColor.fromHex("#FFFF33")).isEqualTo(HighlightColor.YELLOW)
     }
 
     @Test

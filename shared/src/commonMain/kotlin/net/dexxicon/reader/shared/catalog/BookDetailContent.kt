@@ -34,11 +34,13 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -93,6 +95,11 @@ import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.component.LocalCoverBadges
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.seriesNumberLabel
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material3.OutlinedIconButton
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.runtime.LaunchedEffect
 
 /**
  * Phase 4 restructure (issue #126) — the one Book Detail render, replacing both platforms'
@@ -120,11 +127,25 @@ fun BookDetailContent(
     modifier: Modifier = Modifier,
     onOpenSeries: (String) -> Unit = {},
     onOpenBook: (serverId: String, bookId: String) -> Unit = { _, _ -> },
+    /** issue #266 — this book's Highlights list; takes the title to show there. */
+    onOpenHighlights: (title: String) -> Unit = {},
 ) {
     val download by state.download.collectAsState()
     val progress by state.progress.collectAsState()
 
-    Scaffold(modifier = modifier) { padding ->
+    // issue #259 — the "save a copy" button's result.
+    val snackbarHostState = remember { SnackbarHostState() }
+    state.message?.let { text ->
+        LaunchedEffect(text) {
+            snackbarHostState.showSnackbar(text, withDismissAction = true)
+            state.messageShown()
+        }
+    }
+    val saveDestination by state.saveCopyDestination.collectAsState()
+    val saveCopy = SaveCopyAction(saving = state.savingCopy, destination = saveDestination, onClick = state::saveCopy)
+        .takeIf { state.canSaveCopy }
+
+    Scaffold(modifier = modifier, snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         when {
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
                 CircularProgressIndicator()
@@ -158,6 +179,8 @@ fun BookDetailContent(
                     seriesBooks = state.seriesBooks,
                     onOpenSeries = onOpenSeries,
                     onOpenBook = onOpenBook,
+                    onOpenHighlights = { onOpenHighlights(detail.summary.title) },
+                    saveCopy = saveCopy,
                     modifier = Modifier.padding(padding),
                 )
             }
@@ -181,6 +204,8 @@ private fun DetailContent(
     seriesBooks: List<AggregatedBook>,
     onOpenSeries: (String) -> Unit,
     onOpenBook: (serverId: String, bookId: String) -> Unit,
+    onOpenHighlights: () -> Unit,
+    saveCopy: SaveCopyAction?,
     modifier: Modifier = Modifier,
 ) {
     val seriesShelf: @Composable () -> Unit = {
@@ -213,7 +238,7 @@ private fun DetailContent(
                     Spacer(Modifier.height(16.dp))
                     ActionButtons(
                         detail, copies, download, progress, supportsDownloads,
-                        onOpen, onDownload, onRemoveDownload,
+                        onOpen, onDownload, onRemoveDownload, onOpenHighlights, saveCopy,
                     )
                 }
                 Column(
@@ -243,7 +268,7 @@ private fun DetailContent(
                     Spacer(Modifier.height(20.dp))
                     ActionButtons(
                         detail, copies, download, progress, supportsDownloads,
-                        onOpen, onDownload, onRemoveDownload,
+                        onOpen, onDownload, onRemoveDownload, onOpenHighlights, saveCopy,
                     )
                     Spacer(Modifier.height(20.dp))
                     AboutSection(detail)
@@ -510,6 +535,8 @@ private fun ActionButtons(
     onOpen: (BookCopy) -> Unit,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
+    onOpenHighlights: () -> Unit,
+    saveCopy: SaveCopyAction?,
 ) {
     val format = detail.summary.format
     val isAudio = format == ContentFormat.AUDIOBOOK
@@ -543,9 +570,30 @@ private fun ActionButtons(
 
     ProgressRow(detail, progress)
 
-    if (supportsDownloads) {
+    // issue #259 — audiobooks can span many files, so there's no single file to save a copy of.
+    val copyAction = saveCopy?.takeIf { format != ContentFormat.AUDIOBOOK }
+    if (supportsDownloads || copyAction != null) {
         Spacer(Modifier.height(8.dp))
-        DownloadButton(download, onDownload, onRemoveDownload)
+        Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (supportsDownloads) {
+                Box(Modifier.weight(1f)) { DownloadButton(download, onDownload, onRemoveDownload) }
+            }
+            copyAction?.let { SaveCopyButton(it) }
+        }
+    }
+
+    // issue #266 — EPUB only: both servers expose EPUB highlights as structured, listable
+    // records; Grimmory's PDF annotations are one opaque blob for its own PDF.js viewer, so a
+    // PDF list couldn't be offered on both servers alike.
+    if (format == ContentFormat.EPUB) {
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onOpenHighlights,
+            shape = Pill,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
+            LeftAligned({ Icon(Icons.Filled.FormatQuote, contentDescription = null) }, "Highlights")
+        }
     }
 
     ServerLinks(copies)
@@ -750,6 +798,35 @@ private fun ServerLinks(copies: List<BookCopy>) {
                 { Icon(Icons.AutoMirrored.Filled.OpenInNew, contentDescription = null) },
                 "View on ${copy.serverName}",
             )
+        }
+    }
+}
+
+/** issue #259 — the "save a copy to Downloads" icon button's state, bundled so it passes
+ * through Book Detail's layout as one value. */
+data class SaveCopyAction(
+    val saving: Boolean,
+    /** "Downloads", or the folder picked in Settings. */
+    val destination: String,
+    val onClick: () -> Unit,
+)
+
+/** issue #259 — icon-only, beside "Make available offline": that keeps the app's own private
+ * copy; this saves a copy of the file to Downloads (or the folder chosen in Settings) for use
+ * outside the app. */
+@Composable
+private fun SaveCopyButton(action: SaveCopyAction) {
+    OutlinedIconButton(
+        onClick = action.onClick,
+        enabled = !action.saving,
+        modifier = Modifier.size(48.dp),
+        // Same outline as the "Make available offline" pill beside it.
+        border = ButtonDefaults.outlinedButtonBorder(enabled = !action.saving),
+    ) {
+        if (action.saving) {
+            CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+        } else {
+            Icon(Icons.Filled.Download, contentDescription = "Save a copy to ${action.destination}")
         }
     }
 }
