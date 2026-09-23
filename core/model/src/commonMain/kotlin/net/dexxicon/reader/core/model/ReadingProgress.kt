@@ -28,9 +28,21 @@ data class ReadingProgress(
      *  series number without a catalog round-trip. */
     val series: String? = null,
     val seriesIndex: Double? = null,
+    /** issue #251 — "Remove from Continue reading": the [percent] the book was at when the user
+     *  hid it. It stays hidden until it moves on from there (read here or on another device). */
+    val hiddenAtPercent: Double? = null,
 ) {
     val key: String get() = "$serverId::$bookId"
 
     /** In progress: started but not finished. */
     val isInProgress: Boolean get() = (percent ?: 0.0).let { it > 0.0 && it < 0.985 }
+
+    /** issue #251 — hidden from the Continue shelves and not read any further since. */
+    val isHiddenFromContinue: Boolean
+        get() = hiddenAtPercent != null && (percent ?: 0.0) <= hiddenAtPercent + HIDDEN_PROGRESS_SLACK
+
+    private companion object {
+        /** Ignore server rounding noise; any real reading moves well past this. */
+        const val HIDDEN_PROGRESS_SLACK = 0.005
+    }
 }

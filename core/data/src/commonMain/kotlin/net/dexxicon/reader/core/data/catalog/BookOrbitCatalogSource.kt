@@ -275,6 +275,10 @@ class BookOrbitCatalogSource(
         val status = e.response.status.value
         if (status == 401 || status == 403) {
             Outcome.Failure(DexxiconError.Unauthorized("Session expired — reopen the server"))
+        } else if (status == 404) {
+            // issue #251 — "this book no longer exists" has to be told apart from "couldn't
+            // reach the server", or a stale Continue entry can never safely be cleaned up.
+            Outcome.Failure(DexxiconError.NotFound("That's no longer on the server"))
         } else {
             Outcome.Failure(DexxiconError.Network("Server returned HTTP $status"))
         }

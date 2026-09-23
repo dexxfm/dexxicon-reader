@@ -27,6 +27,8 @@ data class ReadingProgressEntity(
     /** issue #257 — see [ReadingProgress.series]. */
     val series: String? = null,
     val seriesIndex: Double? = null,
+    /** issue #251 — see [ReadingProgress.hiddenAtPercent]. */
+    val hiddenAtPercent: Double? = null,
 ) {
     fun toDomain(): ReadingProgress = ReadingProgress(
         serverId = serverId,
@@ -41,6 +43,7 @@ data class ReadingProgressEntity(
         digestUrl = digestUrl,
         series = series,
         seriesIndex = seriesIndex,
+        hiddenAtPercent = hiddenAtPercent,
     )
 
     companion object {
@@ -58,6 +61,7 @@ data class ReadingProgressEntity(
             digestUrl = progress.digestUrl,
             series = progress.series,
             seriesIndex = progress.seriesIndex,
+            hiddenAtPercent = progress.hiddenAtPercent,
         )
     }
 }

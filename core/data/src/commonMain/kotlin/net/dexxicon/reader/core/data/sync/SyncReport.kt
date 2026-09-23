@@ -8,6 +8,11 @@ data class SyncReport(
     /** When the pass ran (epoch millis). */
     val at: Long,
     val failures: List<ServerSyncFailure> = emptyList(),
+    /** issue #251 — per server that answered, the book ids in its own "continue" lists this
+     *  pass. A locally-tracked in-progress book missing from here is worth checking for having
+     *  been deleted or re-imported server-side (see [net.dexxicon.reader.core.data
+     *  .ReadingProgressRepository.pruneGone]). */
+    val seenOnServer: Map<String, Set<String>> = emptyMap(),
 ) {
     val ok: Boolean get() = failures.isEmpty()
 }

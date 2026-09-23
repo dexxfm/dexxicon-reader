@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.sync.ServerSyncFailure
 import net.dexxicon.reader.core.data.sync.SyncReport
@@ -46,6 +47,13 @@ data class ContinueItem(
     /** issue #258 — this book's offline copy, if any, so the card can show the same
      * "downloaded" badge and download/remove menu state every other shelf does. */
     val downloadStatus: DownloadStatus? = null,
+)
+
+/** A one-off note for Home's snackbar (issue #251), optionally with an action like "Undo". */
+data class HomeMessage(
+    val text: String,
+    val actionLabel: String? = null,
+    val onAction: (() -> Unit)? = null,
 )
 
 /** A book the user flagged "Want to read" on a server — shown in the On Deck shelf. */
@@ -113,7 +121,8 @@ class HomeState(
             lastReport,
         ) { downloads, progressByKey, onDeckItems, isRefreshing, report ->
             val inProgress = progressByKey.values
-                .filter { it.isInProgress }
+                // issue #251 — "Remove from Continue" hides a book until it's read further.
+                .filter { it.isInProgress && !it.isHiddenFromContinue }
                 .sortedByDescending { it.updatedAt }
             // issue #258 — Continue/On Deck cards never learned about downloads at all, so a
             // downloaded book showed no badge there and its long-press menu offered to download
@@ -188,14 +197,51 @@ class HomeState(
         }
     }
 
+    private val _message = MutableStateFlow<HomeMessage?>(null)
+
+    /** issue #251 — shown once by HomeContent's snackbar, then cleared via [messageShown]. */
+    val message: StateFlow<HomeMessage?> = _message
+
+    /** Clears [shown] — unless a newer message has already replaced it. */
+    fun messageShown(shown: HomeMessage) {
+        _message.compareAndSet(shown, null)
+    }
+
     fun refresh() {
         loadOnDeck()
         scope.launch { loadPinned(container.liveHomeLayout().first().pinned) }
         if (refreshing.value) return
         scope.launch {
             refreshing.value = true
-            runCatching { container.progressRepository.syncProgress() }.getOrNull()?.let { lastReport.value = it }
+            val report = runCatching { container.progressRepository.syncProgress() }.getOrNull()
+            report?.let { lastReport.value = it }
             refreshing.value = false
+            report?.let { pruneGone(it) }
+        }
+    }
+
+    /** issue #251 — after a sync, drop Continue entries whose book the server says is gone
+     *  (deleted, or re-imported under a new id). See `ReadingProgressRepository.pruneGone`. */
+    private suspend fun pruneGone(report: SyncReport) {
+        report.seenOnServer.forEach { (serverId, seen) ->
+            runCatching {
+                container.progressRepository.pruneGone(serverId, seen) { bookId ->
+                    val result = container.catalogRepository.detail(serverId, bookId)
+                    (result as? Outcome.Failure)?.error is DexxiconError.NotFound
+                }
+            }
+        }
+    }
+
+    /** issue #251 — "Remove from Continue", with an Undo. */
+    fun hideFromContinue(item: ContinueItem) {
+        scope.launch {
+            container.progressRepository.hideFromContinue(item.serverId, item.bookId)
+            _message.value = HomeMessage(
+                text = "Removed “${item.title}” from Continue",
+                actionLabel = "Undo",
+                onAction = { scope.launch { container.progressRepository.unhideFromContinue(item.serverId, item.bookId) } },
+            )
         }
     }
 
@@ -272,13 +318,25 @@ class HomeState(
      * Detail. */
     fun continueReading(item: ContinueItem, onOpenReader: OnOpenReader) {
         scope.launch {
-            val detail = (container.catalogRepository.detail(item.serverId, item.bookId) as? Outcome.Success)
-                ?.value
+            val result = container.catalogRepository.detail(item.serverId, item.bookId)
+            val detail = (result as? Outcome.Success)?.value
                 ?: container.downloadRepository.get(item.serverId, item.bookId)
                     ?.takeIf { it.status == DownloadStatus.DONE }
                     ?.toBookDetail()
-                ?: return@launch
-            container.openReader(detail, item.serverId, item.bookId, onOpenReader)
+            if (detail != null) {
+                container.openReader(detail, item.serverId, item.bookId, onOpenReader)
+                return@launch
+            }
+            // issue #251 — this used to return silently: a tap that did nothing at all.
+            val error = (result as? Outcome.Failure)?.error
+            _message.value = if (error is DexxiconError.NotFound) {
+                // The server says the book is gone (deleted, or re-imported under a new id) and
+                // there's no offline copy — nothing left to open, so stop showing it.
+                container.progressRepository.clear(item.serverId, item.bookId)
+                HomeMessage("“${item.title}” is no longer on the server, so it was removed from Continue")
+            } else {
+                HomeMessage("Couldn't open “${item.title}”. Check your connection and try again.")
+            }
         }
     }
 

@@ -23,4 +23,15 @@ class ReadingProgressTest {
         assertThat(progress(0.99).isInProgress).isFalse()
         assertThat(progress(1.0).isInProgress).isFalse()
     }
+
+    @Test
+    fun `a book hidden from Continue stays hidden until it's read further`() {
+        val hidden = progress(0.4).copy(hiddenAtPercent = 0.4)
+        assertThat(progress(0.4).isHiddenFromContinue).isFalse()
+        assertThat(hidden.isHiddenFromContinue).isTrue()
+        // server rounding noise doesn't bring it back…
+        assertThat(hidden.copy(percent = 0.403).isHiddenFromContinue).isTrue()
+        // …real reading, here or on another device, does.
+        assertThat(hidden.copy(percent = 0.45).isHiddenFromContinue).isFalse()
+    }
 }

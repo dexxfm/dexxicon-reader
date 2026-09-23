@@ -33,7 +33,11 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -68,6 +72,8 @@ private data class HomeItemActions(
     val onSetStatus: (ReadingStatus) -> Unit,
     val onDetails: () -> Unit,
     val onDownloadOrRemove: () -> Unit,
+    /** issue #251 — Continue shelves only. */
+    val onRemoveFromContinue: (() -> Unit)? = null,
 )
 
 /**
@@ -97,6 +103,7 @@ fun HomeContent(
         onSetStatus = { state.setReadingStatus(entry.serverId, entry.bookId, it) },
         onDetails = { onOpenBook(entry.serverId, entry.bookId) },
         onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, entry.downloadStatus) },
+        onRemoveFromContinue = { state.hideFromContinue(entry) },
     )
 
     fun onDeckActions(entry: OnDeckItem) = HomeItemActions(
@@ -120,12 +127,28 @@ fun HomeContent(
         )
     }
 
+    // issue #251 — one-off notes (a stale book removed, a tap that couldn't open, Undo).
+    val snackbarHostState = remember { SnackbarHostState() }
+    val message by state.message.collectAsState()
+    LaunchedEffect(message) {
+        val m = message ?: return@LaunchedEffect
+        val result = snackbarHostState.showSnackbar(m.text, actionLabel = m.actionLabel, withDismissAction = m.actionLabel == null)
+        if (result == SnackbarResult.ActionPerformed) m.onAction?.invoke()
+        // Cleared only once it's been shown: clearing first changes this effect's key and
+        // cancels the snackbar before it ever appears. A newer message replaces this one.
+        state.messageShown(m)
+    }
+
     val syncVisible = !uiState.loading &&
         (uiState.refreshing || uiState.lastSyncedAt != null || uiState.syncFailures.isNotEmpty())
     val syncHasFailure = uiState.syncFailures.isNotEmpty() && !uiState.refreshing
 
     Scaffold(
         modifier = modifier,
+        snackbarHost = {
+            // Lifted clear of the floating nav, which overlays the bottom of the screen.
+            SnackbarHost(snackbarHostState, Modifier.padding(bottom = FloatingNavClearance))
+        },
         topBar = {
             TopAppBar(
                 title = {
@@ -543,5 +566,6 @@ private fun HomeMenu(expanded: Boolean, onDismiss: () -> Unit, actions: HomeItem
         onSetStatus = actions.onSetStatus,
         onDetails = actions.onDetails,
         onDownloadOrRemove = actions.onDownloadOrRemove,
+        onRemoveFromContinue = actions.onRemoveFromContinue,
     )
 }

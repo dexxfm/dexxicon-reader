@@ -33,6 +33,7 @@ import net.dexxicon.reader.core.data.sync.SyncReport
 import net.dexxicon.reader.core.database.dao.ReadingProgressDao
 import net.dexxicon.reader.core.database.entity.ReadingProgressEntity
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
@@ -42,6 +43,25 @@ import net.dexxicon.reader.core.model.ServerType
  * at a time. This bounds how many rows sync concurrently, so a large row count still finishes
  * quickly without opening hundreds of simultaneous connections to (often) the same server. */
 private const val PROGRESS_SYNC_CONCURRENCY = 8
+
+/** issue #251 — cap on existence checks per server per pass; the stale-row case is a handful
+ *  of books, and anything past this gets its turn on the next sync. */
+internal const val MAX_PRUNE_CHECKS = 10
+
+/**
+ * issue #251 — which of [serverId]'s rows [ReadingProgressRepository.pruneGone] should check:
+ * in progress, not in the server's own continue lists ([seen]), no unconfirmed local change
+ * (`dirty`), and not downloaded ([downloadedKeys]). Pure, so it's unit-tested on its own.
+ */
+internal fun pruneCandidates(
+    rows: List<ReadingProgressEntity>,
+    serverId: String,
+    seen: Set<String>,
+    downloadedKeys: Set<String>,
+): List<ReadingProgressEntity> = rows
+    .filter { it.serverId == serverId && !it.dirty && it.bookId !in seen && it.key !in downloadedKeys }
+    .filter { row -> (row.percent ?: 0.0).let { it > 0.0 && it < 0.985 } }
+    .take(MAX_PRUNE_CHECKS)
 
 /**
  * Stores where each book was left off, and keeps that position **two-way** with the server.
@@ -124,6 +144,50 @@ class ReadingProgressRepository(
             val domain = merged.toDomain()
             appScope.launch { pushToServer(merged.key, merged.updatedAt, domain) }
         }
+    }
+
+    /** issue #251 — "Remove from Continue reading". Nothing changes on the server; the book
+     *  just stays off the Continue shelves until it's read further (see [ReadingProgress.isHiddenFromContinue]). */
+    suspend fun hideFromContinue(serverId: String, bookId: String) = withContext(io) {
+        val row = dao.find(key(serverId, bookId)) ?: return@withContext
+        dao.upsert(row.copy(hiddenAtPercent = row.percent ?: 0.0))
+    }
+
+    /** Undo for [hideFromContinue]. */
+    suspend fun unhideFromContinue(serverId: String, bookId: String) = withContext(io) {
+        val row = dao.find(key(serverId, bookId)) ?: return@withContext
+        dao.upsert(row.copy(hiddenAtPercent = null))
+    }
+
+    /**
+     * issue #251 — drops progress rows for books that no longer exist on [serverId]. A book
+     * deleted, or re-imported under a new id, server-side left its old row behind forever: the
+     * seeder adds the new id's row, nothing removes the old one, and Home showed the book twice
+     * (the stale copy's tap failing on a 404).
+     *
+     * Only rows the server *didn't* list in this pass's continue lists ([seen]) are checked,
+     * so a normal sync costs nothing extra; each is confirmed gone via [isGone] (a real 404)
+     * before anything is deleted. Rows with an unconfirmed local change, or an offline copy
+     * that can still be read, are left alone. Returns how many rows were removed.
+     */
+    suspend fun pruneGone(
+        serverId: String,
+        seen: Set<String>,
+        isGone: suspend (bookId: String) -> Boolean,
+    ): Int = withContext(io) {
+        val rows = dao.all()
+        val downloaded = rows
+            .filter { downloadRepository.get(it.serverId, it.bookId)?.status == DownloadStatus.DONE }
+            .map { it.key }
+            .toSet()
+        var removed = 0
+        for (row in pruneCandidates(rows, serverId, seen, downloaded)) {
+            if (isGone(row.bookId)) {
+                dao.deleteByKey(row.key)
+                removed++
+            }
+        }
+        removed
     }
 
     suspend fun clear(serverId: String, bookId: String) = withContext(io) {
@@ -310,6 +374,7 @@ class ReadingProgressRepository(
         val at = currentTimeMillis()
         val allServers = serverRepository.servers.first()
         val failures = mutableListOf<ServerSyncFailure>()
+        val seen = mutableMapOf<String, Set<String>>()
 
         // Renew any session that's close to expiring before it's needed below — cheap when
         // the token is still fresh, and it keeps idle OIDC refresh tokens alive.
@@ -327,7 +392,10 @@ class ReadingProgressRepository(
         // rows below rather than hammering it, and report it.
         allServers.filter { usesNative(it) }.forEach { server ->
             when (val result = librarySeeder.inProgressResult(server)) {
-                is Outcome.Success -> persistSeeded(server, result.value)
+                is Outcome.Success -> {
+                    persistSeeded(server, result.value)
+                    seen[server.id] = result.value.map { it.bookId }.toSet()
+                }
                 is Outcome.Failure -> failures += ServerSyncFailure(
                     server.id, server.displayName, result.error.toSyncReason(),
                 )
@@ -349,7 +417,7 @@ class ReadingProgressRepository(
             }
         }
 
-        SyncReport(at = at, failures = failures)
+        SyncReport(at = at, failures = failures, seenOnServer = seen)
     }
 
     /** One [row]'s share of [syncProgress]'s reconciliation pass — pulled out so it can run
