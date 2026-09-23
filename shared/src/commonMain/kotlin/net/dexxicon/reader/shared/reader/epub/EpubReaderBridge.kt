@@ -9,8 +9,10 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import net.dexxicon.reader.core.data.JumpPositionHold
+import net.dexxicon.reader.core.data.OpeningPositionHold
 import net.dexxicon.reader.core.data.PendingReaderJump
+import net.dexxicon.reader.core.data.resumeStart
+import net.dexxicon.reader.core.data.toStart
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.model.Bookmark
@@ -74,20 +76,23 @@ class EpubProgressBridge(
     private val progressRepository: ReadingProgressRepository,
     private val scope: CoroutineScope,
 ) {
-    /** issue #266 — per open book, whether a highlight jump's landing spot is being held. */
-    private val positionHolds = mutableMapOf<String, JumpPositionHold>()
+    /** issues #266/#275 — per open book, the hold on the spot the reader opened at. */
+    private val positionHolds = mutableMapOf<String, OpeningPositionHold>()
 
-    /** The saved position (Readium `Locator` JSON), if any — the initial location a fresh
-     * `EPUBNavigatorViewController` should open to. */
-    fun initialLocatorJson(serverId: String, bookId: String, onResolved: (String?) -> Unit) {
+    /**
+     * Where a fresh `EPUBNavigatorViewController` should open — for Swift to resolve against the
+     * publication, same order as Android's `EpubReaderViewModel`: a tapped highlight's jump
+     * (issue #266; a BookOrbit CFI opens its chapter, issue #274), else the resume point — the
+     * saved locator, or the row's percent when that's newer (issue #275, see [resumeStart]).
+     * [EpubStart.isJump] tells Swift to skip the "Continue from NN%" offer.
+     */
+    fun initialStart(serverId: String, bookId: String, onResolved: (EpubStart) -> Unit) {
         scope.launch {
-            // issue #266 — a tapped highlight's own locator wins over the saved position. (A
-            // CFI-only BookOrbit highlight can't become a locator without the publication, so on
-            // iOS that one still opens at the saved position — Android resolves it to its chapter.)
-            val jump = PendingReaderJump.take(serverId, bookId)?.locatorJson
-            positionHolds["$serverId::$bookId"] = JumpPositionHold(active = jump != null)
-            val json = jump ?: progressRepository.get(serverId, bookId)?.locator
-            withContext(Dispatchers.Main) { onResolved(json) }
+            positionHolds["$serverId::$bookId"] = OpeningPositionHold()
+            val jump = PendingReaderJump.take(serverId, bookId)?.toStart()?.takeUnless { it.isEmpty }
+            val start = jump ?: progressRepository.get(serverId, bookId).resumeStart()
+            val result = EpubStart(start.locatorJson, start.spineIndex, start.progression, isJump = jump != null)
+            withContext(Dispatchers.Main) { onResolved(result) }
         }
     }
 
@@ -111,7 +116,7 @@ class EpubProgressBridge(
     /** Saves the current position — fire-and-forget, called on every (debounced, Swift-side)
      * `locationDidChange`, same cadence as Android's `locatorUpdates.debounce(1_500)`. */
     fun save(serverId: String, bookId: String, locatorJson: String, percent: Double?) {
-        // issue #266 — same "don't save a highlight jump's landing spot" rule as Android.
+        // issues #266/#275 — same "don't save the spot it merely opened at" rule as Android.
         val hold = positionHolds["$serverId::$bookId"]
         if (hold != null) {
             val (href, progression) = hrefAndProgressionFromLocatorJson(locatorJson)
@@ -124,6 +129,18 @@ class EpubProgressBridge(
         }
     }
 }
+
+/**
+ * issues #274/#275 — [EpubProgressBridge.initialStart]'s answer, a Swift-friendly copy of
+ * [net.dexxicon.reader.core.data.ReaderStart]: Swift opens at the first usable of [locatorJson],
+ * the reading-order item at [spineIndex], then whole-book [progression]; none means the start.
+ */
+class EpubStart(
+    val locatorJson: String?,
+    val spineIndex: Int?,
+    val progression: Double?,
+    val isJump: Boolean,
+)
 
 /** A Readium `Locator` JSON string's `locations.totalProgression` (0.0–1.0) — pure string
  * parsing so the iOS embed can compute [Bookmark]-matching progress without a real `Locator`

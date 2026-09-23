@@ -20,8 +20,8 @@ data class ReaderJumpTarget(
  * Process-global on purpose: Android's reader lives in its own Activity/Hilt graph and iOS's in
  * Swift, so neither can be handed it through [net.dexxicon.reader.shared.OnOpenReader]'s fixed
  * parameters. Looking at a highlight shouldn't move where the book resumes (or sync that to the
- * server): a reader opened from a jump holds off saving its position until the user moves away
- * from where the jump landed — see [JumpPositionHold].
+ * server): the reader holds off saving its position until the user moves away from where it
+ * landed — see [OpeningPositionHold].
  */
 object PendingReaderJump {
     private val pending = MutableStateFlow<Map<String, ReaderJumpTarget>>(emptyMap())
@@ -60,13 +60,18 @@ fun cfiSpineIndex(cfi: String): Int? {
 }
 
 /**
- * issue #266 — "don't save the position a highlight jump landed on". The reader reports its
- * position as soon as it opens, which would otherwise save (and sync) the highlight's spot as
- * where the book resumes. [shouldSave] skips the first position reported after a jump, and any
+ * "Don't save the position a reader merely opened at." A reader reports its position as soon as
+ * it opens, and saving that report pushes it to the server too:
+ *  - issue #266 — after a highlight jump, that made the highlight's spot where the book resumes;
+ *  - issue #275 — when the reader opened somewhere older than the server's position (behind a
+ *    "Continue from NN%" offer the user dismissed, say), it pushed that older spot over the
+ *    server's, losing the reading position on every other device.
+ * Opening a book isn't reading it, so [shouldSave] skips the first position reported, and any
  * repeat of that exact spot; the first genuinely different one (a page turn either way, a
- * scroll, a TOC jump) ends the hold and saves normally from then on.
+ * scroll, a TOC jump, taking the "Continue from" offer) ends the hold and saves normally from
+ * then on. [active] is false only where a reader deliberately saves its landing spot.
  */
-class JumpPositionHold(private var active: Boolean) {
+class OpeningPositionHold(private var active: Boolean = true) {
     private var landed: Pair<String, Double>? = null
 
     /** [href] is the resource, [progression] the position within it. */

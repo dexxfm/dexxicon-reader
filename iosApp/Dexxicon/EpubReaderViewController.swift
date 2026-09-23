@@ -133,15 +133,19 @@ final class EpubReaderViewController: UIViewController {
         // issue #183: restore the saved position (if any), and check whether the server has a
         // meaningfully newer one — same two steps Android's EpubReaderViewModel.load() does,
         // via EpubProgressBridge (closure-based; see its own doc comment for why).
-        let initialJson = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
-            MainViewControllerKt.epubProgressBridge().initialLocatorJson(serverId: serverId, bookId: bookId) { json in
-                continuation.resume(returning: json)
+        // issues #266/#274/#275: where to open — a tapped highlight's jump, else the resume point
+        // — resolved here against the publication in the same order Android's
+        // EpubReaderViewModel uses (see EpubProgressBridge.initialStart).
+        let start = await withCheckedContinuation { (continuation: CheckedContinuation<EpubStart, Never>) in
+            MainViewControllerKt.epubProgressBridge().initialStart(serverId: serverId, bookId: bookId) { start in
+                continuation.resume(returning: start)
             }
         }
-        let initialLocator = initialJson.flatMap { try? Locator(jsonString: $0) }
+        let initialLocator = await Self.locate(start, in: publication)
         let localPercent = initialLocator?.locations.totalProgression
 
-        let remotePercent = await withCheckedContinuation { (continuation: CheckedContinuation<Double?, Never>) in
+        // A jump is a spot the user asked for — no "Continue from NN%" offer over it.
+        let remotePercent: Double? = start.isJump ? nil : await withCheckedContinuation { (continuation: CheckedContinuation<Double?, Never>) in
             MainViewControllerKt.epubProgressBridge().remoteResumePercent(
                 serverId: serverId,
                 bookId: bookId,
@@ -379,6 +383,22 @@ extension EpubReaderViewController {
     /// Presents the reader full-screen, dismissed by the standard edge-swipe gesture (issue
     /// #176). `hidesNavigationBar: true` (issue #183) — the shared chrome draws its own
     /// `BackPill` as part of its Compose content, same reason the player screen passes it.
+    /// issues #274/#275: the first usable of the start's locator, reading-order item (a
+    /// BookOrbit CFI highlight's chapter) and whole-book progression; nil opens the book's start.
+    private static func locate(_ start: EpubStart, in publication: Publication) async -> Locator? {
+        if let json = start.locatorJson, let locator = try? Locator(jsonString: json) {
+            return locator
+        }
+        if let index = start.spineIndex?.intValue, publication.readingOrder.indices.contains(index),
+           let locator = await publication.locate(publication.readingOrder[index]) {
+            return locator
+        }
+        if let progression = start.progression?.doubleValue {
+            return await publication.locate(progression: progression)
+        }
+        return nil
+    }
+
     static func presentable(url: URL, authHeader: String?, isManga: Bool, serverId: String, bookId: String, digestUrl: String?) -> UIViewController {
         let reader = EpubReaderViewController(
             url: url, authHeader: authHeader, isManga: isManga,

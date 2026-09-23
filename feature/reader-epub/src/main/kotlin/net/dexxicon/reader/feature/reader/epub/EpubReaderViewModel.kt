@@ -18,10 +18,11 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.BookmarkRepository
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.HighlightRepository
-import net.dexxicon.reader.core.data.JumpPositionHold
+import net.dexxicon.reader.core.data.OpeningPositionHold
 import net.dexxicon.reader.core.data.PendingReaderJump
-import net.dexxicon.reader.core.data.ReaderJumpTarget
-import net.dexxicon.reader.core.data.cfiSpineIndex
+import net.dexxicon.reader.core.data.ReaderStart
+import net.dexxicon.reader.core.data.resumeStart
+import net.dexxicon.reader.core.data.toStart
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.DigestSource
@@ -92,8 +93,8 @@ class EpubReaderViewModel @Inject constructor(
     private val locatorUpdates = MutableSharedFlow<Locator>(extraBufferCapacity = 1)
     private var publication: Publication? = null
 
-    /** issue #266 — set when this open came from a tapped highlight; see [JumpPositionHold]. */
-    private var positionHold = JumpPositionHold(active = false)
+    /** issues #266/#275 — the spot this reader opened at isn't saved until the user moves. */
+    private val positionHold = OpeningPositionHold()
 
     val updatePreferences: (suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit) =
         preferencesStore::update
@@ -159,9 +160,11 @@ class EpubReaderViewModel @Inject constructor(
                 // position, and skip the "continue from NN% (synced)" offer — the user asked
                 // for this exact spot.
                 val jump = PendingReaderJump.take(route.serverId, route.bookId)
-                    ?.let { opened.value.locatorFor(it) }
-                if (jump != null) positionHold = JumpPositionHold(active = true)
-                val initial = jump ?: locatorStore.initialLocator(route.serverId, route.bookId)
+                    ?.let { opened.value.locate(it.toStart()) }
+                // issue #275 — else resume: the saved locator, or the row's percent when that's
+                // newer (seeded/synced from the server, or reset) — see [resumeStart].
+                val initial = jump
+                    ?: opened.value.locate(progressRepository.get(route.serverId, route.bookId).resumeStart())
                 val remote = if (jump != null) {
                     null
                 } else {
@@ -199,11 +202,11 @@ class EpubReaderViewModel @Inject constructor(
         }
     }
 
-    /** issue #266 — see [ReaderJumpTarget] for the order these are tried in. */
-    private suspend fun Publication.locatorFor(target: ReaderJumpTarget): Locator? =
-        target.locatorJson?.let { json -> runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull() }
-            ?: target.cfi?.let(::cfiSpineIndex)?.let { readingOrder.getOrNull(it) }?.let(::locatorFromLink)
-            ?: target.progression?.takeIf { it > 0.0 }?.let { locateProgression(it) }
+    /** issues #266/#275 — see [ReaderStart] for the order these are tried in. */
+    private suspend fun Publication.locate(start: ReaderStart): Locator? =
+        start.locatorJson?.let { json -> runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull() }
+            ?: start.spineIndex?.let { readingOrder.getOrNull(it) }?.let(::locatorFromLink)
+            ?: start.progression?.let { locateProgression(it) }
 
     fun onLocatorChanged(locator: Locator) {
         locatorUpdates.tryEmit(locator)
