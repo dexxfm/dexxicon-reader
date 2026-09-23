@@ -62,6 +62,9 @@ data class BookSummary(
     val coverUrl: String? = null,
     val format: ContentFormat = ContentFormat.UNKNOWN,
     val shelfId: String? = null,
+    /** How this book's server addresses its series (issue #256) — BookOrbit's numeric series
+     *  id; null where the server keys series by [series] name alone (Grimmory). */
+    val seriesId: String? = null,
 ) {
     val authorLine: String get() = authors.joinToString(", ")
 }

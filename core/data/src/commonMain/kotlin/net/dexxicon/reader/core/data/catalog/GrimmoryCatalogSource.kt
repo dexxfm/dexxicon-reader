@@ -7,6 +7,9 @@ import net.dexxicon.reader.core.model.Acquisition
 import net.dexxicon.reader.core.model.AcquisitionRelation
 import net.dexxicon.reader.core.model.AudiobookInfo
 import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.BookGroup
+import net.dexxicon.reader.core.model.BookGroupKind
+import net.dexxicon.reader.core.model.BookGroupPage
 import net.dexxicon.reader.core.model.Chapter
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
@@ -14,10 +17,13 @@ import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.CatalogShelf
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Server
+import net.dexxicon.reader.core.serverapi.browse.GrimmoryAppPage
+import net.dexxicon.reader.core.serverapi.browse.GrimmoryAppSummary
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBook
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import io.ktor.client.plugins.ResponseException
 import io.ktor.http.URLBuilder
+import io.ktor.http.appendPathSegments
 import kotlinx.io.IOException
 import kotlin.math.roundToInt
 
@@ -79,6 +85,129 @@ class GrimmoryCatalogSource(
             },
             total = response.effectiveTotal?.toInt(),
         )
+    }
+
+    // issues #253/#254/#256 — the /api/v1/app API (Grimmory's own mobile API) is the one with
+    // library/shelf/series filters; /api/v1/books/page above has none (see [shelves]).
+    override suspend fun groups(server: Server, kind: BookGroupKind): Outcome<List<BookGroup>> = call {
+        fun group(id: Long, name: String, count: Int?) =
+            BookGroup(server.id, kind, id.toString(), name, count, serverName = server.displayName)
+        when (kind) {
+            BookGroupKind.LIBRARY -> api.appLibraries(server.resolve("/api/v1/app/libraries"))
+                .map { group(it.id, it.name, it.bookCount) }
+            BookGroupKind.COLLECTION -> api.appShelves(server.resolve("/api/v1/app/shelves"))
+                .map { group(it.id, it.name, it.bookCount) }
+            BookGroupKind.SMART -> api.appMagicShelves(server.resolve("/api/v1/app/shelves/magic"))
+                .map { group(it.id, it.name, it.bookCount) }
+            BookGroupKind.SERIES -> emptyList()
+        }
+    }
+
+    override suspend fun series(
+        server: Server,
+        query: String?,
+        page: Int,
+        pageSize: Int,
+    ): Outcome<BookGroupPage> = call {
+        val url = URLBuilder(server.resolve("/api/v1/app/series")).apply {
+            parameters.append("page", page.toString())
+            parameters.append("size", pageSize.coerceAtMost(MAX_APP_PAGE).toString())
+            parameters.append("sort", "name")
+            parameters.append("dir", "asc")
+            query?.trim()?.takeIf { it.isNotEmpty() }?.let { parameters.append("search", it) }
+        }.buildString()
+        val response = api.appSeries(url)
+        BookGroupPage(
+            groups = response.content.map { s ->
+                val cover = s.coverBooks.firstOrNull()
+                BookGroup(
+                    serverId = server.id,
+                    kind = BookGroupKind.SERIES,
+                    // Grimmory keys series by name — there's no series id to use instead.
+                    id = s.seriesName,
+                    name = s.seriesName,
+                    bookCount = s.bookCount,
+                    coverUrl = cover?.let { server.resolve(coverPath(it.bookId, formatOf(it.primaryFileType, null))) },
+                    serverName = server.displayName,
+                    authors = s.authors,
+                )
+            },
+            hasMore = response.hasMoreAfter(page),
+        )
+    }
+
+    override suspend fun groupBooks(
+        server: Server,
+        group: BookGroup,
+        query: String?,
+        sort: BookSort,
+        page: Int,
+        pageSize: Int,
+    ): Outcome<BookPage> = call {
+        val size = pageSize.coerceAtMost(MAX_APP_PAGE)
+        val url = if (group.kind == BookGroupKind.SERIES) {
+            URLBuilder(server.resolve("/api/v1/app/series")).apply {
+                appendPathSegments(group.id, "books")
+                parameters.append("page", page.toString())
+                parameters.append("size", size.toString())
+                parameters.append("sort", "seriesNumber")
+                parameters.append("dir", "asc")
+            }.buildString()
+        } else {
+            URLBuilder(server.resolve("/api/v1/app/books")).apply {
+                parameters.append("page", page.toString())
+                parameters.append("size", size.toString())
+                val (field, dir) = appSort(sort)
+                parameters.append("sort", field)
+                parameters.append("dir", dir)
+                query?.trim()?.takeIf { it.isNotEmpty() }?.let { parameters.append("search", it) }
+                val filter = when (group.kind) {
+                    BookGroupKind.LIBRARY -> "libraryId"
+                    BookGroupKind.COLLECTION -> "shelfId"
+                    else -> "magicShelfId"
+                }
+                parameters.append(filter, group.id)
+            }.buildString()
+        }
+        val response = api.appBooks(url)
+        BookPage(
+            books = response.content.map { it.toSummary(server) },
+            page = page,
+            hasMore = response.hasMoreAfter(page),
+            total = response.totalElements?.toInt(),
+        )
+    }
+
+    private fun GrimmoryAppPage<*>.hasMoreAfter(page: Int): Boolean =
+        hasNext ?: totalPages?.let { page + 1 < it } ?: false
+
+    private fun GrimmoryAppSummary.toSummary(server: Server): BookSummary {
+        val format = formatOf(primaryFileType, null)
+        return BookSummary(
+            id = id.toString(),
+            serverId = server.id,
+            title = title ?: "Untitled",
+            authors = authors,
+            series = seriesName,
+            seriesIndex = seriesNumber,
+            coverUrl = server.resolve(coverPath(id, format)),
+            format = format,
+        )
+    }
+
+    /** Audiobooks are served from a separate cover route; the generic one 404s. */
+    private fun coverPath(bookId: Long, format: ContentFormat): String =
+        if (format == ContentFormat.AUDIOBOOK) {
+            "/api/v1/media/book/$bookId/audiobook-cover"
+        } else {
+            "/api/v1/media/book/$bookId/cover"
+        }
+
+    /** The app API's single-key sort (`AppBookService.getSortField`). */
+    private fun appSort(sort: BookSort): Pair<String, String> = when (sort) {
+        BookSort.RECENT -> "addedOn" to "desc"
+        BookSort.TITLE -> "title" to "asc"
+        BookSort.SERIES -> "seriesName" to "asc"
     }
 
     override suspend fun wantToRead(server: Server): Outcome<List<BookSummary>> = call {
@@ -189,6 +318,11 @@ class GrimmoryCatalogSource(
             "fb2" -> ContentFormat.FB2
             else -> ContentFormat.UNKNOWN
         }
+    }
+
+    private companion object {
+        /** `AppBookService.MAX_PAGE_SIZE` — larger requests are silently clamped to it. */
+        const val MAX_APP_PAGE = 50
     }
 
     private suspend inline fun <T> call(block: () -> T): Outcome<T> = try {

@@ -3,9 +3,13 @@ package net.dexxicon.reader.core.data.catalog
 import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.AggregatedBookPage
 import net.dexxicon.reader.core.model.BookCopy
+import net.dexxicon.reader.core.model.BookGroupPage
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
+import net.dexxicon.reader.core.model.SeriesEntry
+import net.dexxicon.reader.core.model.SeriesPage
 import net.dexxicon.reader.core.model.Server
+import net.dexxicon.reader.core.model.seriesKey
 
 /**
  * Merge one page from each server into a de-duplicated Browse page: books that share a
@@ -53,4 +57,32 @@ internal fun mergeAggregated(
         )
     }
     return AggregatedBookPage(ordered, hasMore = pages.any { it.second.hasMore })
+}
+
+/**
+ * issue #256 — merge each server's page of series into one alphabetical list: series with the
+ * same name (see [seriesKey]) on several servers become one [SeriesEntry] carrying every
+ * server's group, so opening it shows the whole series whichever server holds each volume.
+ */
+internal fun mergeSeries(pages: List<BookGroupPage>): SeriesPage {
+    val merged = LinkedHashMap<String, SeriesEntry>()
+    for (group in pages.flatMap { it.groups }) {
+        val key = seriesKey(group.name)
+        val existing = merged[key]
+        merged[key] = if (existing == null) {
+            SeriesEntry(name = group.name.trim(), groups = listOf(group), authors = group.authors, coverUrl = group.coverUrl)
+        } else if (existing.groups.any { it.key == group.key }) {
+            existing
+        } else {
+            existing.copy(
+                groups = existing.groups + group,
+                authors = (existing.authors + group.authors).distinct(),
+                coverUrl = existing.coverUrl ?: group.coverUrl,
+            )
+        }
+    }
+    return SeriesPage(
+        series = merged.values.sortedBy { seriesKey(it.name) },
+        hasMore = pages.any { it.hasMore },
+    )
 }

@@ -22,6 +22,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.input.pointer.pointerInput
@@ -34,9 +38,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import kotlin.math.roundToInt
 import net.dexxicon.reader.core.model.HomeLayout
-import net.dexxicon.reader.core.model.HomeSection
+import net.dexxicon.reader.core.model.HomeShelf
 import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.home.liveHomeLayout
 import net.dexxicon.reader.shared.home.title
+import net.dexxicon.reader.shared.library.label
 
 /**
  * Settings › Arrange Home (issue #255): drag Home's shelves into any order and switch any of
@@ -48,16 +54,17 @@ import net.dexxicon.reader.shared.home.title
 fun HomeLayoutScreen(container: AppContainer, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val state = remember { SettingsState(container, scope) }
-    val prefs by state.preferences.collectAsState()
+    val layout by remember { container.liveHomeLayout() }.collectAsState(initial = null)
     DefaultsScaffold("Arrange Home", onBack) {
         Text(
             "Press and hold a handle to drag a shelf. A shelf that's switched off stays off " +
-                "Home until you switch it back on; an empty one never shows either way.",
+                "Home until you switch it back on; an empty one never shows either way. Pin " +
+                "collections and smart shelves from Library › Collections to add them here.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 8.dp),
         )
-        ReorderableSections(layout = prefs.homeLayout, onChange = state::setHomeLayout)
+        layout?.let { ReorderableSections(layout = it, onChange = state::setHomeLayout) }
     }
 }
 
@@ -67,16 +74,16 @@ private fun ReorderableSections(layout: HomeLayout, onChange: (HomeLayout) -> Un
     var order by remember(layout) { mutableStateOf(layout.order) }
     var dragIndex by remember { mutableStateOf<Int?>(null) }
     var dragDelta by remember { mutableStateOf(0f) }
-    val rowHeights = remember { mutableStateMapOf<HomeSection, Int>() }
+    val rowHeights = remember { mutableStateMapOf<String, Int>() }
 
     Column(Modifier.fillMaxWidth()) {
-        order.forEachIndexed { index, section ->
+        order.forEachIndexed { index, shelf ->
             val dragging = dragIndex == index
-            val shown = section !in layout.hidden
+            val shown = shelf.key !in layout.hidden
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .onSizeChanged { rowHeights[section] = it.height }
+                    .onSizeChanged { rowHeights[shelf.key] = it.height }
                     .zIndex(if (dragging) 1f else 0f)
                     .offset { IntOffset(0, if (dragging) dragDelta.roundToInt() else 0) }
                     .then(if (dragging) Modifier.shadow(6.dp) else Modifier)
@@ -96,10 +103,8 @@ private fun ReorderableSections(layout: HomeLayout, onChange: (HomeLayout) -> Un
                     },
             ) {
                 ListItem(
-                    headlineContent = { Text(section.title) },
-                    supportingContent = if (shown) null else {
-                        { Text("Hidden from Home") }
-                    },
+                    headlineContent = { Text(shelf.title) },
+                    supportingContent = shelf.caption(shown)?.let { caption -> { Text(caption) } },
                     leadingContent = {
                         Icon(
                             Icons.Filled.DragHandle,
@@ -126,7 +131,7 @@ private fun ReorderableSections(layout: HomeLayout, onChange: (HomeLayout) -> Un
                                         change.consume()
                                         val cur = dragIndex ?: return@detectDragGesturesAfterLongPress
                                         dragDelta += amount.y
-                                        val h = rowHeights[order[cur]] ?: return@detectDragGesturesAfterLongPress
+                                        val h = rowHeights[order[cur].key] ?: return@detectDragGesturesAfterLongPress
                                         if (dragDelta > h / 2 && cur < order.lastIndex) {
                                             order = order.toMutableList().apply { add(cur + 1, removeAt(cur)) }
                                             dragIndex = cur + 1
@@ -142,13 +147,32 @@ private fun ReorderableSections(layout: HomeLayout, onChange: (HomeLayout) -> Un
                         )
                     },
                     trailingContent = {
-                        Switch(
-                            checked = shown,
-                            onCheckedChange = { onChange(layout.withVisibility(section, it)) },
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            // issue #254 — a pin can be removed from here as well as from
+                            // the Library, without hunting for it there.
+                            if (shelf is HomeShelf.Pinned) {
+                                IconButton(onClick = { onChange(layout.unpinned(shelf.group)) }) {
+                                    Icon(Icons.Filled.Close, contentDescription = "Unpin ${shelf.group.name}")
+                                }
+                            }
+                            Switch(
+                                checked = shown,
+                                onCheckedChange = { onChange(layout.withVisibility(shelf.key, it)) },
+                            )
+                        }
                     },
                 )
             }
         }
     }
+}
+
+/** What a shelf's row says under its name: a pinned shelf's kind and server, and whether
+ *  it's switched off. */
+private fun HomeShelf.caption(shown: Boolean): String? {
+    val parts = buildList {
+        if (this@caption is HomeShelf.Pinned) add("Pinned ${group.kind.label().lowercase()}")
+        if (!shown) add("hidden from Home")
+    }
+    return parts.joinToString(" · ").replaceFirstChar { it.uppercase() }.takeIf { it.isNotEmpty() }
 }

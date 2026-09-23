@@ -66,6 +66,10 @@ import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.ContentFilter
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingStatus
+import androidx.compose.material3.PrimaryTabRow
+import androidx.compose.material3.Tab
+import net.dexxicon.reader.core.model.BookGroup
+import net.dexxicon.reader.core.model.SeriesEntry
 import net.dexxicon.reader.shared.OnOpenReader
 
 /** What the long-press menu on a Library card needs to act on and render. */
@@ -92,7 +96,56 @@ fun LibraryContent(
     state: LibraryState,
     onOpenBook: (AggregatedBook) -> Unit,
     onOpenReader: OnOpenReader,
+    onOpenSeries: (SeriesEntry) -> Unit,
+    onOpenGroup: (BookGroup) -> Unit,
     modifier: Modifier = Modifier,
+) {
+    Scaffold(
+        modifier = modifier,
+        topBar = { TopAppBar(title = { Text("Library") }) },
+        // See HomeContent.kt's matching Scaffold for why — the app shell already accounts
+        // for the bottom nav / system inset; without this the Scaffold reserves it again.
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+    ) { padding ->
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            // Batch B (issues #253, #254, #256) — Books keeps the merged grid (now with a
+            // library picker); Series and Collections browse the servers' own groupings.
+            PrimaryTabRow(selectedTabIndex = state.tab.ordinal) {
+                LibraryTab.entries.forEach { tab ->
+                    Tab(
+                        selected = state.tab == tab,
+                        onClick = { state.tab = tab },
+                        text = { Text(tab.label) },
+                    )
+                }
+            }
+            when (state.tab) {
+                LibraryTab.BOOKS -> LibraryBooksPane(
+                    state = state,
+                    onOpenBook = onOpenBook,
+                    onOpenReader = onOpenReader,
+                    header = { LibraryPicker(state) },
+                )
+                LibraryTab.SERIES -> SeriesPane(state.series, onOpenSeries)
+                LibraryTab.COLLECTIONS -> CollectionsPane(state.collections, onOpenGroup)
+            }
+        }
+    }
+}
+
+/**
+ * The searchable, filterable, sortable book grid/list — the main Library's Books tab, and the
+ * whole body of a library/collection/series screen ([BookGroupScreen]). [header] sits between
+ * the search field and the format chips (the Books tab's library picker).
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun LibraryBooksPane(
+    state: LibraryState,
+    onOpenBook: (AggregatedBook) -> Unit,
+    onOpenReader: OnOpenReader,
+    modifier: Modifier = Modifier,
+    header: @Composable () -> Unit = {},
 ) {
     val uiState by state.uiState.collectAsState()
     val overlays by state.overlays.collectAsState()
@@ -150,110 +203,114 @@ fun LibraryContent(
         )
     }
 
-    Scaffold(
-        modifier = modifier,
-        topBar = { TopAppBar(title = { Text("Library") }) },
-        // See HomeContent.kt's matching Scaffold for why — the app shell already accounts
-        // for the bottom nav / system inset; without this the Scaffold reserves it again.
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-    ) { padding ->
-        Column(Modifier.fillMaxSize().padding(padding)) {
-            TextField(
-                value = uiState.query,
-                onValueChange = state::onQueryChange,
-                placeholder = { Text("Search titles, authors…") },
-                leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
-                singleLine = true,
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                ),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
-            )
+    Column(modifier.fillMaxSize()) {
+        if (!uiState.scope.isSeries) TextField(
+            value = uiState.query,
+            onValueChange = state::onQueryChange,
+            placeholder = { Text("Search titles, authors…") },
+            leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
+            singleLine = true,
+            colors = TextFieldDefaults.colors(
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+            ),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        )
 
-            ContentFilterChips(uiState.filter, state::onFilterSelected)
+        header()
 
-            Row(
-                Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+        ContentFilterChips(uiState.filter, state::onFilterSelected)
+
+        Row(
+            Modifier.fillMaxWidth().padding(start = 12.dp, end = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (uiState.scope.isSeries) {
+                // A series is always shown in series order — there's nothing to sort.
+                Text(
+                    "In series order",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
                 val next = BookSort.entries[(uiState.sort.ordinal + 1) % BookSort.entries.size]
                 FilterChip(
                     selected = false,
                     onClick = { state.onSortSelected(next) },
                     label = { Text("Sort: ${uiState.sort.name.lowercase()}") },
                 )
-                ViewModeToggle(uiState.viewMode, state::toggleViewMode)
             }
+            ViewModeToggle(uiState.viewMode, state::toggleViewMode)
+        }
 
-            PullToRefreshBox(
-                isRefreshing = uiState.refreshing,
-                onRefresh = state::refresh,
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                when {
-                    uiState.loading -> CenterBox { CircularProgressIndicator() }
-                    uiState.error != null && uiState.books.isEmpty() -> CenterBox {
-                        Text(
-                            uiState.error ?: "",
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(32.dp),
+        PullToRefreshBox(
+            isRefreshing = uiState.refreshing,
+            onRefresh = state::refresh,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            when {
+                uiState.loading -> CenterBox { CircularProgressIndicator() }
+                uiState.error != null && uiState.books.isEmpty() -> CenterBox {
+                    Text(
+                        uiState.error ?: "",
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(32.dp),
+                    )
+                }
+                uiState.books.isEmpty() -> CenterBox {
+                    Text(
+                        when {
+                            uiState.query.isNotBlank() -> "No books match “${uiState.query}”."
+                            uiState.filter != ContentFilter.ALL -> "No ${uiState.filter.label.lowercase()} here."
+                            uiState.scope != LibraryScope.All -> "Nothing here yet."
+                            else -> "Add a server in Settings to start browsing."
+                        },
+                        textAlign = TextAlign.Center,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(32.dp),
+                    )
+                }
+                uiState.viewMode == BookViewMode.GRID -> LazyVerticalGrid(
+                    columns = GridCells.Adaptive(112.dp),
+                    state = gridState,
+                    modifier = Modifier.fillMaxSize(),
+                    // issue #132 — clears the floating nav (and mini-player, when
+                    // showing), which now overlays content instead of reserving space.
+                    contentPadding = PaddingValues(
+                        start = 12.dp,
+                        end = 12.dp,
+                        top = 12.dp,
+                        bottom = FloatingNavClearance,
+                    ),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    gridItems(uiState.books, key = { it.key }) { book ->
+                        LibraryGridCard(
+                            book = book,
+                            progress = book.progressFrom(overlays),
+                            downloaded = book.downloadedIn(overlays),
+                            onClick = { onTapCover(book) },
+                            actions = actionsFor(book),
                         )
                     }
-                    uiState.books.isEmpty() -> CenterBox {
-                        Text(
-                            when {
-                                uiState.query.isNotBlank() -> "No books match “${uiState.query}”."
-                                uiState.filter != ContentFilter.ALL -> "No ${uiState.filter.label.lowercase()} here."
-                                else -> "Add a server in Settings to start browsing."
-                            },
-                            textAlign = TextAlign.Center,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(32.dp),
+                }
+                else -> LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = FloatingNavClearance),
+                ) {
+                    items(uiState.books, key = { it.key }) { book ->
+                        LibraryRow(
+                            book = book,
+                            progress = book.progressFrom(overlays),
+                            downloaded = book.downloadedIn(overlays),
+                            onClick = { onTapCover(book) },
+                            actions = actionsFor(book),
                         )
-                    }
-                    uiState.viewMode == BookViewMode.GRID -> LazyVerticalGrid(
-                        columns = GridCells.Adaptive(112.dp),
-                        state = gridState,
-                        modifier = Modifier.fillMaxSize(),
-                        // issue #132 — clears the floating nav (and mini-player, when
-                        // showing), which now overlays content instead of reserving space.
-                        contentPadding = PaddingValues(
-                            start = 12.dp,
-                            end = 12.dp,
-                            top = 12.dp,
-                            bottom = FloatingNavClearance,
-                        ),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp),
-                    ) {
-                        gridItems(uiState.books, key = { it.key }) { book ->
-                            LibraryGridCard(
-                                book = book,
-                                progress = book.progressFrom(overlays),
-                                downloaded = book.downloadedIn(overlays),
-                                onClick = { onTapCover(book) },
-                                actions = actionsFor(book),
-                            )
-                        }
-                    }
-                    else -> LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 4.dp, bottom = FloatingNavClearance),
-                    ) {
-                        items(uiState.books, key = { it.key }) { book ->
-                            LibraryRow(
-                                book = book,
-                                progress = book.progressFrom(overlays),
-                                downloaded = book.downloadedIn(overlays),
-                                onClick = { onTapCover(book) },
-                                actions = actionsFor(book),
-                            )
-                            HorizontalDivider()
-                        }
+                        HorizontalDivider()
                     }
                 }
             }

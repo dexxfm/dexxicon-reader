@@ -20,10 +20,20 @@ fun BookDetailScreen(
     bookId: String,
     onBack: () -> Unit,
     onOpenReader: OnOpenReader,
+    /** issue #256 — a series by name (its series line, or the shelf's "See all"). */
+    onOpenSeries: (String) -> Unit = {},
+    /** issue #256 — another book from the series shelf. */
+    onOpenBook: (serverId: String, bookId: String) -> Unit = { _, _ -> },
 ) {
     val scope = rememberCoroutineScope()
     val state = remember(serverId, bookId) {
         BookDetailState(container, serverId, bookId, copyIds = emptyList(), scope)
     }
-    BookDetailContent(state = state, onBack = onBack, onOpenReader = onOpenReader)
+    BookDetailContent(
+        state = state,
+        onBack = onBack,
+        onOpenReader = onOpenReader,
+        onOpenSeries = onOpenSeries,
+        onOpenBook = onOpenBook,
+    )
 }

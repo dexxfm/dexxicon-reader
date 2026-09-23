@@ -24,7 +24,66 @@ class GrimmoryBrowseApi(private val client: HttpClient) {
 
     /** `GET /api/v1/app/books/continue-reading` / `continue-listening` — in-progress books. */
     suspend fun appInProgress(url: String): List<GrimmoryAppSummary> = client.get(url).body()
+
+    /** `GET /api/v1/app/books?libraryId=|shelfId=|magicShelfId=&search=&sort=&dir=` and
+     *  `GET /api/v1/app/series/{name}/books` / `…/shelves/magic/{id}/books` — every paged
+     *  book list of the app API shares this shape (issues #253, #254, #256). */
+    suspend fun appBooks(url: String): GrimmoryAppPage<GrimmoryAppSummary> = client.get(url).body()
+
+    /** `GET /api/v1/app/libraries` (issue #253). */
+    suspend fun appLibraries(url: String): List<GrimmoryAppLibrary> = client.get(url).body()
+
+    /** `GET /api/v1/app/series?search=&sort=name&dir=asc` (issue #256). */
+    suspend fun appSeries(url: String): GrimmoryAppPage<GrimmoryAppSeries> = client.get(url).body()
+
+    /** `GET /api/v1/app/shelves` (issue #254) — Grimmory's hand-curated shelves. */
+    suspend fun appShelves(url: String): List<GrimmoryAppShelf> = client.get(url).body()
+
+    /** `GET /api/v1/app/shelves/magic` (issue #254) — rule-based shelves. */
+    suspend fun appMagicShelves(url: String): List<GrimmoryAppShelf> = client.get(url).body()
 }
+
+/** `AppPageResponse<T>` — the app API's page envelope. */
+@Serializable
+data class GrimmoryAppPage<T>(
+    val content: List<T> = emptyList(),
+    val page: Int = 0,
+    val size: Int = 0,
+    val totalElements: Long? = null,
+    val totalPages: Int? = null,
+    val hasNext: Boolean? = null,
+)
+
+@Serializable
+data class GrimmoryAppLibrary(
+    val id: Long,
+    val name: String,
+    val bookCount: Int? = null,
+)
+
+/** `AppSeriesSummary` — keyed by name; there's no series id in Grimmory. */
+@Serializable
+data class GrimmoryAppSeries(
+    val seriesName: String,
+    val bookCount: Int? = null,
+    val authors: List<String> = emptyList(),
+    /** Series books in series order, for a representative cover. */
+    val coverBooks: List<GrimmorySeriesCoverBook> = emptyList(),
+)
+
+@Serializable
+data class GrimmorySeriesCoverBook(
+    val bookId: Long,
+    val primaryFileType: String? = null,
+)
+
+/** `AppShelfSummary` / `AppMagicShelfSummary` — magic shelves carry no `bookCount`. */
+@Serializable
+data class GrimmoryAppShelf(
+    val id: Long,
+    val name: String,
+    val bookCount: Int? = null,
+)
 
 /** A row from the app's `continue-reading` / `continue-listening` lists. */
 @Serializable

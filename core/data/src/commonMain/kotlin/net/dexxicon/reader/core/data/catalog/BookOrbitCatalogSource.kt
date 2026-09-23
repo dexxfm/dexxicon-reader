@@ -7,6 +7,9 @@ import net.dexxicon.reader.core.model.Acquisition
 import net.dexxicon.reader.core.model.AcquisitionRelation
 import net.dexxicon.reader.core.model.AudiobookInfo
 import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.BookGroup
+import net.dexxicon.reader.core.model.BookGroupKind
+import net.dexxicon.reader.core.model.BookGroupPage
 import net.dexxicon.reader.core.model.Chapter
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
@@ -20,6 +23,7 @@ import net.dexxicon.reader.core.serverapi.browse.BookOrbitPagination
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitQuery
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitSort
 import io.ktor.client.plugins.ResponseException
+import io.ktor.http.URLBuilder
 import kotlinx.io.IOException
 
 /**
@@ -62,6 +66,99 @@ class BookOrbitCatalogSource(
             hasMore = (response.page + 1) * pageSize < response.total,
             total = response.total,
         )
+    }
+
+    override suspend fun groups(server: Server, kind: BookGroupKind): Outcome<List<BookGroup>> = call {
+        fun group(id: Long, name: String, count: Int?) =
+            BookGroup(server.id, kind, id.toString(), name, count, serverName = server.displayName)
+        when (kind) {
+            BookGroupKind.LIBRARY -> api.libraries(server.resolve("/api/v1/libraries"))
+                .map { group(it.id, it.name, it.bookCount) }
+            // Podcast collections/scopes share these endpoints; only book ones belong here.
+            BookGroupKind.COLLECTION -> api.collections(server.resolve("/api/v1/collections"))
+                .filter { it.isBooks }
+                .map { group(it.id, it.name, it.bookCount) }
+            BookGroupKind.SMART -> api.smartScopes(server.resolve("/api/v1/smart-scopes"))
+                .filter { it.isBooks }
+                .map { group(it.id, it.name, it.bookCount) }
+            BookGroupKind.SERIES -> emptyList()
+        }
+    }
+
+    override suspend fun series(
+        server: Server,
+        query: String?,
+        page: Int,
+        pageSize: Int,
+    ): Outcome<BookGroupPage> = call {
+        val url = URLBuilder(server.resolve("/api/v1/series")).apply {
+            parameters.append("page", page.toString())
+            parameters.append("size", pageSize.coerceAtMost(MAX_SERIES_PAGE).toString())
+            parameters.append("sort", "name")
+            parameters.append("order", "asc")
+            query?.trim()?.takeIf { it.isNotEmpty() }?.let { parameters.append("q", it) }
+        }.buildString()
+        val response = api.series(url)
+        BookGroupPage(
+            groups = response.items.map { s ->
+                BookGroup(
+                    serverId = server.id,
+                    kind = BookGroupKind.SERIES,
+                    id = s.id.toString(),
+                    name = s.name,
+                    bookCount = s.bookCount,
+                    coverUrl = s.coverBookIds.firstOrNull()?.let { server.resolve("/api/v1/books/$it/cover") },
+                    serverName = server.displayName,
+                    authors = s.authors,
+                )
+            },
+            hasMore = (response.page + 1) * response.size.coerceAtLeast(1) < response.total,
+        )
+    }
+
+    override suspend fun groupBooks(
+        server: Server,
+        group: BookGroup,
+        query: String?,
+        sort: BookSort,
+        page: Int,
+        pageSize: Int,
+    ): Outcome<BookPage> {
+        val queryPath = when (group.kind) {
+            BookGroupKind.LIBRARY -> return books(server, group.id, query, sort, page, pageSize)
+            BookGroupKind.COLLECTION -> "/api/v1/collections/${group.id}/books/query"
+            BookGroupKind.SMART -> "/api/v1/smart-scopes/${group.id}/books/query"
+            BookGroupKind.SERIES -> null
+        }
+        return call {
+            val response = if (queryPath != null) {
+                // Same BookQuery body/BooksPage response as /books/query — the server runs all
+                // of them through one BookQueryPipe.
+                api.booksQuery(
+                    url = server.resolve(queryPath),
+                    body = BookOrbitQuery(
+                        sort = sortModel(sort),
+                        q = query?.trim()?.takeIf { it.isNotEmpty() },
+                        pagination = BookOrbitPagination(page = page, size = pageSize),
+                    ),
+                )
+            } else {
+                api.booksPage(
+                    URLBuilder(server.resolve("/api/v1/series/${group.id}/books")).apply {
+                        parameters.append("page", page.toString())
+                        parameters.append("size", pageSize.coerceAtMost(MAX_SERIES_PAGE).toString())
+                        parameters.append("sort", "seriesIndex")
+                        parameters.append("order", "asc")
+                    }.buildString(),
+                )
+            }
+            BookPage(
+                books = response.items.map { it.toSummary(server) },
+                page = response.page,
+                hasMore = (response.page + 1) * pageSize < response.total,
+                total = response.total,
+            )
+        }
     }
 
     override suspend fun wantToRead(server: Server): Outcome<List<BookSummary>> = call {
@@ -139,6 +236,7 @@ class BookOrbitCatalogSource(
         coverUrl = server.resolve("/api/v1/books/$id/cover"),
         format = formatOf(primaryFile?.format),
         shelfId = libraryId?.toString(),
+        seriesId = seriesId?.toString(),
     )
 
     // BookOrbit's sort fields (packages/types SortField): author, title, series, seriesIndex,
@@ -164,6 +262,11 @@ class BookOrbitCatalogSource(
         "azw3", "azw" -> ContentFormat.AZW3
         "fb2" -> ContentFormat.FB2
         else -> ContentFormat.UNKNOWN
+    }
+
+    private companion object {
+        /** The series endpoints' own `@Max(100)` page-size cap. */
+        const val MAX_SERIES_PAGE = 100
     }
 
     private suspend inline fun <T> call(block: () -> T): Outcome<T> = try {

@@ -1,16 +1,26 @@
 package net.dexxicon.reader.shared.home
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.sync.ServerSyncFailure
 import net.dexxicon.reader.core.data.sync.SyncReport
+import net.dexxicon.reader.core.model.AggregatedBook
+import net.dexxicon.reader.core.model.BookGroup
+import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
@@ -133,9 +143,32 @@ class HomeState(
         }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
 
     /** The user's shelf order and hidden shelves (issue #255), from Settings › Home screen. */
-    val layout: StateFlow<HomeLayout> = container.appPreferences.preferences
-        .map { it.homeLayout }
+    val layout: StateFlow<HomeLayout> = container.liveHomeLayout()
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), HomeLayout())
+
+    /** issue #254 — each pinned group's books, keyed by [net.dexxicon.reader.core.model.HomeShelf.key]. */
+    private val pinnedBooks = MutableStateFlow<Map<String, List<AggregatedBook>>>(emptyMap())
+
+    /** issue #254 — the pinned shelves' cards, with the same download state as every other shelf. */
+    val pinnedShelves: StateFlow<Map<String, List<OnDeckItem>>> =
+        combine(pinnedBooks, container.downloadRepository.downloads) { byShelf, downloads ->
+            val status = downloads.associate { it.key to it.status }
+            byShelf.mapValues { (_, books) ->
+                books.map { book ->
+                    val copy = book.primary
+                    OnDeckItem(
+                        serverId = copy.serverId,
+                        bookId = copy.bookId,
+                        title = book.title,
+                        author = book.authorLine.takeIf { it.isNotBlank() },
+                        coverUrl = book.coverUrl,
+                        format = book.format,
+                        seriesIndex = book.seriesIndex,
+                        downloadStatus = status["${copy.serverId}::${copy.bookId}"],
+                    )
+                }
+            }
+        }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** Whether the offline/download shelf should show at all — same platform-capability
      * check [net.dexxicon.reader.shared.catalog.BookDetailState.supportsDownloads] uses. */
@@ -144,16 +177,43 @@ class HomeState(
     init {
         // Reconcile progress with KOReader / other devices (both directions).
         refresh()
+        // A group pinned or unpinned in the Library shows up here without a manual refresh.
+        // (drop(1): refresh() above already loads the current pins.)
+        scope.launch {
+            container.liveHomeLayout()
+                .map { it.pinned }
+                .distinctUntilChanged { a, b -> a.map { it.key } == b.map { it.key } }
+                .drop(1)
+                .collect { loadPinned(it) }
+        }
     }
 
     fun refresh() {
         loadOnDeck()
+        scope.launch { loadPinned(container.liveHomeLayout().first().pinned) }
         if (refreshing.value) return
         scope.launch {
             refreshing.value = true
             runCatching { container.progressRepository.syncProgress() }.getOrNull()?.let { lastReport.value = it }
             refreshing.value = false
         }
+    }
+
+    /** issue #254 — the newest books in each pinned group. A group that fails to load keeps
+     *  whatever it showed last rather than blanking. */
+    private suspend fun loadPinned(groups: List<BookGroup>) {
+        val loaded = coroutineScope {
+            groups.map { group ->
+                async {
+                    val result = container.catalogRepository.groupBooks(
+                        listOf(group), query = null, sort = BookSort.RECENT, page = 0, pageSize = PINNED_SHELF_SIZE,
+                    )
+                    net.dexxicon.reader.core.model.HomeShelf.Pinned(group).key to (result as? Outcome.Success)?.value?.books
+                }
+            }.awaitAll()
+        }
+        val previous = pinnedBooks.value
+        pinnedBooks.value = loaded.associate { (key, books) -> key to (books ?: previous[key].orEmpty()) }
     }
 
     private fun loadOnDeck() {
@@ -238,3 +298,15 @@ class HomeState(
         )
     }
 }
+
+private const val PINNED_SHELF_SIZE = 20
+
+/**
+ * The saved [HomeLayout] minus pins from servers that have since been removed (issue #254) —
+ * what Home, the Library's pin buttons and Settings › Arrange Home all work from, so a removed
+ * server's shelves quietly disappear everywhere (and Arrange Home's next save drops them for good).
+ */
+fun AppContainer.liveHomeLayout(): Flow<HomeLayout> =
+    combine(appPreferences.preferences, serverRepository.servers) { prefs, servers ->
+        prefs.homeLayout.forServers(servers.map { it.id }.toSet())
+    }

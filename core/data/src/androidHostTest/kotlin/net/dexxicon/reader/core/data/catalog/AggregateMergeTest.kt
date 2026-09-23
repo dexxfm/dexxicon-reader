@@ -1,6 +1,9 @@
 package net.dexxicon.reader.core.data.catalog
 
 import com.google.common.truth.Truth.assertThat
+import net.dexxicon.reader.core.model.BookGroup
+import net.dexxicon.reader.core.model.BookGroupKind
+import net.dexxicon.reader.core.model.BookGroupPage
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
@@ -97,5 +100,25 @@ class AggregateMergeTest {
         )
         assertThat(merged.hasMore).isTrue()
         assertThat(merged.books.map { it.title }).containsExactly("X", "Z").inOrder()
+    }
+
+    private fun series(serverId: String, id: String, name: String, author: String, cover: String? = null) =
+        BookGroup(serverId, BookGroupKind.SERIES, id, name, bookCount = 2, coverUrl = cover, authors = listOf(author))
+
+    @Test
+    fun `mergeSeries joins same-named series across servers and sorts by name`() {
+        val merged = mergeSeries(
+            listOf(
+                BookGroupPage(listOf(series("bo", "7", "Mistborn", "B. S."), series("bo", "8", "Dune", "F. H.")), hasMore = false),
+                BookGroupPage(listOf(series("gr", "mistborn ", "mistborn ", "Brandon Sanderson", cover = "c")), hasMore = true),
+            ),
+        )
+        assertThat(merged.series.map { it.name }).containsExactly("Dune", "Mistborn").inOrder()
+        val mistborn = merged.series.last()
+        assertThat(mistborn.groups.map { it.serverId }).containsExactly("bo", "gr").inOrder()
+        assertThat(mistborn.authors).containsExactly("B. S.", "Brandon Sanderson").inOrder()
+        assertThat(mistborn.coverUrl).isEqualTo("c")
+        assertThat(mistborn.bookCount).isEqualTo(4)
+        assertThat(merged.hasMore).isTrue()
     }
 }
