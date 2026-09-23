@@ -844,6 +844,13 @@ fun AddServerScreen(
                     // https:// isn't a guess.
                     supportingText = { Text("Without http:// or https://, HTTPS is tried first, then HTTP.") },
                     singleLine = true,
+                    // issue #273 — iOS autocorrect turned "localhost" into "local host"; a URL
+                    // keyboard with no autocorrect/capitalisation, same as the fields below.
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Uri,
+                    ),
                     modifier = Modifier.fillMaxWidth(),
                 )
 
@@ -1026,6 +1033,12 @@ private fun KoReaderSheet(
             label = { Text("Sync server URL") },
             placeholder = { Text("https://host/koreader") },
             singleLine = true,
+            // issue #273 — no iOS autocorrect on a URL.
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.None,
+                autoCorrectEnabled = false,
+                keyboardType = KeyboardType.Uri,
+            ),
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(12.dp))
