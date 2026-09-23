@@ -52,6 +52,11 @@ data class AppPreferences(
     val showSeriesNumbers: Boolean = false,
     /** Order and visibility of Home's shelves (issue #255). */
     val homeLayout: HomeLayout = HomeLayout(),
+    /** issue #259 — where Book Detail's "save a copy" button puts book files: a folder the
+     *  user picked (on Android, a persisted Storage Access Framework tree URI), or null for the
+     *  device's Downloads folder. [saveCopiesFolderName] is its display name. */
+    val saveCopiesFolderUri: String? = null,
+    val saveCopiesFolderName: String? = null,
 )
 
 /**
@@ -94,6 +99,8 @@ class AppPreferencesStore(context: PlatformStorageContext) {
         val SHOW_FORMAT_BADGES = booleanPreferencesKey("show_format_badges")
         val SHOW_SERIES_NUMBERS = booleanPreferencesKey("show_series_numbers")
         val HOME_LAYOUT = stringPreferencesKey("home_layout")
+        val SAVE_COPIES_FOLDER_URI = stringPreferencesKey("save_copies_folder_uri")
+        val SAVE_COPIES_FOLDER_NAME = stringPreferencesKey("save_copies_folder_name")
     }
 
     val preferences: Flow<AppPreferences> = dataStore.data.map { p ->
@@ -124,6 +131,8 @@ class AppPreferencesStore(context: PlatformStorageContext) {
             showFormatBadges = p[Keys.SHOW_FORMAT_BADGES] ?: true,
             showSeriesNumbers = p[Keys.SHOW_SERIES_NUMBERS] ?: false,
             homeLayout = HomeLayout.decode(p[Keys.HOME_LAYOUT]),
+            saveCopiesFolderUri = p[Keys.SAVE_COPIES_FOLDER_URI],
+            saveCopiesFolderName = p[Keys.SAVE_COPIES_FOLDER_NAME],
         )
     }
 
@@ -202,6 +211,19 @@ class AppPreferencesStore(context: PlatformStorageContext) {
 
     suspend fun setHomeLayout(layout: HomeLayout) {
         dataStore.edit { it[Keys.HOME_LAYOUT] = layout.encode() }
+    }
+
+    /** issue #259 — a null [uri] goes back to the Downloads folder. */
+    suspend fun setSaveCopiesFolder(uri: String?, name: String?) {
+        dataStore.edit {
+            if (uri == null) {
+                it.remove(Keys.SAVE_COPIES_FOLDER_URI)
+                it.remove(Keys.SAVE_COPIES_FOLDER_NAME)
+            } else {
+                it[Keys.SAVE_COPIES_FOLDER_URI] = uri
+                if (name != null) it[Keys.SAVE_COPIES_FOLDER_NAME] = name else it.remove(Keys.SAVE_COPIES_FOLDER_NAME)
+            }
+        }
     }
 
     private companion object {

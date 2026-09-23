@@ -117,6 +117,9 @@ fun SettingsScreen(
     onOpenBookDefaults: () -> Unit,
     onOpenHomeLayout: () -> Unit,
     onReportProblem: (() -> Unit)? = null,
+    /** issue #259 — opens the platform's folder picker for "Save copies to"; null (iOS) hides
+     *  the setting, same shape as [onReportProblem]. */
+    onPickSaveFolder: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
     val state = remember { SettingsState(container, scope) }
@@ -294,6 +297,40 @@ fun SettingsScreen(
                             label = { Text(label) },
                         )
                     }
+                }
+
+                if (onPickSaveFolder != null && state.canSaveCopies) {
+                    LayoutSpacer(Modifier.height(16.dp))
+                    Text("Save copies to", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        "The download button beside “Make available offline” saves a copy of the " +
+                            "book file here, to use outside the app. Offline books you read in the " +
+                            "app stay in the app's own storage either way.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp),
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            prefs.saveCopiesFolderName ?: "Downloads",
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (prefs.saveCopiesFolderUri != null) {
+                            TextButton(onClick = state::useDownloadsForCopies) { Text("Use Downloads") }
+                        }
+                        TextButton(onClick = onPickSaveFolder) { Text("Choose folder") }
+                    }
+                    Text(
+                        "Android doesn't let apps pick the top level of internal storage, or the " +
+                            "Download folder itself — choose or create a folder inside them instead " +
+                            "(for Downloads itself, use “Use Downloads”).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
 

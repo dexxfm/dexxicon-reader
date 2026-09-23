@@ -205,6 +205,8 @@ fun App(
      * the "Report a problem" button on every platform despite the rest of the screen porting
      * cleanly. */
     onReportProblem: (() -> Unit)? = null,
+    /** issue #259 — threads through to [SettingsScreen]'s `onPickSaveFolder`; null on iOS. */
+    onPickSaveFolder: (() -> Unit)? = null,
 ) {
     // Phase 4 Stage E1 (issue #136) — Settings' theme chips need this to actually do
     // something; a control that doesn't visibly change anything is worse than no control.
@@ -395,6 +397,7 @@ fun App(
                                 onOpenBookDefaults = { nav.navigate(BookDefaultsRoute) },
                                 onOpenHomeLayout = { nav.navigate(HomeLayoutRoute) },
                                 onReportProblem = onReportProblem,
+                                onPickSaveFolder = onPickSaveFolder,
                             )
                         }
                         composable<AudiobookDefaultsRoute> {

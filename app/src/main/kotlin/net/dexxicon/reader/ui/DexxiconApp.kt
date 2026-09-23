@@ -1,5 +1,12 @@
 package net.dexxicon.reader.ui
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.provider.DocumentsContract
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import kotlinx.coroutines.flow.first
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -61,6 +68,22 @@ fun DexxiconApp(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    // issue #259 — Settings › Downloads › "Save copies to": the system folder picker. Its grant
+    // is persisted so the app can keep writing there across restarts (no runtime permission
+    // involved), and the previous folder's grant is released rather than left to pile up.
+    val saveFolderPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        runCatching { context.contentResolver.takePersistableUriPermission(uri, flags) }
+        scope.launch {
+            val previous = container.appPreferences.preferences.first().saveCopiesFolderUri
+            container.appPreferences.setSaveCopiesFolder(uri.toString(), saveFolderLabel(context, uri))
+            previous?.takeIf { it != uri.toString() }?.let { old ->
+                runCatching { context.contentResolver.releasePersistableUriPermission(Uri.parse(old), flags) }
+            }
+        }
+    }
+
     pendingCrash?.let { report ->
         CrashReportSheet(
             report = report,
@@ -104,6 +127,7 @@ fun DexxiconApp(
                         shareProblemReport(context, logsZip)
                     }
                 },
+                onPickSaveFolder = { saveFolderPicker.launch(null) },
             )
 
             Column(Modifier.fillMaxWidth()) {
@@ -118,6 +142,24 @@ fun DexxiconApp(
             SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
         }
     }
+}
+
+/**
+ * issue #259 — a readable name for a picked folder: "Download/Books" for local storage (the
+ * external-storage provider's document ids are `volume:relative/path`), else the provider's
+ * own display name (SD cards, cloud providers).
+ */
+private fun saveFolderLabel(context: Context, tree: Uri): String {
+    val docId = runCatching { DocumentsContract.getTreeDocumentId(tree) }.getOrNull()
+    if (tree.authority == "com.android.externalstorage.documents" && docId != null) {
+        val path = docId.substringAfter(':', "")
+        if (path.isNotBlank()) return if (docId.startsWith("primary:")) path else "SD card/$path"
+    }
+    return runCatching {
+        val doc = DocumentsContract.buildDocumentUriUsingTree(tree, docId)
+        context.contentResolver.query(doc, arrayOf(DocumentsContract.Document.COLUMN_DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null }
+    }.getOrNull() ?: "Chosen folder"
 }
 
 @Composable

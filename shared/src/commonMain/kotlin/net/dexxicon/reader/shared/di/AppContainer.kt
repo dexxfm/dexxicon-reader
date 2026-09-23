@@ -5,6 +5,17 @@ import coil3.PlatformContext as CoilPlatformContext
 import coil3.annotation.ExperimentalCoilApi
 import coil3.network.ktor3.KtorNetworkFetcherFactory
 import io.ktor.client.HttpClient
+import io.ktor.client.request.prepareGet
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.utils.io.readAvailable
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.flow.first
+import net.dexxicon.reader.core.common.DexxiconError
+import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.bookFileName
+import net.dexxicon.reader.core.model.bookMimeType
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.http.Url
 import kotlinx.coroutines.CoroutineDispatcher
@@ -165,6 +176,9 @@ class AppContainer(
      * [net.dexxicon.reader.core.common.crash.CrashReporter.deviceBlock] already makes for the
      * same value), iOS via `NSBundle.mainBundle`'s `CFBundleShortVersionString`. */
     val appVersionName: String,
+    /** issue #259 — Book Detail's "save a copy" button. Null where the platform has no
+     *  user-visible place to save a book file (iOS, for now), which hides the button. */
+    val bookFileWriter: BookFileWriter? = null,
 ) {
     /** Process-lifetime scope for [AuthHeaderProviderImpl]'s server-list collector — mirrors
      * `:app`'s `@ApplicationScope` (`CoroutineScope(SupervisorJob() + Dispatchers.Default)`)
@@ -465,6 +479,50 @@ class AppContainer(
         _comicCanUseDoubleSpread.value = value
     }
 
+    /**
+     * issue #259 — saves a copy of [detail]'s book file to the Downloads folder, or the folder
+     * picked in Settings. An offline copy is copied as-is; otherwise the file is streamed from
+     * the server with the same auth as everything else.
+     */
+    suspend fun saveBookToDevice(detail: BookDetail, serverId: String, bookId: String): Outcome<SavedBook> {
+        val writer = bookFileWriter
+            ?: return Outcome.Failure(DexxiconError.Unsupported("Saving books isn't available on this device"))
+        val prefs = appPreferences.preferences.first()
+        val summary = detail.summary
+        val fileName = bookFileName(summary.title, summary.authorLine, detail.fileExtension, summary.format)
+        val mimeType = bookMimeType(fileName)
+        return try {
+            val offline = downloadRepository.get(serverId, bookId)
+                ?.takeIf { it.status == DownloadStatus.DONE }
+                ?.localPath
+            val where = if (offline != null) {
+                writer.copy(offline, fileName, mimeType, prefs.saveCopiesFolderUri)
+            } else {
+                val href = (detail.acquisitions.firstOrNull { it.format == summary.format } ?: detail.primaryAcquisition)
+                    ?.href
+                    ?: return Outcome.Failure(DexxiconError.NotFound("This book has no file to save"))
+                writer.write(fileName, mimeType, prefs.saveCopiesFolderUri) { sink ->
+                    httpClient.prepareGet(href).execute { response ->
+                        val channel = response.bodyAsChannel()
+                        val buffer = ByteArray(DOWNLOAD_BUFFER_BYTES)
+                        while (true) {
+                            val read = channel.readAvailable(buffer, 0, buffer.size)
+                            if (read < 0) break
+                            if (read > 0) sink(buffer, read)
+                        }
+                    }
+                }
+            }
+            Outcome.Success(SavedBook(fileName, prefs.saveCopiesFolderName ?: where))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: SaveFolderUnavailableException) {
+            Outcome.Failure(DexxiconError.Unauthorized(e.message))
+        } catch (e: Exception) {
+            Outcome.Failure(DexxiconError.Unknown(e.message ?: "Couldn't save the book", e))
+        }
+    }
+
     init {
         realAuthHeaderProvider =
             AuthHeaderProviderImpl(database.serverDao(), credentialStore, tokenManager, scope)
@@ -477,5 +535,7 @@ class AppContainer(
 /** Opaque per-platform handle [createAppContainer] needs — an `android.content.Context` on
  * Android, nothing on iOS (there's no equivalent object to thread through). */
 expect class PlatformContext
+
+private const val DOWNLOAD_BUFFER_BYTES = 64 * 1024
 
 expect fun createAppContainer(context: PlatformContext): AppContainer

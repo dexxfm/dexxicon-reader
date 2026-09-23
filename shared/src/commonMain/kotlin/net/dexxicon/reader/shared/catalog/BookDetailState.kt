@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
@@ -128,6 +129,41 @@ class BookDetailState(
 
     fun onRemoveDownload() {
         scope.launch { container.downloadRepository.remove(serverId, bookId) }
+    }
+
+    /** issue #259 — whether this device can save a copy of a book file for use outside the
+     *  app (Android; see [net.dexxicon.reader.shared.di.BookFileWriter]). */
+    val canSaveCopy: Boolean get() = container.bookFileWriter != null
+
+    var savingCopy by mutableStateOf(false)
+        private set
+
+    /** issue #259 — a one-off result for Book Detail's snackbar; cleared once shown. */
+    var message by mutableStateOf<String?>(null)
+        private set
+
+    fun messageShown() {
+        message = null
+    }
+
+    /** Where the copy button saves to, for its label — "Downloads" or the picked folder's name. */
+    val saveCopyDestination: StateFlow<String> = container.appPreferences.preferences
+        .map { it.saveCopiesFolderName ?: "Downloads" }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), "Downloads")
+
+    /** issue #259 — saves a copy of the book file to Downloads (or the folder chosen in
+     *  Settings). Separate from [onDownload], which keeps the app's own offline copy. */
+    fun saveCopy() {
+        val d = detail ?: return
+        if (savingCopy) return
+        savingCopy = true
+        scope.launch {
+            message = when (val result = container.saveBookToDevice(d, serverId, bookId)) {
+                is Outcome.Success -> "Saved “${result.value.fileName}” to ${result.value.location}"
+                is Outcome.Failure -> result.error.message ?: "Couldn't save a copy"
+            }
+            savingCopy = false
+        }
     }
 
     fun setReadingStatus(status: ReadingStatus) {
