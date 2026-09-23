@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.ErrorOutline
+import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
@@ -120,6 +121,8 @@ fun BookDetailContent(
     modifier: Modifier = Modifier,
     onOpenSeries: (String) -> Unit = {},
     onOpenBook: (serverId: String, bookId: String) -> Unit = { _, _ -> },
+    /** issue #266 — this book's Highlights list; takes the title to show there. */
+    onOpenHighlights: (title: String) -> Unit = {},
 ) {
     val download by state.download.collectAsState()
     val progress by state.progress.collectAsState()
@@ -158,6 +161,7 @@ fun BookDetailContent(
                     seriesBooks = state.seriesBooks,
                     onOpenSeries = onOpenSeries,
                     onOpenBook = onOpenBook,
+                    onOpenHighlights = { onOpenHighlights(detail.summary.title) },
                     modifier = Modifier.padding(padding),
                 )
             }
@@ -181,6 +185,7 @@ private fun DetailContent(
     seriesBooks: List<AggregatedBook>,
     onOpenSeries: (String) -> Unit,
     onOpenBook: (serverId: String, bookId: String) -> Unit,
+    onOpenHighlights: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val seriesShelf: @Composable () -> Unit = {
@@ -213,7 +218,7 @@ private fun DetailContent(
                     Spacer(Modifier.height(16.dp))
                     ActionButtons(
                         detail, copies, download, progress, supportsDownloads,
-                        onOpen, onDownload, onRemoveDownload,
+                        onOpen, onDownload, onRemoveDownload, onOpenHighlights,
                     )
                 }
                 Column(
@@ -243,7 +248,7 @@ private fun DetailContent(
                     Spacer(Modifier.height(20.dp))
                     ActionButtons(
                         detail, copies, download, progress, supportsDownloads,
-                        onOpen, onDownload, onRemoveDownload,
+                        onOpen, onDownload, onRemoveDownload, onOpenHighlights,
                     )
                     Spacer(Modifier.height(20.dp))
                     AboutSection(detail)
@@ -510,6 +515,7 @@ private fun ActionButtons(
     onOpen: (BookCopy) -> Unit,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
+    onOpenHighlights: () -> Unit,
 ) {
     val format = detail.summary.format
     val isAudio = format == ContentFormat.AUDIOBOOK
@@ -546,6 +552,20 @@ private fun ActionButtons(
     if (supportsDownloads) {
         Spacer(Modifier.height(8.dp))
         DownloadButton(download, onDownload, onRemoveDownload)
+    }
+
+    // issue #266 — EPUB only: both servers expose EPUB highlights as structured, listable
+    // records; Grimmory's PDF annotations are one opaque blob for its own PDF.js viewer, so a
+    // PDF list couldn't be offered on both servers alike.
+    if (format == ContentFormat.EPUB) {
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            onClick = onOpenHighlights,
+            shape = Pill,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+        ) {
+            LeftAligned({ Icon(Icons.Filled.FormatQuote, contentDescription = null) }, "Highlights")
+        }
     }
 
     ServerLinks(copies)

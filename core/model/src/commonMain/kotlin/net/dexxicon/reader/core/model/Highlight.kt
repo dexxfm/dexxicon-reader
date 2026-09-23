@@ -20,6 +20,11 @@ data class Highlight(
     val remoteId: String? = null,
     /** Local edits not yet pushed. */
     val dirty: Boolean = true,
+    /** issue #266 — a real EPUB CFI, for a highlight made outside this app (a server's web
+     *  reader, KOReader) whose position isn't a Readium `Locator`. */
+    val cfi: String? = null,
+    /** issue #266 — the page the server says it's on (KOReader-synced highlights), if any. */
+    val pageNumber: Int? = null,
 )
 
 enum class HighlightColor(val argb: Int, val serverHex: String) {

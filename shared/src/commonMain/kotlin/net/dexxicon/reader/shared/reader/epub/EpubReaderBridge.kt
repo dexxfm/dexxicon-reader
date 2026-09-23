@@ -9,6 +9,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.dexxicon.reader.core.data.PendingReaderJump
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.model.Bookmark
@@ -76,7 +77,11 @@ class EpubProgressBridge(
      * `EPUBNavigatorViewController` should open to. */
     fun initialLocatorJson(serverId: String, bookId: String, onResolved: (String?) -> Unit) {
         scope.launch {
-            val json = progressRepository.get(serverId, bookId)?.locator
+            // issue #266 — a tapped highlight's own locator wins over the saved position. (A
+            // CFI-only BookOrbit highlight can't become a locator without the publication, so on
+            // iOS that one still opens at the saved position — Android resolves it to its chapter.)
+            val jump = PendingReaderJump.take(serverId, bookId)?.locatorJson
+            val json = jump ?: progressRepository.get(serverId, bookId)?.locator
             withContext(Dispatchers.Main) { onResolved(json) }
         }
     }

@@ -18,6 +18,9 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.BookmarkRepository
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.HighlightRepository
+import net.dexxicon.reader.core.data.PendingReaderJump
+import net.dexxicon.reader.core.data.ReaderJumpTarget
+import net.dexxicon.reader.core.data.cfiSpineIndex
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.DigestSource
@@ -34,7 +37,9 @@ import net.dexxicon.reader.core.datastore.ReaderPreferencesStore
 import net.dexxicon.reader.feature.reader.epub.navigation.EpubReaderRoute
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.locateProgression
 import org.readium.r2.shared.publication.services.positions
+import org.json.JSONObject
 import org.readium.r2.shared.util.mediatype.MediaType
 import kotlin.math.abs
 import javax.inject.Inject
@@ -143,11 +148,20 @@ class EpubReaderViewModel @Inject constructor(
         when (opened) {
             is Outcome.Success -> {
                 publication = opened.value
-                val initial = locatorStore.initialLocator(route.serverId, route.bookId)
-                val remote = progressRepository.remoteResumePercent(
-                    route.serverId, route.bookId, ContentFormat.EPUB, remoteHref,
-                    initial?.locations?.totalProgression,
-                )
+                // issue #266 — opened from a tapped highlight: go there instead of the saved
+                // position, and skip the "continue from NN% (synced)" offer — the user asked
+                // for this exact spot.
+                val jump = PendingReaderJump.take(route.serverId, route.bookId)
+                    ?.let { opened.value.locatorFor(it) }
+                val initial = jump ?: locatorStore.initialLocator(route.serverId, route.bookId)
+                val remote = if (jump != null) {
+                    null
+                } else {
+                    progressRepository.remoteResumePercent(
+                        route.serverId, route.bookId, ContentFormat.EPUB, remoteHref,
+                        initial?.locations?.totalProgression,
+                    )
+                }
                 val remoteLocator = remote?.let { target ->
                     runCatching {
                         opened.value.positions().minByOrNull {
@@ -176,6 +190,12 @@ class EpubReaderViewModel @Inject constructor(
                 _state.value = EpubReaderState.Error(opened.error.message ?: "Couldn't open this EPUB")
         }
     }
+
+    /** issue #266 — see [ReaderJumpTarget] for the order these are tried in. */
+    private suspend fun Publication.locatorFor(target: ReaderJumpTarget): Locator? =
+        target.locatorJson?.let { json -> runCatching { Locator.fromJSON(JSONObject(json)) }.getOrNull() }
+            ?: target.cfi?.let(::cfiSpineIndex)?.let { readingOrder.getOrNull(it) }?.let(::locatorFromLink)
+            ?: target.progression?.takeIf { it > 0.0 }?.let { locateProgression(it) }
 
     fun onLocatorChanged(locator: Locator) {
         locatorUpdates.tryEmit(locator)

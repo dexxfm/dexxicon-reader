@@ -55,6 +55,8 @@ data class AnnotationDto(
     val style: String? = null,
     val note: String? = null,
     val chapterTitle: String? = null,
+    /** issue #266 — a `LocalDateTime` with no zone, e.g. `2026-09-20T14:03:11`. */
+    val createdAt: String? = null,
 )
 
 @Serializable
@@ -75,9 +77,14 @@ data class UpdateAnnotationDto(
     val note: String? = null,
 )
 
+/** `AnnotationListResponse` (server `packages/types/src/annotation.ts`). Paged: `page` is
+ *  1-based, `pageSize` at most 100. */
 @Serializable
 data class BookOrbitAnnotationsPage(
     val items: List<BookOrbitAnnotationDto> = emptyList(),
+    val total: Int? = null,
+    val page: Int? = null,
+    val pageSize: Int? = null,
 )
 
 @Serializable
@@ -88,4 +95,11 @@ data class BookOrbitAnnotationDto(
     val note: String? = null,
     val color: String? = null,
     val chapterTitle: String? = null,
+    /** issue #266 — a real EPUB CFI (web reader) or null (KOReader/Kobo-synced). */
+    val cfi: String? = null,
+    /** issue #266 — KOReader's page number, when the highlight came from there. */
+    val pageno: Int? = null,
+    /** issue #266 — when it was highlighted (ISO-8601), as opposed to when it reached the server. */
+    val highlightedAt: String? = null,
+    val createdAt: String? = null,
 )

@@ -25,6 +25,9 @@ data class HighlightEntity(
     val remoteId: String?,
     val dirty: Boolean,
     val deleted: Boolean = false,
+    /** issue #266 — see [Highlight.cfi] / [Highlight.pageNumber]. */
+    val cfi: String? = null,
+    val pageNumber: Int? = null,
 ) {
     fun toDomain(): Highlight = Highlight(
         id = id,
@@ -40,6 +43,8 @@ data class HighlightEntity(
         updatedAt = updatedAt,
         remoteId = remoteId,
         dirty = dirty,
+        cfi = cfi,
+        pageNumber = pageNumber,
     )
 
     companion object {
@@ -58,6 +63,8 @@ data class HighlightEntity(
             remoteId = h.remoteId,
             dirty = h.dirty,
             deleted = deleted,
+            cfi = h.cfi,
+            pageNumber = h.pageNumber,
         )
     }
 }

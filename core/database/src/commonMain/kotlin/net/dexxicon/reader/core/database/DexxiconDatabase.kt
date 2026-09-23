@@ -23,7 +23,7 @@ import net.dexxicon.reader.core.database.entity.ServerEntity
         HighlightEntity::class,
         BookmarkEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 @ConstructedBy(DexxiconDatabaseConstructor::class)
