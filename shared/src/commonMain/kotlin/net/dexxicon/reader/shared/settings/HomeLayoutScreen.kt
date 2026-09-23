@@ -105,7 +105,11 @@ private fun ReorderableSections(layout: HomeLayout, onChange: (HomeLayout) -> Un
                             Icons.Filled.DragHandle,
                             contentDescription = "Drag to reorder",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.pointerInput(order.size) {
+                            // Keyed on [layout]: the gesture handler outlives recompositions,
+                            // so without re-installing it whenever the layout changes it would
+                            // keep writing back the layout (and `order` state) from when the row
+                            // first appeared — e.g. re-hiding a shelf switched back on since.
+                            modifier = Modifier.pointerInput(layout) {
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = { dragIndex = index; dragDelta = 0f },
                                     onDragEnd = {
