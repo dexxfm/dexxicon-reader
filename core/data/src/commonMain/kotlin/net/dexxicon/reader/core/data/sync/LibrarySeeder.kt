@@ -90,6 +90,8 @@ class LibrarySeeder(
             coverUrl = server.resolve(coverPath),
             format = format,
             digestUrl = server.resolve("/api/v1/books/$id/content"),
+            series = seriesName?.takeIf { it.isNotBlank() },
+            seriesIndex = seriesNumber,
         )
     }
 
@@ -115,6 +117,8 @@ class LibrarySeeder(
                 coverUrl = server.resolve("/api/v1/books/${card.id}/cover"),
                 format = format,
                 digestUrl = file?.let { server.resolve("/api/v1/books/files/${it.id}/serve") },
+                series = card.seriesName?.takeIf { it.isNotBlank() },
+                seriesIndex = card.seriesIndex?.toDoubleOrNull(),
             )
         }
     }

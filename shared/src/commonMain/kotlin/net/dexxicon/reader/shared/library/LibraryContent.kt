@@ -55,6 +55,8 @@ import androidx.compose.ui.unit.dp
 import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.ContentFilterChips
 import net.dexxicon.reader.core.designsystem.component.CoverImage
+import net.dexxicon.reader.core.designsystem.component.LocalCoverBadges
+import net.dexxicon.reader.core.model.seriesPositionText
 import net.dexxicon.reader.core.designsystem.component.ViewModeToggle
 import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.datastore.CoverTapAction
@@ -277,8 +279,12 @@ private fun LibraryRow(
     var menuOpen by remember { mutableStateOf(false) }
     val pct = progress?.let { (it * 100).toInt() }
     val libraries = book.copies.size
+    val series = seriesPositionText(book.series, book.seriesIndex)
+        ?.takeIf { LocalCoverBadges.current.showSeriesNumber }
     val subtitle = buildString {
         if (book.authorLine.isNotBlank()) append(book.authorLine)
+        // issue #257 — list rows' covers are too small for the "#3" badge; say it here instead.
+        if (series != null) append(if (isEmpty()) "" else " · ").append(series)
         append(if (isEmpty()) "" else " · ")
         append(book.format.name.lowercase())
         if (libraries > 1) append(" · On $libraries libraries")
@@ -316,9 +322,12 @@ private fun LibraryGridCard(
     var menuOpen by remember { mutableStateOf(false) }
     val pct = progress?.let { (it * 100).toInt() }
     val secondary = if (book.copies.size > 1) "On ${book.copies.size} libraries" else book.authorLine
+    val series = seriesPositionText(book.series, book.seriesIndex)
+        ?.takeIf { LocalCoverBadges.current.showSeriesNumber }
     val label = buildString {
         append(book.title)
         if (book.authorLine.isNotBlank()) append(", ${book.authorLine}")
+        if (series != null) append(", $series")
         if (pct != null) append(", $pct% read")
         if (downloaded) append(", downloaded")
     }
@@ -334,6 +343,7 @@ private fun LibraryGridCard(
                 progress = progress,
                 downloaded = downloaded,
                 format = book.format,
+                seriesIndex = book.seriesIndex,
             )
             Text(
                 book.title,

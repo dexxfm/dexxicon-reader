@@ -86,6 +86,10 @@ class SettingsState(
         scope.launch { container.appPreferences.setShowFormatBadges(show) }
     }
 
+    fun setShowSeriesNumbers(show: Boolean) {
+        scope.launch { container.appPreferences.setShowSeriesNumbers(show) }
+    }
+
     fun setDownloadsWifiOnly(enabled: Boolean) {
         scope.launch { container.appPreferences.setDownloadsWifiOnly(enabled) }
     }

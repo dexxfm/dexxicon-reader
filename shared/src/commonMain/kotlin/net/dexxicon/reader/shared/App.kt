@@ -200,7 +200,10 @@ fun App(
     val glassState = rememberLiquidGlassState(glassQuality)
     DexxiconTheme(
         darkTheme = darkTheme,
-        coverBadges = CoverBadges(showFormat = theme.showFormatBadges),
+        coverBadges = CoverBadges(
+            showFormat = theme.showFormatBadges,
+            showSeriesNumber = theme.showSeriesNumbers,
+        ),
     ) {
         val nav = rememberNavController()
         val backStackEntry by nav.currentBackStackEntryAsState()

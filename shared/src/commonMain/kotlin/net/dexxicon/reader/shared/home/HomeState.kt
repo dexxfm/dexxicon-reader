@@ -29,6 +29,8 @@ data class ContinueItem(
     val coverUrl: String?,
     val format: ContentFormat,
     val percent: Float,
+    /** issue #257 — cover's series-number badge. */
+    val seriesIndex: Double? = null,
     /** issue #258 — this book's offline copy, if any, so the card can show the same
      * "downloaded" badge and download/remove menu state every other shelf does. */
     val downloadStatus: DownloadStatus? = null,
@@ -42,6 +44,8 @@ data class OnDeckItem(
     val author: String?,
     val coverUrl: String?,
     val format: ContentFormat,
+    /** issue #257 — cover's series-number badge. */
+    val seriesIndex: Double? = null,
     /** issue #258 — see [ContinueItem.downloadStatus]. */
     val downloadStatus: DownloadStatus? = null,
 )
@@ -53,6 +57,9 @@ data class HomeUiState(
     val downloads: List<Download> = emptyList(),
     /** Reading progress (0–1) for the Downloaded grid, keyed by "serverId::bookId". */
     val downloadProgress: Map<String, Float> = emptyMap(),
+    /** issue #257 — series position for the Downloaded grid's covers, keyed the same way.
+     *  Taken from the progress row's cached snapshot; downloads don't store it themselves. */
+    val downloadSeriesIndex: Map<String, Double> = emptyMap(),
     val loading: Boolean = true,
     val refreshing: Boolean = false,
     /** When the last sync pass ran; null before the first one completes. */
@@ -113,6 +120,9 @@ class HomeState(
                 downloadProgress = progressByKey
                     .mapValues { (_, p) -> (p.percent ?: 0.0).toFloat().coerceIn(0f, 1f) }
                     .filterValues { it > 0f },
+                downloadSeriesIndex = progressByKey
+                    .mapNotNull { (key, p) -> p.seriesIndex?.let { key to it } }
+                    .toMap(),
                 loading = false,
                 refreshing = isRefreshing,
                 lastSyncedAt = report?.at,
@@ -155,6 +165,7 @@ class HomeState(
         author = authorLine.takeIf { it.isNotBlank() },
         coverUrl = coverUrl,
         format = format,
+        seriesIndex = seriesIndex,
     )
 
     fun markRead(serverId: String, bookId: String) = container.bookActions.markFinished(serverId, bookId, true)
@@ -215,6 +226,7 @@ class HomeState(
             coverUrl = coverUrl,
             format = fmt,
             percent = (percent ?: 0.0).toFloat().coerceIn(0f, 1f),
+            seriesIndex = seriesIndex,
             downloadStatus = downloadStatus,
         )
     }

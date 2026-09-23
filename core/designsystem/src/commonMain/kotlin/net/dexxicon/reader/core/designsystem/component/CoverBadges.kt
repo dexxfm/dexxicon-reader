@@ -10,6 +10,8 @@ import androidx.compose.runtime.staticCompositionLocalOf
 data class CoverBadges(
     /** issue #252 — the colour-coded format tag, bottom-right. */
     val showFormat: Boolean = true,
+    /** issue #257 — a book's position in its series ("#3"), top-left. */
+    val showSeriesNumber: Boolean = false,
 )
 
 val LocalCoverBadges = staticCompositionLocalOf { CoverBadges() }

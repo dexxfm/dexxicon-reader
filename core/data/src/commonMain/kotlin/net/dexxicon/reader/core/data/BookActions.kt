@@ -111,6 +111,8 @@ class BookActions(
                     author = s.authorLine.takeIf { it.isNotBlank() },
                     coverUrl = s.coverUrl,
                     digestUrl = detail.primaryAcquisition?.href,
+                    series = s.series,
+                    seriesIndex = s.seriesIndex,
                 ),
             )
         }
@@ -138,6 +140,8 @@ class BookActions(
                 author = s.authorLine.takeIf { it.isNotBlank() },
                 coverUrl = s.coverUrl,
                 digestUrl = detail.primaryAcquisition?.href,
+                series = s.series,
+                seriesIndex = s.seriesIndex,
             ),
         )
     }

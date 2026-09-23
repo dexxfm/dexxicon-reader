@@ -24,6 +24,10 @@ data class ReadingProgress(
     val format: ContentFormat? = null,
     /** Remote URL whose bytes yield this book's KOReader digest (for stream-only books). */
     val digestUrl: String? = null,
+    /** issue #257 — cached like [title]/[coverUrl] so Home's shelves can show a book's
+     *  series number without a catalog round-trip. */
+    val series: String? = null,
+    val seriesIndex: Double? = null,
 ) {
     val key: String get() = "$serverId::$bookId"
 

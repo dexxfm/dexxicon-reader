@@ -214,6 +214,7 @@ fun HomeContent(
                                 DownloadCard(
                                     download = download,
                                     readingProgress = uiState.downloadProgress[download.key],
+                                    seriesIndex = uiState.downloadSeriesIndex[download.key],
                                     onClick = { onOpenBook(download.serverId, download.bookId) },
                                     actions = downloadActions(download),
                                 )
@@ -318,6 +319,7 @@ private fun OnDeckCard(entry: OnDeckItem, onClick: () -> Unit, actions: HomeItem
                 contentDescription = null,
                 downloaded = entry.downloadStatus == DownloadStatus.DONE,
                 format = entry.format,
+                seriesIndex = entry.seriesIndex,
             )
             Text(
                 entry.title,
@@ -361,6 +363,7 @@ private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit, actions: Home
                 progress = entry.percent,
                 downloaded = entry.downloadStatus == DownloadStatus.DONE,
                 format = entry.format,
+                seriesIndex = entry.seriesIndex,
             )
             Text(
                 entry.title,
@@ -380,6 +383,7 @@ private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit, actions: Home
 private fun DownloadCard(
     download: Download,
     readingProgress: Float?,
+    seriesIndex: Double?,
     onClick: () -> Unit,
     actions: HomeItemActions,
 ) {
@@ -411,6 +415,7 @@ private fun DownloadCard(
                     progress = if (done) readingProgress else null,
                     downloaded = done,
                     format = download.format,
+                    seriesIndex = seriesIndex,
                 )
                 DownloadStatusOverlay(download)
             }

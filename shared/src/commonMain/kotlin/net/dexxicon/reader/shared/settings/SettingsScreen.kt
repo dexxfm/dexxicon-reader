@@ -316,7 +316,14 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSection("Format badges") {
+            SettingsSection("Cover badges") {
+                SettingRow(
+                    title = "Show series number",
+                    subtitle = "A book's place in its series (#3) on the cover's top-left corner, " +
+                        "and next to the author in list view.",
+                ) {
+                    Switch(checked = prefs.showSeriesNumbers, onCheckedChange = state::setShowSeriesNumbers)
+                }
                 SettingRow(
                     title = "Show format badges",
                     subtitle = "The coloured tag on a cover's bottom-right corner shows its file type.",

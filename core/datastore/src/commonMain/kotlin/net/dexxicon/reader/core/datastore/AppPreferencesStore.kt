@@ -47,6 +47,8 @@ data class AppPreferences(
     val glassIntensity: GlassIntensity = GlassIntensity.STANDARD,
     /** Colour-coded file-type tag on covers (issue #252). */
     val showFormatBadges: Boolean = true,
+    /** A book's series number on its cover (issue #257). Off by default — opt-in. */
+    val showSeriesNumbers: Boolean = false,
 )
 
 /**
@@ -87,6 +89,7 @@ class AppPreferencesStore(context: PlatformStorageContext) {
         val COVER_TAP_ACTION = stringPreferencesKey("cover_tap_action")
         val GLASS_INTENSITY = stringPreferencesKey("glass_intensity")
         val SHOW_FORMAT_BADGES = booleanPreferencesKey("show_format_badges")
+        val SHOW_SERIES_NUMBERS = booleanPreferencesKey("show_series_numbers")
     }
 
     val preferences: Flow<AppPreferences> = dataStore.data.map { p ->
@@ -115,6 +118,7 @@ class AppPreferencesStore(context: PlatformStorageContext) {
                 ?.let { runCatching { GlassIntensity.valueOf(it) }.getOrNull() }
                 ?: GlassIntensity.STANDARD,
             showFormatBadges = p[Keys.SHOW_FORMAT_BADGES] ?: true,
+            showSeriesNumbers = p[Keys.SHOW_SERIES_NUMBERS] ?: false,
         )
     }
 
@@ -185,6 +189,10 @@ class AppPreferencesStore(context: PlatformStorageContext) {
 
     suspend fun setShowFormatBadges(show: Boolean) {
         dataStore.edit { it[Keys.SHOW_FORMAT_BADGES] = show }
+    }
+
+    suspend fun setShowSeriesNumbers(show: Boolean) {
+        dataStore.edit { it[Keys.SHOW_SERIES_NUMBERS] = show }
     }
 
     private companion object {
