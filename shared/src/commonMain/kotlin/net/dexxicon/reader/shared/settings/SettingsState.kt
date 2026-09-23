@@ -16,6 +16,7 @@ import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.GlassIntensity
+import net.dexxicon.reader.core.model.HomeLayout
 import net.dexxicon.reader.shared.di.AppContainer
 
 /** Mirrors native's `SyncServerRow` (`feature/settings/KoSyncSettingsViewModel.kt`) —
@@ -88,6 +89,10 @@ class SettingsState(
 
     fun setShowSeriesNumbers(show: Boolean) {
         scope.launch { container.appPreferences.setShowSeriesNumbers(show) }
+    }
+
+    fun setHomeLayout(layout: HomeLayout) {
+        scope.launch { container.appPreferences.setHomeLayout(layout) }
     }
 
     fun setDownloadsWifiOnly(enabled: Boolean) {

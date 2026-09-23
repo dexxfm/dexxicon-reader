@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
@@ -14,6 +15,7 @@ import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.model.HomeLayout
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.OnOpenReader
@@ -129,6 +131,11 @@ class HomeState(
                 syncFailures = report?.failures.orEmpty(),
             )
         }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), HomeUiState())
+
+    /** The user's shelf order and hidden shelves (issue #255), from Settings › Home screen. */
+    val layout: StateFlow<HomeLayout> = container.appPreferences.preferences
+        .map { it.homeLayout }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), HomeLayout())
 
     /** Whether the offline/download shelf should show at all — same platform-capability
      * check [net.dexxicon.reader.shared.catalog.BookDetailState.supportsDownloads] uses. */

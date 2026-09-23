@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.map
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.GlassIntensity
+import net.dexxicon.reader.core.model.HomeLayout
 import okio.Path.Companion.toPath
 
 enum class AppTheme { SYSTEM, LIGHT, DARK }
@@ -49,6 +50,8 @@ data class AppPreferences(
     val showFormatBadges: Boolean = true,
     /** A book's series number on its cover (issue #257). Off by default — opt-in. */
     val showSeriesNumbers: Boolean = false,
+    /** Order and visibility of Home's shelves (issue #255). */
+    val homeLayout: HomeLayout = HomeLayout(),
 )
 
 /**
@@ -90,6 +93,7 @@ class AppPreferencesStore(context: PlatformStorageContext) {
         val GLASS_INTENSITY = stringPreferencesKey("glass_intensity")
         val SHOW_FORMAT_BADGES = booleanPreferencesKey("show_format_badges")
         val SHOW_SERIES_NUMBERS = booleanPreferencesKey("show_series_numbers")
+        val HOME_LAYOUT = stringPreferencesKey("home_layout")
     }
 
     val preferences: Flow<AppPreferences> = dataStore.data.map { p ->
@@ -119,6 +123,7 @@ class AppPreferencesStore(context: PlatformStorageContext) {
                 ?: GlassIntensity.STANDARD,
             showFormatBadges = p[Keys.SHOW_FORMAT_BADGES] ?: true,
             showSeriesNumbers = p[Keys.SHOW_SERIES_NUMBERS] ?: false,
+            homeLayout = HomeLayout.decode(p[Keys.HOME_LAYOUT]),
         )
     }
 
@@ -193,6 +198,10 @@ class AppPreferencesStore(context: PlatformStorageContext) {
 
     suspend fun setShowSeriesNumbers(show: Boolean) {
         dataStore.edit { it[Keys.SHOW_SERIES_NUMBERS] = show }
+    }
+
+    suspend fun setHomeLayout(layout: HomeLayout) {
+        dataStore.edit { it[Keys.HOME_LAYOUT] = layout.encode() }
     }
 
     private companion object {

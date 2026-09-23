@@ -235,7 +235,7 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
 }
 
 @Composable
-private fun DefaultsScaffold(
+internal fun DefaultsScaffold(
     title: String,
     onBack: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,

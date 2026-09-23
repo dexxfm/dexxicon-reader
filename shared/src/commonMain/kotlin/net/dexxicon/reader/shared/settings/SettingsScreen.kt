@@ -115,6 +115,7 @@ fun SettingsScreen(
     onManageServers: () -> Unit,
     onOpenAudiobookDefaults: () -> Unit,
     onOpenBookDefaults: () -> Unit,
+    onOpenHomeLayout: () -> Unit,
     onReportProblem: (() -> Unit)? = null,
 ) {
     val scope = rememberCoroutineScope()
@@ -146,6 +147,14 @@ fun SettingsScreen(
                     title = "Manage servers",
                     subtitle = "Add, edit, remove, or reorder your servers.",
                     onClick = onManageServers,
+                )
+            }
+
+            SettingsSection("Home screen") {
+                NavRow(
+                    title = "Arrange Home",
+                    subtitle = "Reorder or hide Continue reading, On Deck, Downloaded and the rest.",
+                    onClick = onOpenHomeLayout,
                 )
             }
 
