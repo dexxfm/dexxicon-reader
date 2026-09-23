@@ -905,10 +905,12 @@ fun AddServerScreen(
 
                 Button(onClick = state::test, enabled = state.canTest) { Text("Test connection") }
 
-                KoReaderRow(
-                    summary = koReaderSummary(state.koSyncUrl, state.koSyncUsername),
-                    onClick = { showKoReader = true },
-                )
+                if (KOREADER_SYNC_UI) {
+                    KoReaderRow(
+                        summary = koReaderSummary(state.koSyncUrl, state.koSyncUsername),
+                        onClick = { showKoReader = true },
+                    )
+                }
 
                 // Phase 4 Stage G (issue #144) — always shown, matching native's form exactly:
                 // SSO is one more optional action on the same form, not a different screen for
@@ -951,7 +953,7 @@ fun AddServerScreen(
         }
     }
 
-    if (showKoReader) {
+    if (KOREADER_SYNC_UI && showKoReader) {
         ModalBottomSheet(onDismissRequest = { showKoReader = false }) {
             KoReaderSheet(
                 url = state.koSyncUrl,
