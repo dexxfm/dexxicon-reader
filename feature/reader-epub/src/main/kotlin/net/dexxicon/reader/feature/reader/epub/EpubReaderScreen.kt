@@ -35,7 +35,6 @@ import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.DecorableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
-import org.readium.r2.navigator.html.HtmlDecorationTemplates
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 
@@ -141,7 +140,7 @@ private fun ReaderContent(
                 initialLocator = state.initialLocator,
                 initialPreferences = initialPrefs,
                 configuration = EpubNavigatorFragment.Configuration().apply {
-                    decorationTemplates = HtmlDecorationTemplates.defaultTemplates()
+                    decorationTemplates = highlightDecorationTemplates()
                     selectionActionModeCallback = HighlightSelectionCallback(
                         activity = activity,
                         navigator = { navHolder[0] },
@@ -196,21 +195,17 @@ private fun ReaderContent(
         }
     }
 
-    fun goToLocatorJson(json: String) {
-        runCatching { Locator.fromJSON(org.json.JSONObject(json)) }.getOrNull()?.let { navigator?.go(it, true) }
-    }
-
     // Render highlight decorations and react to taps on them.
-    LaunchedEffect(navigator, highlights) {
+    // issue #279 — a stronger tint on a dark page; re-applied when the theme changes.
+    val darkPage = preferences.hasDarkPage(darkTheme)
+    LaunchedEffect(navigator, highlights, darkPage) {
         val nav = navigator ?: return@LaunchedEffect
         val decorations = highlights.mapNotNull { h ->
-            val locator = runCatching {
-                Locator.fromJSON(org.json.JSONObject(h.locatorJson))
-            }.getOrNull() ?: return@mapNotNull null
+            val locator = state.publication.locatorOf(h) ?: return@mapNotNull null
             Decoration(
                 id = h.id,
                 locator = locator,
-                style = Decoration.Style.Highlight(tint = h.color.argb, isActive = false),
+                style = highlightStyle(h.color.argb, darkPage),
             )
         }
         runCatching { nav.applyDecorations(decorations, "highlights") }
@@ -263,7 +258,7 @@ private fun ReaderContent(
         onDeleteBookmark = onDeleteBookmark,
         onGoToBookmark = ::goToBookmark,
         onGoToToc = { entry -> flatToc.getOrNull(entry.ref.toIntOrNull() ?: -1)?.let { (_, link) -> navigator?.go(link, true) } },
-        onGoToHighlight = { h -> goToLocatorJson(h.locatorJson) },
+        onGoToHighlight = { h -> state.publication.locatorOf(h)?.let { navigator?.go(it, true) } },
         onSetNote = onSetNote,
         onSetColor = onSetColor,
         onDeleteHighlight = onDeleteHighlight,

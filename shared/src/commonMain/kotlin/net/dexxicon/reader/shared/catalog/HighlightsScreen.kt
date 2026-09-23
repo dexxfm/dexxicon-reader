@@ -114,6 +114,7 @@ class HighlightsState(
                     locatorJson = highlight.locatorJson.takeIf { it.isNotBlank() && it != "{}" },
                     cfi = highlight.cfi,
                     progression = highlight.progression.takeIf { it > 0.0 },
+                    text = highlight.text,
                 ),
             )
             container.openReader(detail, serverId, bookId, onOpenReader)

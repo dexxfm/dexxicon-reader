@@ -43,7 +43,7 @@ class HighlightsSupportTest {
 
     @Test
     fun `a jump's landing spot isn't saved, the first real move is`() {
-        val hold = JumpPositionHold(active = true)
+        val hold = OpeningPositionHold(active = true)
         assertThat(hold.shouldSave("c3.xhtml", 0.0)).isFalse() // where the jump landed
         assertThat(hold.shouldSave("c3.xhtml#x", 0.00001)).isFalse() // same spot, re-reported
         assertThat(hold.shouldSave("c3.xhtml", 0.2)).isTrue() // turned a page
@@ -51,7 +51,7 @@ class HighlightsSupportTest {
     }
 
     @Test
-    fun `without a jump every position is saved`() {
-        assertThat(JumpPositionHold(active = false).shouldSave("c1.xhtml", 0.0)).isTrue()
+    fun `an inactive hold saves every position`() {
+        assertThat(OpeningPositionHold(active = false).shouldSave("c1.xhtml", 0.0)).isTrue()
     }
 }
