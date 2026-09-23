@@ -18,6 +18,7 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.BookmarkRepository
 import net.dexxicon.reader.core.data.CatalogRepository
 import net.dexxicon.reader.core.data.HighlightRepository
+import net.dexxicon.reader.core.data.JumpPositionHold
 import net.dexxicon.reader.core.data.PendingReaderJump
 import net.dexxicon.reader.core.data.ReaderJumpTarget
 import net.dexxicon.reader.core.data.cfiSpineIndex
@@ -91,6 +92,9 @@ class EpubReaderViewModel @Inject constructor(
     private val locatorUpdates = MutableSharedFlow<Locator>(extraBufferCapacity = 1)
     private var publication: Publication? = null
 
+    /** issue #266 — set when this open came from a tapped highlight; see [JumpPositionHold]. */
+    private var positionHold = JumpPositionHold(active = false)
+
     val updatePreferences: (suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit) =
         preferencesStore::update
 
@@ -105,6 +109,9 @@ class EpubReaderViewModel @Inject constructor(
         viewModelScope.launch {
             // locatorStore.save persists the position and pushes it to KOReader sync.
             locatorUpdates.debounce(1_500).collect { locator ->
+                if (!positionHold.shouldSave(locator.href.toString(), locator.locations.progression ?: 0.0)) {
+                    return@collect
+                }
                 locatorStore.save(route.serverId, route.bookId, locator)
             }
         }
@@ -153,6 +160,7 @@ class EpubReaderViewModel @Inject constructor(
                 // for this exact spot.
                 val jump = PendingReaderJump.take(route.serverId, route.bookId)
                     ?.let { opened.value.locatorFor(it) }
+                if (jump != null) positionHold = JumpPositionHold(active = true)
                 val initial = jump ?: locatorStore.initialLocator(route.serverId, route.bookId)
                 val remote = if (jump != null) {
                     null

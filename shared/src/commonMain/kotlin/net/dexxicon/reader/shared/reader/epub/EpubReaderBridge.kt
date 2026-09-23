@@ -9,6 +9,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import net.dexxicon.reader.core.data.JumpPositionHold
 import net.dexxicon.reader.core.data.PendingReaderJump
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
@@ -73,6 +74,9 @@ class EpubProgressBridge(
     private val progressRepository: ReadingProgressRepository,
     private val scope: CoroutineScope,
 ) {
+    /** issue #266 — per open book, whether a highlight jump's landing spot is being held. */
+    private val positionHolds = mutableMapOf<String, JumpPositionHold>()
+
     /** The saved position (Readium `Locator` JSON), if any — the initial location a fresh
      * `EPUBNavigatorViewController` should open to. */
     fun initialLocatorJson(serverId: String, bookId: String, onResolved: (String?) -> Unit) {
@@ -81,6 +85,7 @@ class EpubProgressBridge(
             // CFI-only BookOrbit highlight can't become a locator without the publication, so on
             // iOS that one still opens at the saved position — Android resolves it to its chapter.)
             val jump = PendingReaderJump.take(serverId, bookId)?.locatorJson
+            positionHolds["$serverId::$bookId"] = JumpPositionHold(active = jump != null)
             val json = jump ?: progressRepository.get(serverId, bookId)?.locator
             withContext(Dispatchers.Main) { onResolved(json) }
         }
@@ -106,6 +111,12 @@ class EpubProgressBridge(
     /** Saves the current position — fire-and-forget, called on every (debounced, Swift-side)
      * `locationDidChange`, same cadence as Android's `locatorUpdates.debounce(1_500)`. */
     fun save(serverId: String, bookId: String, locatorJson: String, percent: Double?) {
+        // issue #266 — same "don't save a highlight jump's landing spot" rule as Android.
+        val hold = positionHolds["$serverId::$bookId"]
+        if (hold != null) {
+            val (href, progression) = hrefAndProgressionFromLocatorJson(locatorJson)
+            if (href != null && !hold.shouldSave(href, progression ?: 0.0)) return
+        }
         scope.launch {
             progressRepository.save(
                 ReadingProgress(serverId = serverId, bookId = bookId, percent = percent, locator = locatorJson),
@@ -118,6 +129,12 @@ class EpubProgressBridge(
  * parsing so the iOS embed can compute [Bookmark]-matching progress without a real `Locator`
  * type, the same field Android's own code already reads this way (e.g.
  * [net.dexxicon.reader.core.data.ReadingProgressRepository]'s `pageOf`). */
+/** issue #266 — a Readium `Locator` JSON string's `href` and in-resource `locations.progression`. */
+internal fun hrefAndProgressionFromLocatorJson(json: String): Pair<String?, Double?> = runCatching {
+    val obj = Json.parseToJsonElement(json).jsonObject
+    obj["href"]?.jsonPrimitive?.content to obj["locations"]?.jsonObject?.get("progression")?.jsonPrimitive?.double
+}.getOrDefault(null to null)
+
 internal fun progressionFromLocatorJson(json: String): Double? = runCatching {
     Json.parseToJsonElement(json).jsonObject["locations"]?.jsonObject?.get("totalProgression")?.jsonPrimitive?.double
 }.getOrNull()

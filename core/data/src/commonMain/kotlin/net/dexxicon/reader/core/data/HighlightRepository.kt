@@ -176,9 +176,12 @@ class HighlightRepository(
                     ),
                 )
             } else if (!existing.dirty) {
-                // issue #266 — rows synced before these fields were kept pick them up now;
-                // anything with an unpushed local edit is left alone.
+                // issue #266 — rows synced before these fields were kept pick them up now, and
+                // the server's colour/note win (it owns them unless there's an unpushed local
+                // edit, which is left alone).
                 val backfilled = existing.copy(
+                    color = r.color.name,
+                    note = r.note,
                     createdAt = r.createdAt ?: existing.createdAt,
                     cfi = existing.cfi ?: r.cfi,
                     pageNumber = existing.pageNumber ?: r.pageNumber,

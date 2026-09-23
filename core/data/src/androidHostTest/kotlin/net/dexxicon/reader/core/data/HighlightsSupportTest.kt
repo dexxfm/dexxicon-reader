@@ -40,4 +40,18 @@ class HighlightsSupportTest {
         assertThat(PendingReaderJump.take("s", "b")).isEqualTo(target)
         assertThat(PendingReaderJump.take("s", "b")).isNull()
     }
+
+    @Test
+    fun `a jump's landing spot isn't saved, the first real move is`() {
+        val hold = JumpPositionHold(active = true)
+        assertThat(hold.shouldSave("c3.xhtml", 0.0)).isFalse() // where the jump landed
+        assertThat(hold.shouldSave("c3.xhtml#x", 0.00001)).isFalse() // same spot, re-reported
+        assertThat(hold.shouldSave("c3.xhtml", 0.2)).isTrue() // turned a page
+        assertThat(hold.shouldSave("c3.xhtml", 0.0)).isTrue() // and back — normal saving now
+    }
+
+    @Test
+    fun `without a jump every position is saved`() {
+        assertThat(JumpPositionHold(active = false).shouldSave("c1.xhtml", 0.0)).isTrue()
+    }
 }

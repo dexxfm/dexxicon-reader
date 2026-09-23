@@ -19,9 +19,9 @@ data class ReaderJumpTarget(
  * issue #266 — a one-shot "open this book here" note from the Highlights screen to the reader.
  * Process-global on purpose: Android's reader lives in its own Activity/Hilt graph and iOS's in
  * Swift, so neither can be handed it through [net.dexxicon.reader.shared.OnOpenReader]'s fixed
- * parameters. Deliberately *not* written to the saved reading position: jumping to a highlight
- * to look at it shouldn't move where the book resumes, or sync that to the server, unless the
- * user then actually reads on from there.
+ * parameters. Looking at a highlight shouldn't move where the book resumes (or sync that to the
+ * server): a reader opened from a jump holds off saving its position until the user moves away
+ * from where the jump landed — see [JumpPositionHold].
  */
 object PendingReaderJump {
     private val pending = MutableStateFlow<Map<String, ReaderJumpTarget>>(emptyMap())
@@ -57,4 +57,34 @@ fun cfiSpineIndex(cfi: String): Int? {
     val itemref = steps[1].substringBefore('[').toIntOrNull() ?: return null
     if (itemref < 2 || itemref % 2 != 0) return null
     return itemref / 2 - 1
+}
+
+/**
+ * issue #266 — "don't save the position a highlight jump landed on". The reader reports its
+ * position as soon as it opens, which would otherwise save (and sync) the highlight's spot as
+ * where the book resumes. [shouldSave] skips the first position reported after a jump, and any
+ * repeat of that exact spot; the first genuinely different one (a page turn either way, a
+ * scroll, a TOC jump) ends the hold and saves normally from then on.
+ */
+class JumpPositionHold(private var active: Boolean) {
+    private var landed: Pair<String, Double>? = null
+
+    /** [href] is the resource, [progression] the position within it. */
+    fun shouldSave(href: String, progression: Double): Boolean {
+        if (!active) return true
+        val here = href.substringBefore('#') to progression
+        val first = landed
+        if (first == null) {
+            landed = here
+            return false
+        }
+        if (first.first == here.first && kotlin.math.abs(first.second - here.second) < SAME_SPOT) return false
+        active = false
+        return true
+    }
+
+    private companion object {
+        /** Readium re-reports the same spot with float noise; any real move is far bigger. */
+        const val SAME_SPOT = 1e-4
+    }
 }
