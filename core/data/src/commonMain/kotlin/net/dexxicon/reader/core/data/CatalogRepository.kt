@@ -7,13 +7,18 @@ import net.dexxicon.reader.core.data.catalog.CatalogSource
 import net.dexxicon.reader.core.data.catalog.GrimmoryCatalogSource
 import net.dexxicon.reader.core.data.catalog.OpdsCatalogSource
 import net.dexxicon.reader.core.data.catalog.mergeAggregated
+import net.dexxicon.reader.core.data.catalog.mergeSeries
 import net.dexxicon.reader.core.model.AggregatedBookPage
 import net.dexxicon.reader.core.model.BookDetail
+import net.dexxicon.reader.core.model.BookGroup
+import net.dexxicon.reader.core.model.BookGroupKind
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.CatalogShelf
+import net.dexxicon.reader.core.model.SeriesPage
+import net.dexxicon.reader.core.model.seriesKey
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
 import kotlinx.coroutines.CoroutineDispatcher
@@ -149,10 +154,108 @@ class CatalogRepository(
         )
     }
 
+    /**
+     * issues #253/#254 — every server's libraries, collections or smart shelves ([kind]), in
+     * server priority order. A server that fails just contributes nothing; only when *every*
+     * server failed is this a [Outcome.Failure], same rule as [onDeck].
+     */
+    suspend fun groups(kind: BookGroupKind): Outcome<List<BookGroup>> = withContext(io) {
+        val servers = serverRepository.servers.first()
+        if (servers.isEmpty()) return@withContext Outcome.Success(emptyList())
+        val results = coroutineScope {
+            servers.map { server -> async { sourceFor(server).groups(server, kind) } }.awaitAll()
+        }
+        if (results.none { it is Outcome.Success }) {
+            return@withContext results.firstNotNullOfOrNull { it as? Outcome.Failure }
+                ?: Outcome.Failure(DexxiconError.Network("Couldn't reach any server"))
+        }
+        Outcome.Success(results.mapNotNull { (it as? Outcome.Success)?.value }.flatten())
+    }
+
+    /**
+     * issue #256 — page [page] of every server's series, merged by name (see [mergeSeries]).
+     * Same approximate cross-server paging as [allBooks]: a series one server lists on page 0
+     * can still turn up from another server on page 1, so callers merge each new page into
+     * what they already have by [SeriesEntry][net.dexxicon.reader.core.model.SeriesEntry] name.
+     */
+    suspend fun series(query: String?, page: Int, pageSize: Int = DEFAULT_PAGE_SIZE): Outcome<SeriesPage> =
+        withContext(io) {
+            val servers = serverRepository.servers.first()
+            if (servers.isEmpty()) return@withContext Outcome.Success(SeriesPage(emptyList(), hasMore = false))
+            val results = coroutineScope {
+                servers.map { server -> async { sourceFor(server).series(server, query, page, pageSize) } }.awaitAll()
+            }
+            val pages = results.mapNotNull { (it as? Outcome.Success)?.value }
+            if (pages.isEmpty()) {
+                return@withContext results.firstNotNullOfOrNull { it as? Outcome.Failure }
+                    ?: Outcome.Failure(DexxiconError.Network("Couldn't reach any server"))
+            }
+            Outcome.Success(mergeSeries(pages))
+        }
+
+    /**
+     * issue #256 — every server's series called exactly [name] (case/whitespace-insensitive),
+     * for opening a series from a book's own series line, where all that's known is its name.
+     * Found by searching each server for it, since BookOrbit addresses series by id.
+     */
+    suspend fun seriesNamed(name: String): List<BookGroup> = withContext(io) {
+        val key = seriesKey(name)
+        val servers = serverRepository.servers.first()
+        coroutineScope {
+            servers.map { server ->
+                async {
+                    (sourceFor(server).series(server, name, 0, SERIES_LOOKUP_SIZE) as? Outcome.Success)
+                        ?.value?.groups.orEmpty()
+                        .filter { seriesKey(it.name) == key }
+                }
+            }.awaitAll()
+        }.flatten()
+    }
+
+    /**
+     * issues #253/#254/#256 — page [page] of the books in [groups], merged across servers the
+     * same way [allBooks] merges the whole catalogue. Usually one group; a series spans one per
+     * server that has it. Series pages stay in series order.
+     */
+    suspend fun groupBooks(
+        groups: List<BookGroup>,
+        query: String?,
+        sort: BookSort,
+        page: Int,
+        pageSize: Int = DEFAULT_PAGE_SIZE,
+        formats: Set<ContentFormat>? = null,
+    ): Outcome<AggregatedBookPage> = withContext(io) {
+        if (groups.isEmpty()) return@withContext Outcome.Success(AggregatedBookPage(emptyList(), hasMore = false))
+        val results = coroutineScope {
+            groups.map { group ->
+                async {
+                    val server = serverRepository.get(group.serverId)
+                        ?: return@async null to notFound<BookPage>()
+                    server to sourceFor(server).groupBooks(server, group, query, sort, page, pageSize)
+                }
+            }.awaitAll()
+        }
+        val pages = results.mapNotNull { (server, outcome) ->
+            val value = (outcome as? Outcome.Success)?.value
+            if (server != null && value != null) server to value else null
+        }
+        if (pages.isEmpty()) {
+            return@withContext results.firstNotNullOfOrNull { it.second as? Outcome.Failure }
+                ?: Outcome.Failure(DexxiconError.Network("Couldn't reach any server"))
+        }
+        val isSeries = groups.all { it.kind == BookGroupKind.SERIES }
+        val merged = mergeAggregated(pages, if (isSeries) BookSort.SERIES else sort)
+        Outcome.Success(
+            if (formats == null) merged
+            else merged.copy(books = merged.books.filter { it.format in formats }),
+        )
+    }
+
     private fun <T> notFound(): Outcome<T> =
         Outcome.Failure(DexxiconError.NotFound("Server not found"))
 
     private companion object {
         const val DEFAULT_PAGE_SIZE = 40
+        const val SERIES_LOOKUP_SIZE = 20
     }
 }

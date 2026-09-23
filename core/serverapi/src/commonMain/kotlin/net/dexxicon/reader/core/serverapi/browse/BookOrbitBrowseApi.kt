@@ -42,6 +42,20 @@ class BookOrbitBrowseApi(private val client: HttpClient) {
 
     suspend fun book(url: String): BookOrbitBook = client.get(url).body()
 
+    /** `GET /api/v1/series/{id}/books` (issue #256) — a `BooksPage` plus `seriesInfo`, which
+     *  [BookOrbitBookPage] simply ignores. */
+    suspend fun booksPage(url: String): BookOrbitBookPage = client.get(url).body()
+
+    /** `GET /api/v1/series?q=&page=&size=&sort=name` (issue #256). */
+    suspend fun series(url: String): BookOrbitSeriesPage = client.get(url).body()
+
+    /** `GET /api/v1/collections` (issue #254) — book *and* podcast collections; callers keep
+     *  [BookOrbitCollection.isBooks] ones only. */
+    suspend fun collections(url: String): List<BookOrbitCollection> = client.get(url).body()
+
+    /** `GET /api/v1/smart-scopes` (issue #254) — same book/podcast split as [collections]. */
+    suspend fun smartScopes(url: String): List<BookOrbitSmartScope> = client.get(url).body()
+
     /** `GET /api/v1/dashboard/scrollers/{continue-reading|continue-listening}` → book cards. */
     suspend fun dashboardScroller(url: String): List<BookOrbitBook> = client.get(url).body()
 
@@ -97,6 +111,8 @@ data class BookOrbitBook(
     val narrators: List<String> = emptyList(),
     @SerialName("seriesName") val seriesName: String? = null,
     @SerialName("seriesIndex") val seriesIndex: String? = null,
+    /** issue #256 — what `/api/v1/series/{id}/books` is keyed by. */
+    val seriesId: Long? = null,
     val publisher: String? = null,
     val publishedYear: Int? = null,
     val publishedDate: String? = null,
@@ -122,6 +138,48 @@ data class BookOrbitBook(
     val primaryFile: BookOrbitFile?
         get() = files.firstOrNull { it.role.equals("primary", ignoreCase = true) }
             ?: files.firstOrNull()
+}
+
+/** `SeriesPage` (server `packages/types/src/series.ts`), trimmed to what the Series tab shows. */
+@Serializable
+data class BookOrbitSeriesPage(
+    val items: List<BookOrbitSeries> = emptyList(),
+    val total: Int = 0,
+    val page: Int = 0,
+    val size: Int = 0,
+)
+
+@Serializable
+data class BookOrbitSeries(
+    val id: Long,
+    val name: String,
+    val bookCount: Int? = null,
+    val authors: List<String> = emptyList(),
+    /** Books whose covers represent the series, first volume first. */
+    val coverBookIds: List<Long> = emptyList(),
+)
+
+/** `Collection` (server `packages/types/src/collection.ts`). */
+@Serializable
+data class BookOrbitCollection(
+    val id: Long,
+    val name: String,
+    val mediaType: String? = null,
+    val bookCount: Int? = null,
+) {
+    val isBooks: Boolean get() = mediaType == null || mediaType.equals("books", ignoreCase = true)
+}
+
+/** `SmartScope` (server `packages/types/src/smart-scope.ts`). `bookCount` is null when the
+ *  scope's saved filter failed to validate server-side. */
+@Serializable
+data class BookOrbitSmartScope(
+    val id: Long,
+    val name: String,
+    val mediaType: String? = null,
+    val bookCount: Int? = null,
+) {
+    val isBooks: Boolean get() = mediaType == null || mediaType.equals("books", ignoreCase = true)
 }
 
 @Serializable
