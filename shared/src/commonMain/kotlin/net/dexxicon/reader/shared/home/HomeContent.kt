@@ -87,21 +87,21 @@ fun HomeContent(
     val uiState by state.uiState.collectAsState()
 
     fun continueActions(entry: ContinueItem) = HomeItemActions(
-        downloadStatus = null,
+        downloadStatus = entry.downloadStatus,
         onMarkRead = { state.markRead(entry.serverId, entry.bookId) },
         onMarkUnread = { state.markUnread(entry.serverId, entry.bookId) },
         onSetStatus = { state.setReadingStatus(entry.serverId, entry.bookId, it) },
         onDetails = { onOpenBook(entry.serverId, entry.bookId) },
-        onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, null) },
+        onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, entry.downloadStatus) },
     )
 
     fun onDeckActions(entry: OnDeckItem) = HomeItemActions(
-        downloadStatus = null,
+        downloadStatus = entry.downloadStatus,
         onMarkRead = { state.markRead(entry.serverId, entry.bookId) },
         onMarkUnread = { state.markUnread(entry.serverId, entry.bookId) },
         onSetStatus = { state.setReadingStatus(entry.serverId, entry.bookId, it) },
         onDetails = { onOpenBook(entry.serverId, entry.bookId) },
-        onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, null) },
+        onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, entry.downloadStatus) },
     )
 
     fun downloadActions(download: Download): HomeItemActions {
@@ -309,12 +309,14 @@ private fun OnDeckCard(entry: OnDeckItem, onClick: () -> Unit, actions: HomeItem
                         append(entry.title)
                         entry.author?.let { append(", ").append(it) }
                         append(", want to read")
+                        if (entry.downloadStatus == DownloadStatus.DONE) append(", downloaded")
                     }
                 },
         ) {
             CoverImage(
                 coverUrl = entry.coverUrl,
                 contentDescription = null,
+                downloaded = entry.downloadStatus == DownloadStatus.DONE,
                 format = entry.format,
             )
             Text(
@@ -350,13 +352,14 @@ private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit, actions: Home
                 .semantics(mergeDescendants = true) {
                     contentDescription = "${entry.title}, $pct% ${
                         if (entry.format == ContentFormat.AUDIOBOOK) "listened" else "read"
-                    }"
+                    }" + if (entry.downloadStatus == DownloadStatus.DONE) ", downloaded" else ""
                 },
         ) {
             CoverImage(
                 coverUrl = entry.coverUrl,
                 contentDescription = null,
                 progress = entry.percent,
+                downloaded = entry.downloadStatus == DownloadStatus.DONE,
                 format = entry.format,
             )
             Text(

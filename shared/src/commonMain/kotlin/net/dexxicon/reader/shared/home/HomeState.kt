@@ -29,6 +29,9 @@ data class ContinueItem(
     val coverUrl: String?,
     val format: ContentFormat,
     val percent: Float,
+    /** issue #258 — this book's offline copy, if any, so the card can show the same
+     * "downloaded" badge and download/remove menu state every other shelf does. */
+    val downloadStatus: DownloadStatus? = null,
 )
 
 /** A book the user flagged "Want to read" on a server — shown in the On Deck shelf. */
@@ -39,6 +42,8 @@ data class OnDeckItem(
     val author: String?,
     val coverUrl: String?,
     val format: ContentFormat,
+    /** issue #258 — see [ContinueItem.downloadStatus]. */
+    val downloadStatus: DownloadStatus? = null,
 )
 
 data class HomeUiState(
@@ -91,11 +96,17 @@ class HomeState(
             val inProgress = progressByKey.values
                 .filter { it.isInProgress }
                 .sortedByDescending { it.updatedAt }
-            val items = inProgress.mapNotNull { it.toContinueItem() }
+            // issue #258 — Continue/On Deck cards never learned about downloads at all, so a
+            // downloaded book showed no badge there and its long-press menu offered to download
+            // it again instead of removing it.
+            val downloadStatusByKey = downloads.associate { it.key to it.status }
+            val items = inProgress.mapNotNull { it.toContinueItem(downloadStatusByKey[it.key]) }
             val inProgressKeys = inProgress.map { "${it.serverId}::${it.bookId}" }.toSet()
             HomeUiState(
                 // A book that's been started isn't "on deck" any more, whatever the server says.
-                onDeck = onDeckItems.filter { "${it.serverId}::${it.bookId}" !in inProgressKeys },
+                onDeck = onDeckItems
+                    .filter { "${it.serverId}::${it.bookId}" !in inProgressKeys }
+                    .map { it.copy(downloadStatus = downloadStatusByKey["${it.serverId}::${it.bookId}"]) },
                 continueReading = items.filter { it.format != ContentFormat.AUDIOBOOK },
                 continueListening = items.filter { it.format == ContentFormat.AUDIOBOOK },
                 downloads = downloads,
@@ -193,7 +204,7 @@ class HomeState(
         }
     }
 
-    private fun ReadingProgress.toContinueItem(): ContinueItem? {
+    private fun ReadingProgress.toContinueItem(downloadStatus: DownloadStatus?): ContinueItem? {
         val fmt = format ?: return null
         val name = title?.takeIf { it.isNotBlank() } ?: return null
         return ContinueItem(
@@ -204,6 +215,7 @@ class HomeState(
             coverUrl = coverUrl,
             format = fmt,
             percent = (percent ?: 0.0).toFloat().coerceIn(0f, 1f),
+            downloadStatus = downloadStatus,
         )
     }
 }
