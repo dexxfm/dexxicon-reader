@@ -56,6 +56,12 @@ data class BookCopy(
     val bookId: String,
     /** This copy's page in its server's web app (issue #260), when the server has one. */
     val webUrl: String? = null,
+    /**
+     * issue #298 — this copy comes from an OPDS catalog, not a BookOrbit/Grimmory server:
+     * it can be read (and, later, borrowed), but a catalog keeps no reading status, rating,
+     * highlights or offline copy for it.
+     */
+    val isCatalog: Boolean = false,
 )
 
 /**

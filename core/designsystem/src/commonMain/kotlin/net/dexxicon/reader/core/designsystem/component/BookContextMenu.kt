@@ -40,11 +40,26 @@ fun BookContextMenu(
     onDownloadOrRemove: () -> Unit,
     /** issue #251 — only Home's Continue shelves pass this: hide the book from them. */
     onRemoveFromContinue: (() -> Unit)? = null,
+    /** issue #298 — an OPDS catalog's book: no status, marking or offline copy to offer. */
+    catalogOnly: Boolean = false,
 ) {
     var showStatuses by remember(expanded) { mutableStateOf(false) }
 
     DropdownMenu(expanded = expanded, onDismissRequest = onDismiss) {
-        if (!showStatuses) {
+        if (catalogOnly) {
+            DropdownMenuItem(
+                text = { Text("Book details") },
+                leadingIcon = { Icon(Icons.Filled.Info, contentDescription = null) },
+                onClick = { onDismiss(); onDetails() },
+            )
+            if (onRemoveFromContinue != null) {
+                DropdownMenuItem(
+                    text = { Text("Remove from Continue") },
+                    leadingIcon = { Icon(Icons.Filled.VisibilityOff, contentDescription = null) },
+                    onClick = { onDismiss(); onRemoveFromContinue() },
+                )
+            }
+        } else if (!showStatuses) {
             DropdownMenuItem(
                 text = { Text("Mark as read") },
                 leadingIcon = { Icon(Icons.Filled.CheckCircle, contentDescription = null) },

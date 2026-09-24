@@ -108,6 +108,7 @@ class BookDetailState(
                 serverName = server?.displayName ?: "Library",
                 bookId = bid,
                 webUrl = server?.webBookUrl(bid),
+                isCatalog = server?.type?.supportsNativeApi == false,
             )
         }
 

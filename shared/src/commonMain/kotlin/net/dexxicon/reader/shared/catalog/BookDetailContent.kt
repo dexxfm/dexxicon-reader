@@ -423,12 +423,16 @@ private fun HeroBlock(
                 )
             }
             Spacer(Modifier.height(8.dp))
+            // issue #298 — an OPDS catalog keeps no reading status or rating for its books.
+            val catalogOnly = copies.isCatalogOnly()
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(onClick = {}, shape = Pill, label = { Text(formatLabel(detail)) })
-                ReadingStatusChip(detail.readingStatus, onSetStatus)
+                if (!catalogOnly) ReadingStatusChip(detail.readingStatus, onSetStatus)
             }
-            Spacer(Modifier.height(6.dp))
-            RatingRow(detail.rating, onSetRating)
+            if (!catalogOnly) {
+                Spacer(Modifier.height(6.dp))
+                RatingRow(detail.rating, onSetRating)
+            }
             val serverNames = copies.map { it.serverName }.distinct()
             if (serverNames.isNotEmpty()) {
                 FlowRow(
@@ -539,6 +543,9 @@ private fun ActionButtons(
     saveCopy: SaveCopyAction?,
 ) {
     val format = detail.summary.format
+    // issue #298 — an OPDS book's actions are the catalog's own: Read (an open-access file)
+    // now, Borrow later (#294). No offline copy, saved copy or highlights list.
+    val catalogOnly = copies.isCatalogOnly()
     val isAudio = format == ContentFormat.AUDIOBOOK
     val canOpen = format == ContentFormat.EPUB ||
         format == ContentFormat.COMIC ||
@@ -563,6 +570,7 @@ private fun ActionButtons(
             when {
                 isAudio -> "Play"
                 canOpen -> "Read"
+                catalogOnly -> "No free copy to read"
                 else -> "Read (reader coming soon)"
             },
         )
@@ -571,11 +579,12 @@ private fun ActionButtons(
     ProgressRow(detail, progress)
 
     // issue #259 — audiobooks can span many files, so there's no single file to save a copy of.
-    val copyAction = saveCopy?.takeIf { format != ContentFormat.AUDIOBOOK }
-    if (supportsDownloads || copyAction != null) {
+    val copyAction = saveCopy?.takeIf { format != ContentFormat.AUDIOBOOK && !catalogOnly }
+    val offline = supportsDownloads && !catalogOnly
+    if (offline || copyAction != null) {
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            if (supportsDownloads) {
+            if (offline) {
                 Box(Modifier.weight(1f)) { DownloadButton(download, onDownload, onRemoveDownload) }
             }
             copyAction?.let { SaveCopyButton(it) }
@@ -585,7 +594,7 @@ private fun ActionButtons(
     // issue #266 — EPUB only: both servers expose EPUB highlights as structured, listable
     // records; Grimmory's PDF annotations are one opaque blob for its own PDF.js viewer, so a
     // PDF list couldn't be offered on both servers alike.
-    if (format == ContentFormat.EPUB) {
+    if (format == ContentFormat.EPUB && !catalogOnly) {
         Spacer(Modifier.height(8.dp))
         OutlinedButton(
             onClick = onOpenHighlights,
@@ -678,6 +687,9 @@ private fun ProgressRow(detail: BookDetail, progress: ReadingProgress?) {
 
 /** Phase 4 (issue #115) — the mockup's small-caps section header ("ABOUT", "DETAILS"), shared
  * by both sections below instead of each rolling its own Text style. */
+/** issue #298 — every copy of this book comes from an OPDS catalog (none from a server). */
+private fun List<BookCopy>.isCatalogOnly(): Boolean = isNotEmpty() && all { it.isCatalog }
+
 @Composable
 private fun SectionHeader(text: String) {
     Text(
