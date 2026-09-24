@@ -264,9 +264,30 @@ class ReadingProgressRepository(
         for (row in rows) {
             if (row.series == null && row.seriesIndex == null) continue
             val existing = dao.find(row.key) ?: continue
-            if (existing.series != null || existing.seriesIndex != null) continue
-            dao.upsert(existing.copy(series = row.series, seriesIndex = row.seriesIndex))
+            // issue #282 — a row with the series name but no number (recorded when the server
+            // didn't have one yet) was skipped too, so its badge never appeared; fill whichever
+            // half is missing.
+            if (existing.series != null && existing.seriesIndex != null) continue
+            dao.upsert(
+                existing.copy(
+                    series = existing.series ?: row.series,
+                    seriesIndex = existing.seriesIndex ?: row.seriesIndex,
+                ),
+            )
         }
+    }
+
+    /**
+     * issue #282 — bring a tracked book's series name/number in line with the server's current
+     * detail (Book Detail calls this when it loads), so a badge missing or out of date on
+     * Home's shelves is fixed by just opening the book's page. Position, recency and `dirty`
+     * are left alone; nothing happens if the book isn't tracked or nothing changed.
+     */
+    suspend fun updateSeries(serverId: String, bookId: String, series: String?, seriesIndex: Double?) = withContext(io) {
+        if (series == null && seriesIndex == null) return@withContext
+        val existing = dao.find(key(serverId, bookId)) ?: return@withContext
+        if (existing.series == series && existing.seriesIndex == seriesIndex) return@withContext
+        dao.upsert(existing.copy(series = series, seriesIndex = seriesIndex))
     }
 
     /**

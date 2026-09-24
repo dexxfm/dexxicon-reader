@@ -63,6 +63,10 @@ class AndroidDownloadRepository @Inject constructor(
         dao.find(key(serverId, bookId))?.toDomain()
     }
 
+    override suspend fun updateSeries(serverId: String, bookId: String, series: String?, seriesIndex: Double?) {
+        withContext(io) { dao.updateSeries("$serverId::$bookId", series, seriesIndex) }
+    }
+
     override suspend fun enqueue(detail: BookDetail): EnqueueResult = withContext(io) {
         val prefs = appPreferences.preferences.first()
         val wifiOnly = prefs.downloadsWifiOnly
@@ -103,6 +107,7 @@ class AndroidDownloadRepository @Inject constructor(
             format = s.format,
             sourceUrl = acquisition.href,
             durationMs = detail.audio?.durationMs,
+            seriesIndex = s.seriesIndex,
         )
         dao.upsert(entity)
         workManager.enqueueUniqueWork(

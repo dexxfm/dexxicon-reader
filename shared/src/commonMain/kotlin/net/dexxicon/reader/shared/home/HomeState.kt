@@ -141,8 +141,10 @@ class HomeState(
                 downloadProgress = progressByKey
                     .mapValues { (_, p) -> (p.percent ?: 0.0).toFloat().coerceIn(0f, 1f) }
                     .filterValues { it > 0f },
-                downloadSeriesIndex = progressByKey
-                    .mapNotNull { (key, p) -> p.seriesIndex?.let { key to it } }
+                // issue #282 — the download's own number first: a downloaded book that was never
+                // opened has no progress row to borrow it from.
+                downloadSeriesIndex = downloads
+                    .mapNotNull { d -> (d.seriesIndex ?: progressByKey[d.key]?.seriesIndex)?.let { d.key to it } }
                     .toMap(),
                 loading = false,
                 refreshing = isRefreshing,
