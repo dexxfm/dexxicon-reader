@@ -34,6 +34,10 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import net.dexxicon.reader.shared.servers.ServerKind
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -784,6 +788,7 @@ fun AddServerScreen(
             container.serverProber,
             container.serverRepository,
             container.oidcAuthenticator,
+            container.opdsClient,
             scope,
             editingId = editingId,
             reauth = reauth,
@@ -825,6 +830,14 @@ fun AddServerScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // issue #291 — what kind of server: BookOrbit/Grimmory, a custom OPDS catalog,
+                // or a built-in catalog (Project Gutenberg, Open Library) that connects directly.
+                ServerKindDropdown(
+                    selected = state.kind,
+                    onSelect = state::onKindChange,
+                    enabled = !state.isEditing,
+                )
+
                 // Display name above Server URL, and SSO moved below Test Connection (was
                 // between Server URL and the Username/Password divider) — user-requested
                 // reordering, purely cosmetic.
@@ -835,11 +848,15 @@ fun AddServerScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
+                val typesAddress = state.kind == ServerKind.NATIVE || state.kind == ServerKind.OPDS
+                state.kind.blurb?.let { blurb ->
+                    Text(blurb, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (typesAddress) OutlinedTextField(
                     value = state.baseUrl,
                     onValueChange = state::onBaseUrlChange,
-                    label = { Text("Server URL") },
-                    placeholder = { Text("books.example.com") },
+                    label = { Text(if (state.kind == ServerKind.OPDS) "Catalog URL" else "Server URL") },
+                    placeholder = { Text(if (state.kind == ServerKind.OPDS) "example.com/opds" else "books.example.com") },
                     // issue #267 — say what a scheme-less address does, so http:// vs
                     // https:// isn't a guess.
                     supportingText = { Text("Without http:// or https://, HTTPS is tried first, then HTTP.") },
@@ -854,12 +871,13 @@ fun AddServerScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                HorizontalDivider()
+                if (typesAddress) HorizontalDivider()
 
-                OutlinedTextField(
+                val credentialsOptional = if (state.kind == ServerKind.OPDS) " (optional)" else ""
+                if (typesAddress) OutlinedTextField(
                     value = state.username,
                     onValueChange = state::onUsernameChange,
-                    label = { Text("Username") },
+                    label = { Text("Username$credentialsOptional") },
                     singleLine = true,
                     // issue #177: without this, Compose Multiplatform's iOS text field fell back
                     // to the platform's default autocorrect/smart-punctuation behavior — a
@@ -874,10 +892,10 @@ fun AddServerScreen(
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
+                if (typesAddress) OutlinedTextField(
                     value = state.password,
                     onValueChange = state::onPasswordChange,
-                    label = { Text(if (state.isEditing) "Password (leave blank to keep current)" else "Password") },
+                    label = { Text(if (state.isEditing) "Password (leave blank to keep current)" else "Password$credentialsOptional") },
                     singleLine = true,
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
@@ -922,7 +940,7 @@ fun AddServerScreen(
                 // Phase 4 Stage G (issue #144) — always shown, matching native's form exactly:
                 // SSO is one more optional action on the same form, not a different screen for
                 // OIDC servers (see AddServerState's doc comment for what this replaced).
-                when (sso) {
+                if (state.kind == ServerKind.NATIVE) when (sso) {
                     is SsoState.Discovering -> OutlinedButton(
                         onClick = {},
                         enabled = false,
@@ -938,7 +956,7 @@ fun AddServerScreen(
                     Text(sso.message, color = MaterialTheme.colorScheme.error)
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                if (state.kind == ServerKind.NATIVE) Row(verticalAlignment = Alignment.CenterVertically) {
                     HorizontalDivider(modifier = Modifier.weight(1f))
                     Text(
                         "  or  ",
@@ -971,6 +989,38 @@ fun AddServerScreen(
                 onPasswordChange = state::onKoSyncPasswordChange,
                 onDone = { showKoReader = false },
             )
+        }
+    }
+}
+
+/** issue #291 — Add server's "Server type" menu. Locked while editing: a saved server keeps its
+ *  kind (its id, progress and downloads belong to that server). */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ServerKindDropdown(selected: ServerKind, onSelect: (ServerKind) -> Unit, enabled: Boolean) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded && enabled, onExpandedChange = { if (enabled) expanded = it }) {
+        OutlinedTextField(
+            value = selected.label,
+            onValueChange = {},
+            readOnly = true,
+            enabled = enabled,
+            label = { Text("Server type") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled),
+        )
+        ExposedDropdownMenu(expanded = expanded && enabled, onDismissRequest = { expanded = false }) {
+            ServerKind.entries.forEach { kind ->
+                DropdownMenuItem(
+                    text = { Text(kind.label) },
+                    onClick = {
+                        onSelect(kind)
+                        expanded = false
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                )
+            }
         }
     }
 }

@@ -12,6 +12,7 @@ import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.catalog.BookOrbitCatalogSource
 import net.dexxicon.reader.core.data.catalog.GrimmoryCatalogSource
 import net.dexxicon.reader.core.data.catalog.OpdsCatalogSource
+import net.dexxicon.reader.core.serverapi.opds.OpdsClient
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import javax.inject.Singleton
@@ -39,7 +40,7 @@ object CatalogModule {
 
     @Provides
     @Singleton
-    fun provideOpdsCatalogSource(): OpdsCatalogSource = OpdsCatalogSource()
+    fun provideOpdsCatalogSource(client: OpdsClient): OpdsCatalogSource = OpdsCatalogSource(client)
 
     @Provides
     @Singleton

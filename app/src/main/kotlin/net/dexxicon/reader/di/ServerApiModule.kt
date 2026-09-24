@@ -10,6 +10,7 @@ import net.dexxicon.reader.core.serverapi.bookmark.BookmarkApi
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 import net.dexxicon.reader.core.serverapi.kosync.KoSyncApi
+import net.dexxicon.reader.core.serverapi.opds.OpdsClient
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import net.dexxicon.reader.core.serverapi.user.NativeUserApi
 import javax.inject.Singleton
@@ -35,6 +36,11 @@ object ServerApiModule {
     @Provides
     @Singleton
     fun provideBookOrbitBrowseApi(client: HttpClient): BookOrbitBrowseApi = BookOrbitBrowseApi(client)
+
+    /** issue #291 — OPDS 2.0 / 1.2 catalogs (Gutenberg, Open Library, custom). */
+    @Provides
+    @Singleton
+    fun provideOpdsClient(client: HttpClient): OpdsClient = OpdsClient(client)
 
     @Provides
     @Singleton

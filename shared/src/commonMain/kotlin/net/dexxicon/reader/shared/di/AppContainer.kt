@@ -40,6 +40,7 @@ import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.data.catalog.BookOrbitCatalogSource
 import net.dexxicon.reader.core.data.catalog.GrimmoryCatalogSource
 import net.dexxicon.reader.core.data.catalog.OpdsCatalogSource
+import net.dexxicon.reader.core.serverapi.opds.OpdsClient
 import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.KoSyncRepository
 import net.dexxicon.reader.core.data.sync.LibrarySeeder
@@ -202,6 +203,9 @@ class AppContainer(
     private val nativeAuthApi = NativeAuthApi(httpClient)
     private val nativeAuthClient = NativeAuthClient(nativeAuthApi)
     private val nativeUserApi = NativeUserApi(httpClient)
+
+    /** issue #291 — OPDS catalogs: browsing (via [catalogRepository]) and Add server's test. */
+    val opdsClient = OpdsClient(httpClient)
     private val oidcApi = OidcApi(httpClient)
     private val oidcClient = OidcClient(oidcApi)
     private val bookOrbitBrowseApi = BookOrbitBrowseApi(httpClient)
@@ -280,7 +284,7 @@ class AppContainer(
         serverRepository = serverRepository,
         grimmorySource = GrimmoryCatalogSource(grimmoryBrowseApi),
         bookOrbitSource = BookOrbitCatalogSource(bookOrbitBrowseApi),
-        opdsSource = OpdsCatalogSource(),
+        opdsSource = OpdsCatalogSource(opdsClient),
         io = io,
     )
     val bookActions: BookActions = BookActions(

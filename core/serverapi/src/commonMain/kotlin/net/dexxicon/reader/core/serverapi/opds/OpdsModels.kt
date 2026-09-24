@@ -45,11 +45,12 @@ sealed interface OpdsSearch {
         fun expand(query: String): String {
             val q = query.encodeURLParameter()
             return template
-                .replace(Regex("""\{\?query[^}]*}"""), "?query=$q")
-                .replace(Regex("""\{&query[^}]*}"""), "&query=$q")
+                .replace(Regex("""\{\?query[^}]*\}"""), "?query=$q")
+                .replace(Regex("""\{&query[^}]*\}"""), "&query=$q")
                 .replace("{searchTerms}", q)
                 // Optional OpenSearch parameters we don't fill ({startPage?}, {count?}, …).
-                .replace(Regex("""\{[^}]*\?}"""), "")
+                // Every brace escaped: Android's ICU regex rejects a bare `}` the JVM allows.
+                .replace(Regex("""\{[^}]*\?\}"""), "")
         }
     }
 

@@ -3,6 +3,9 @@ package net.dexxicon.reader.shared.servers
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.ktor.client.plugins.ResponseException
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.common.Outcome
@@ -14,6 +17,8 @@ import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerProbeResult
 import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.serverapi.oidc.OidcHandshake
+import net.dexxicon.reader.core.serverapi.opds.OpdsClient
+import net.dexxicon.reader.core.serverapi.opds.OpdsFormatException
 import net.dexxicon.reader.shared.sso.Pkce
 
 /**
@@ -48,10 +53,17 @@ class AddServerState(
     private val serverProber: ServerProber,
     private val serverRepository: ServerRepository,
     private val oidcAuthenticator: OidcAuthenticator,
+    /** issue #291 — tests OPDS catalogs (they have no native sign-in to probe). */
+    private val opdsClient: OpdsClient,
     private val scope: CoroutineScope,
     private val editingId: String? = null,
     private val reauth: Boolean = false,
 ) {
+    /** issue #291 — what's being added: a BookOrbit/Grimmory server, a custom OPDS catalog, or
+     *  one of the built-in OPDS catalogs. */
+    var kind by mutableStateOf(ServerKind.NATIVE)
+        private set
+
     var displayName by mutableStateOf("")
         private set
     var baseUrl by mutableStateOf("")
@@ -86,6 +98,7 @@ class AddServerState(
             scope.launch {
                 serverRepository.get(editingId)?.let { server ->
                     loadedServer = server
+                    if (server.type == ServerType.GENERIC) kind = ServerKind.forCatalogUrl(server.baseUrl)
                     displayName = server.displayName
                     baseUrl = server.baseUrl
                     username = server.username
@@ -101,11 +114,30 @@ class AddServerState(
      * form, so a server never gets saved with a type/auth-mode nobody actually verified.
      * Editing doesn't — the user may not be touching the URL/credentials at all. */
     val canTest: Boolean
-        get() = baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank() &&
-            testState != TestState.Testing
+        get() = testState != TestState.Testing && when (kind) {
+            ServerKind.NATIVE -> baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+            // Credentials are optional for a catalog; a username without a password isn't.
+            ServerKind.OPDS -> baseUrl.isNotBlank() && (username.isBlank() || password.isNotBlank() || isEditing)
+            else -> true
+        }
     val canSave: Boolean
         get() = displayName.isNotBlank() && baseUrl.isNotBlank() &&
             (isEditing || testState is TestState.Success) && !saving
+
+    /** issue #291 — a built-in catalog fills in its own address and name; nothing else to type. */
+    fun onKindChange(value: ServerKind) {
+        if (value == kind) return
+        val previousPreset = kind.presetName
+        kind = value
+        testState = TestState.Idle
+        ssoState = SsoState.Idle
+        baseUrl = value.presetUrl ?: if (previousPreset != null) "" else baseUrl
+        if (displayName.isBlank() || displayName == previousPreset) displayName = value.presetName.orEmpty()
+        if (value.presetUrl != null) {
+            username = ""
+            password = ""
+        }
+    }
 
     fun onDisplayNameChange(value: String) { displayName = value }
     fun onBaseUrlChange(value: String) {
@@ -122,6 +154,10 @@ class AddServerState(
     fun test() {
         if (!canTest) return
         testState = TestState.Testing
+        if (kind.isOpds) {
+            scope.launch { testState = testOpds() }
+            return
+        }
         scope.launch {
             // issue #177: matches save()'s existing `username.trim()` — without it, stray
             // leading/trailing whitespace a keyboard's predictive-text bar can silently insert
@@ -158,12 +194,14 @@ class AddServerState(
                     id = editingId ?: "",
                     displayName = displayName.trim(),
                     baseUrl = success?.baseUrl ?: normalizeUrl(baseUrl),
-                    type = success?.type ?: base?.type ?: ServerType.GENERIC,
+                    type = if (kind.isOpds) ServerType.GENERIC else success?.type ?: base?.type ?: ServerType.GENERIC,
                     // Keep an existing server's auth mode — editing a field shouldn't
                     // silently downgrade an SSO server to password auth. An OIDC server can
                     // still edit its name/URL/username here; re-authenticating is a separate
                     // action (discoverSso/completeSso) matching native's form exactly.
-                    authMode = base?.authMode ?: AuthMode.NATIVE,
+                    // issue #291 — an OPDS catalog is always HTTP Basic (with no password
+                    // saved, nothing is sent).
+                    authMode = if (kind.isOpds) AuthMode.BASIC else base?.authMode ?: AuthMode.NATIVE,
                     username = username.trim(),
                     koSyncUrl = koSyncUrl.trim().trimEnd('/').takeIf { it.isNotBlank() },
                     koSyncUsername = koSyncUsername.trim().takeIf { it.isNotBlank() },
@@ -243,6 +281,52 @@ class AddServerState(
         )
     }
 
+    /**
+     * issue #291 — an OPDS catalog "connects" when its root feed parses: OPDS 2.0 if the catalog
+     * offers it, else 1.2 (see [OpdsClient]). A typed address without a scheme tries HTTPS, then
+     * HTTP, the same rule as [ServerProber] (issue #267).
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private suspend fun testOpds(): TestState {
+        val typed = (kind.presetUrl ?: baseUrl).trim()
+        val candidates = if (typed.startsWith("http://", true) || typed.startsWith("https://", true)) {
+            listOf(typed)
+        } else {
+            listOf("https://$typed", "http://$typed")
+        }
+        val user = username.trim()
+        val authorization = user.takeIf { it.isNotBlank() && password.isNotBlank() }
+            ?.let { "Basic " + Base64.Default.encode("$it:$password".encodeToByteArray()) }
+        var unreachable: String? = null
+        for (url in candidates) {
+            try {
+                val feed = opdsClient.feed(url, authorization)
+                if (displayName.isBlank()) displayName = kind.presetName ?: feed.title
+                baseUrl = url
+                return TestState.Success(
+                    ServerType.GENERIC,
+                    "${feed.version.label} · ${feed.title}" +
+                        if (url.startsWith("http://", ignoreCase = true)) " (not encrypted — HTTP)" else "",
+                    url,
+                )
+            } catch (e: ResponseException) {
+                val status = e.response.status.value
+                if (status == 401 || status == 403) {
+                    return TestState.Failure(
+                        if (authorization == null) "This catalog needs a username and password"
+                        else "The catalog didn't accept that username and password",
+                    )
+                }
+                return TestState.Failure("The catalog returned HTTP $status — check the address")
+            } catch (e: OpdsFormatException) {
+                return TestState.Failure("That address didn't return an OPDS catalog. Use the catalog's own feed URL.")
+            } catch (e: Exception) {
+                unreachable = e.message
+            }
+        }
+        return TestState.Failure("Couldn't reach the catalog" + (unreachable?.let { " ($it)" } ?: ""))
+    }
+
     /** "Bookorbit · connected", plus a nudge when that connection is plain HTTP (issue #267)
      *  — worth knowing on a LAN, worth fixing if the server is reachable from the internet. */
     private fun connectedLabel(type: ServerType, url: String): String =
@@ -277,4 +361,48 @@ sealed interface SsoState {
     data class Ready(val handshake: OidcHandshake, val pkce: Pkce) : SsoState
     data object Exchanging : SsoState
     data class Error(val message: String) : SsoState
+}
+
+/**
+ * issue #291 — Add server's "Server type" choice. The built-in catalogs connect directly (no
+ * address or account to type); a custom OPDS catalog takes its feed URL and, if it needs one,
+ * a username and password (HTTP Basic).
+ */
+enum class ServerKind(
+    val label: String,
+    val presetUrl: String? = null,
+    val presetName: String? = null,
+    val blurb: String? = null,
+) {
+    NATIVE("BookOrbit or Grimmory"),
+    OPDS(
+        "OPDS catalog",
+        blurb = "Any OPDS 2.0 or 1.2 catalog: its feed URL, plus a username and password if it needs one.",
+    ),
+    GUTENBERG(
+        "Project Gutenberg",
+        presetUrl = "https://www.gutenberg.org/ebooks.opds/",
+        presetName = "Project Gutenberg",
+        blurb = "Over 75,000 free ebooks in the public domain. No account needed.",
+    ),
+    OPEN_LIBRARY(
+        "Open Library",
+        presetUrl = "https://openlibrary.org/opds/",
+        presetName = "Open Library",
+        blurb = "The Internet Archive's open catalog. Free open-access books download directly; " +
+            "borrowing isn't supported yet.",
+    ),
+    ;
+
+    val isOpds: Boolean get() = this != NATIVE
+
+    companion object {
+        /** A saved generic server: a built-in catalog if its address is one, else custom OPDS. */
+        fun forCatalogUrl(url: String): ServerKind {
+            val host = url.substringAfter("://").substringBefore('/').removePrefix("www.").removePrefix("m.")
+            return entries.firstOrNull { k ->
+                k.presetUrl?.substringAfter("://")?.substringBefore('/')?.removePrefix("www.") == host
+            } ?: OPDS
+        }
+    }
 }
