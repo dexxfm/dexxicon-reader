@@ -181,7 +181,6 @@ androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "a
 readium-shared = { module = "org.readium.kotlin-toolkit:readium-shared", version.ref = "readium" }
 readium-streamer = { module = "org.readium.kotlin-toolkit:readium-streamer", version.ref = "readium" }
 readium-navigator = { module = "org.readium.kotlin-toolkit:readium-navigator", version.ref = "readium" }
-readium-opds = { module = "org.readium.kotlin-toolkit:readium-opds", version.ref = "readium" }
 readium-adapter-pdfium = { module = "org.readium.kotlin-toolkit:readium-adapter-pdfium", version.ref = "readium" }
 junrar = { module = "com.github.junrar:junrar", version.ref = "junrar" }
 # Pin matches what readium-adapter-pdfium-navigator resolves transitively today — bump this
