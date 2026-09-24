@@ -24,7 +24,7 @@ internal fun mergeAggregated(
     for ((server, bookPage) in pages) {
         for (book in bookPage.books) {
             val key = aggregateKey(book.title, book.authors.firstOrNull(), book.format)
-            val copy = BookCopy(server.id, server.displayName, book.id)
+            val copy = BookCopy(server.id, server.displayName, book.id, isCatalog = !server.type.supportsNativeApi)
             val existing = merged[key]
             merged[key] = if (existing == null) {
                 AggregatedBook(

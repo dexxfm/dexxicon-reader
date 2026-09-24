@@ -74,6 +74,7 @@ private data class BooksItemActions(
     val onSetStatus: (ReadingStatus) -> Unit,
     val onDetails: () -> Unit,
     val onDownloadOrRemove: () -> Unit,
+    val catalogOnly: Boolean = false,
 )
 
 /**
@@ -123,6 +124,7 @@ private fun BooksBody(
     onOpenReader: OnOpenReader,
 ) {
     val overlays by state.overlays.collectAsState()
+    val isCatalog by state.isCatalog.collectAsState()
 
     fun onTapCover(book: BookSummary) = when (state.coverTapAction) {
         CoverTapAction.OPEN_DETAILS -> onOpenBook(book.id)
@@ -132,6 +134,7 @@ private fun BooksBody(
     fun actionsFor(book: BookSummary): BooksItemActions {
         val key = "${book.serverId}::${book.id}"
         return BooksItemActions(
+            catalogOnly = isCatalog,
             downloadStatus = if (key in overlays.downloaded) DownloadStatus.DONE else null,
             onMarkRead = { state.markRead(book.id) },
             onMarkUnread = { state.markUnread(book.id) },
@@ -373,5 +376,6 @@ private fun BooksMenu(expanded: Boolean, onDismiss: () -> Unit, actions: BooksIt
         onSetStatus = actions.onSetStatus,
         onDetails = actions.onDetails,
         onDownloadOrRemove = actions.onDownloadOrRemove,
+        catalogOnly = actions.catalogOnly,
     )
 }

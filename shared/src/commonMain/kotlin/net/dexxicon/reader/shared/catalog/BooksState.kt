@@ -53,6 +53,12 @@ class BooksState(
             .map { it?.displayName ?: "" }
             .stateIn(scope, SharingStarted.WhileSubscribed(5_000), "")
 
+    /** issue #298 — this server is an OPDS catalog, so its books get only a catalog's actions. */
+    val isCatalog: StateFlow<Boolean> =
+        container.serverRepository.server(serverId)
+            .map { it != null && !it.type.supportsNativeApi }
+            .stateIn(scope, SharingStarted.WhileSubscribed(5_000), false)
+
     /** What's currently typed, before [search] commits it as [activeQuery]. */
     var queryDraft: String by mutableStateOf("")
     private var activeQuery: String? by mutableStateOf(null)

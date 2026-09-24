@@ -74,6 +74,8 @@ private data class HomeItemActions(
     val onDownloadOrRemove: () -> Unit,
     /** issue #251 — Continue shelves only. */
     val onRemoveFromContinue: (() -> Unit)? = null,
+    /** issue #298 — the book comes from an OPDS catalog. */
+    val catalogOnly: Boolean = false,
 )
 
 /**
@@ -95,6 +97,7 @@ fun HomeContent(
     val uiState by state.uiState.collectAsState()
     val layout by state.layout.collectAsState()
     val pinned by state.pinnedShelves.collectAsState()
+    val catalogServers by state.catalogServerIds.collectAsState()
 
     fun continueActions(entry: ContinueItem) = HomeItemActions(
         downloadStatus = entry.downloadStatus,
@@ -104,6 +107,7 @@ fun HomeContent(
         onDetails = { onOpenBook(entry.serverId, entry.bookId) },
         onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, entry.downloadStatus) },
         onRemoveFromContinue = { state.hideFromContinue(entry) },
+        catalogOnly = entry.serverId in catalogServers,
     )
 
     fun onDeckActions(entry: OnDeckItem) = HomeItemActions(
@@ -113,6 +117,7 @@ fun HomeContent(
         onSetStatus = { state.setReadingStatus(entry.serverId, entry.bookId, it) },
         onDetails = { onOpenBook(entry.serverId, entry.bookId) },
         onDownloadOrRemove = { state.downloadOrRemove(entry.serverId, entry.bookId, entry.downloadStatus) },
+        catalogOnly = entry.serverId in catalogServers,
     )
 
     fun downloadActions(download: Download): HomeItemActions {
@@ -567,5 +572,6 @@ private fun HomeMenu(expanded: Boolean, onDismiss: () -> Unit, actions: HomeItem
         onDetails = actions.onDetails,
         onDownloadOrRemove = actions.onDownloadOrRemove,
         onRemoveFromContinue = actions.onRemoveFromContinue,
+        catalogOnly = actions.catalogOnly,
     )
 }

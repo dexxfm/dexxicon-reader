@@ -109,6 +109,11 @@ class HomeState(
     private val scope: CoroutineScope,
 ) {
     private val refreshing = MutableStateFlow(false)
+
+    /** issue #298 — OPDS catalogs' server ids: their books get only the actions a catalog has. */
+    val catalogServerIds: StateFlow<Set<String>> = container.serverRepository.servers
+        .map { servers -> servers.filterNot { it.type.supportsNativeApi }.map { it.id }.toSet() }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptySet())
     private val onDeck = MutableStateFlow<List<OnDeckItem>>(emptyList())
     private val lastReport = MutableStateFlow<SyncReport?>(null)
 

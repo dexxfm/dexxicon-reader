@@ -94,6 +94,7 @@ private data class LibraryItemActions(
     val onSetStatus: (ReadingStatus) -> Unit,
     val onDetails: () -> Unit,
     val onDownloadOrRemove: () -> Unit,
+    val catalogOnly: Boolean = false,
 )
 
 /**
@@ -202,6 +203,7 @@ fun LibraryBooksPane(
         // Status/mark-read applies to every copy so the servers don't disagree.
         val targets = book.copies.map { it.serverId to it.bookId }
         return LibraryItemActions(
+            catalogOnly = book.copies.isNotEmpty() && book.copies.all { it.isCatalog },
             downloadStatus = if (book.downloadedIn(overlays)) DownloadStatus.DONE else null,
             onMarkRead = { state.markRead(targets) },
             onMarkUnread = { state.markUnread(targets) },
@@ -465,6 +467,7 @@ private fun LibraryMenu(expanded: Boolean, onDismiss: () -> Unit, actions: Libra
         onSetStatus = actions.onSetStatus,
         onDetails = actions.onDetails,
         onDownloadOrRemove = actions.onDownloadOrRemove,
+        catalogOnly = actions.catalogOnly,
     )
 }
 
