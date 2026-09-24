@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.2.2</string>
+	<string>1.3.0</string>
 	<key>CFBundleVersion</key>
-	<string>44</string>
+	<string>45</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<!-- issue #267: self-hosted servers are often plain HTTP on the local network. ATS already
