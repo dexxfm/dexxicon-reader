@@ -38,6 +38,7 @@ import androidx.compose.material.icons.filled.FormatQuote
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.StarBorder
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -61,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -150,11 +152,34 @@ fun BookDetailContent(
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
                 CircularProgressIndicator()
             }
-            state.error != null -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    BackPill(onBack)
-                    Spacer(Modifier.height(12.dp))
-                    Text(state.error ?: "", color = MaterialTheme.colorScheme.error)
+            // issue #301 — pull down to try again.
+            state.error != null -> PullToRefreshBox(
+                isRefreshing = state.retrying,
+                onRefresh = state::retry,
+                modifier = Modifier.fillMaxSize().padding(padding),
+            ) {
+                // Scrollable so the pull gesture has something to drag.
+                BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val viewport = maxHeight
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(rememberScrollState())
+                            .heightIn(min = viewport)
+                            .padding(horizontal = 24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center,
+                    ) {
+                        BackPill(onBack)
+                        Spacer(Modifier.height(12.dp))
+                        Text(state.error ?: "", color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Pull down to try again",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
             }
             state.detail != null -> {
