@@ -157,7 +157,8 @@ class OpdsCatalogSource(private val client: OpdsClient) : CatalogSource {
             summary = merged.toSummary(server, bookId, acquisitions.minByOrNull { it.format.priority }?.format),
             description = merged.summary,
             publisher = merged.publisher,
-            publishedDate = merged.published,
+            // issue #295 — Atom dates are full timestamps; the day is what's worth showing.
+            publishedDate = merged.published?.let { DATE.find(it)?.value ?: it },
             language = merged.language,
             categories = merged.categories,
             acquisitions = acquisitions,
@@ -243,6 +244,7 @@ class OpdsCatalogSource(private val client: OpdsClient) : CatalogSource {
     internal companion object {
         val READABLE = setOf(ContentFormat.EPUB, ContentFormat.PDF, ContentFormat.COMIC)
         const val ENTRY_PREFIX = "opds-entry:"
+        val DATE = Regex("""^\d{4}-\d{2}-\d{2}""")
 
         /** An id for a book with no detail URL: the feed it was listed in + its entry id. */
         @OptIn(ExperimentalEncodingApi::class)

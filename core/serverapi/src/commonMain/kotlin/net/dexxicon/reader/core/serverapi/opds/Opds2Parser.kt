@@ -94,7 +94,8 @@ internal object Opds2Parser {
             id = metadata.string("identifier") ?: detail ?: title,
             title = title,
             authors = contributors(metadata["author"]),
-            summary = metadata.string("description"),
+            // issue #295 — the spec allows HTML here.
+            summary = metadata.string("description")?.let { OpdsText.join(OpdsText.paragraphsOf(it)) },
             language = metadata["language"].let { (it as? JsonArray)?.firstOrNull() ?: it }?.let { (it as? JsonPrimitive)?.contentOrNull },
             published = metadata.string("published"),
             publisher = contributors(metadata["publisher"]).firstOrNull(),

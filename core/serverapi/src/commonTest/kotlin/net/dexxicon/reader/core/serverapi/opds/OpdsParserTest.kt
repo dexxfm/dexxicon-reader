@@ -43,7 +43,10 @@ class OpdsParserTest {
         val book = Opds1Parser.parseFeed(OpdsFixtures.GUTENBERG_BOOK, "https://www.gutenberg.org/ebooks/1342.opds").publications
             .maxBy { it.acquisitions.size }
         assertEquals("Pride and Prejudice", book.title)
-        assertEquals(listOf("Austen, Jane"), book.authors)
+        // issue #295 — shown as Gutenberg's lists show it, not in catalogue order.
+        assertEquals(listOf("Jane Austen"), book.authors)
+        assertEquals("1998-06-01T00:00:00+00:00", book.published)
+        assertTrue("Text" !in book.categories, "a DCMI type isn't a subject")
         val epub = book.acquisitions.first { it.href.endsWith("1342.epub3.images") }
         assertEquals("application/epub+zip", epub.type)
         assertTrue(epub.isOpenAccess)
@@ -187,5 +190,109 @@ class OpdsParserTest {
     @Test
     fun theGutenbergRootIsNotSortable() {
         assertTrue(Opds1Parser.parseFeed(OpdsFixtures.GUTENBERG_ROOT, "https://www.gutenberg.org/ebooks.opds/").facets.isEmpty())
+    }
+
+    // ---- Descriptions (issue #295) -------------------------------------------------------
+
+    private fun gutenbergEntry(content: String) = """<feed xmlns="http://www.w3.org/2005/Atom"><title>t</title><entry>
+        <title>Pride and Prejudice</title><id>urn:gutenberg:1342:2</id>
+        <author><name>Austen, Jane</name></author>
+        <link type="application/epub+zip" rel="http://opds-spec.org/acquisition" href="/ebooks/1342.epub3.images"/>
+        <content type="xhtml">
+        <div xmlns="http://www.w3.org/1999/xhtml">$content</div>
+        </content></entry></feed>"""
+
+    private val gutenbergRecord = """<p>This edition had all images removed.</p>
+        <p>
+        Title:
+        Pride and Prejudice
+        </p>
+        <p>
+        Note:
+        Wikipedia page about this book: https:<a href="//en.wikipedia.org/wiki/Pride_and_Prejudice">//en.wikipedia.org/wiki/Pride_and_Prejudice</a>
+        </p>
+        <p>
+        Summary:
+        "Pride and Prejudice" by Jane Austen is a novel published in 1813. It follows
+        Elizabeth Bennet. (This is an automatically generated summary.)
+        </p>
+        <p>
+        Reading Level:
+        Reading ease score: 69.2 (8th &amp; 9th grade).
+        </p>
+        <p>Author: Austen, Jane, 1775-1817</p>
+        <p>EBook No.: 1342</p>
+        <p>Subject: England -- Fiction</p><p>Subject: Love stories</p>
+        <p>Rights: Public domain in the USA.</p>"""
+
+    @Test
+    fun aGutenbergRecordShowsJustItsSummary() {
+        val book = Opds1Parser.parseFeed(gutenbergEntry(gutenbergRecord), "https://www.gutenberg.org/ebooks/1342.opds").publications.single()
+        assertEquals(
+            "\"Pride and Prejudice\" by Jane Austen is a novel published in 1813. It follows Elizabeth Bennet. " +
+                "(This is an automatically generated summary.)",
+            book.summary,
+        )
+    }
+
+    @Test
+    fun aGutenbergRecordWithoutASummaryDropsWhatTheDetailsAlreadyShow() {
+        val record = gutenbergRecord.substringBefore("<p>\n        Summary:") +
+            gutenbergRecord.substringAfter("summary.)\n        </p>")
+        val book = Opds1Parser.parseFeed(gutenbergEntry(record), "https://www.gutenberg.org/ebooks/1342.opds").publications.single()
+        assertEquals(
+            "This edition had all images removed.\n\n" +
+                "Note: Wikipedia page about this book: https://en.wikipedia.org/wiki/Pride_and_Prejudice\n\n" +
+                "Reading Level: Reading ease score: 69.2 (8th & 9th grade).",
+            book.summary,
+        )
+    }
+
+    @Test
+    fun xhtmlAndHtmlDescriptionsFlowIntoParagraphs() {
+        val body = """<feed xmlns="http://www.w3.org/2005/Atom"><title>t</title>
+            <entry><title>A</title><id>a</id><link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="/a.epub"/>
+              <content type="xhtml"><div xmlns="http://www.w3.org/1999/xhtml"><p>One line,
+                hard-wrapped.</p><p>Two<br/>Three</p></div></content></entry>
+            <entry><title>B</title><id>b</id><link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="/b.epub"/>
+              <summary type="html">&lt;p&gt;Fish &amp;amp; chips&amp;hellip;&lt;/p&gt;&lt;p&gt;&lt;i&gt;Second&lt;/i&gt;&lt;/p&gt;</summary></entry>
+            <entry><title>C</title><id>c</id><link rel="http://opds-spec.org/acquisition" type="application/epub+zip" href="/c.epub"/>
+              <summary>First paragraph
+            wrapped.
+
+            Second.</summary></entry>
+            </feed>"""
+        val books = Opds1Parser.parseFeed(body, "https://calibre.example/opds").publications
+        assertEquals(
+            listOf("One line, hard-wrapped.\n\nTwo\n\nThree", "Fish & chips…\n\nSecond", "First paragraph wrapped.\n\nSecond."),
+            books.map { it.summary },
+        )
+    }
+
+    @Test
+    fun anOpds2HtmlDescriptionIsPlainText() {
+        val body = """{"metadata":{"title":"Feed"},"publications":[{"metadata":{"title":"A",
+            "description":"<p>Line one.</p>\n<p>Line &amp; two.</p>"},"links":[]}]}"""
+        assertEquals("Line one.\n\nLine & two.", Opds2Parser.parseFeed(body, "https://x.example/").publications.single().summary)
+    }
+
+    @Test
+    fun aGutenbergListEntryWithoutAnAuthorDoesNotShowItsDownloadsAsOne() {
+        val body = """<feed xmlns="http://www.w3.org/2005/Atom"><title>Popular</title>
+            <entry><title>Chambers's Twentieth Century Dictionary</title><id>urn:gutenberg:37683</id>
+              <content type="text">52555 downloads</content>
+              <link type="application/atom+xml;profile=opds-catalog" rel="subsection" href="/ebooks/37683.opds"/></entry>
+            </feed>"""
+        val book = Opds1Parser.parseFeed(body, "https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads").publications.single()
+        assertEquals(emptyList(), book.authors)
+    }
+
+    @Test
+    fun catalogueNamesReadFirstNameFirst() {
+        assertEquals("Jane Austen", OpdsText.uninvertName("Austen, Jane"))
+        assertEquals("J. R. R. Tolkien", OpdsText.uninvertName("Tolkien, J. R. R. (John Ronald Reuel)"))
+        assertEquals("Martin Luther King, Jr.", OpdsText.uninvertName("King, Martin Luther, Jr."))
+        assertEquals("Various", OpdsText.uninvertName("Various"))
+        assertEquals("Great Britain. Parliament", OpdsText.uninvertName("Great Britain. Parliament"))
     }
 }
