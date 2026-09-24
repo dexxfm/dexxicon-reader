@@ -8,6 +8,7 @@ import net.dexxicon.reader.core.model.BookGroupPage
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.CatalogShelf
 import net.dexxicon.reader.core.model.Server
@@ -19,6 +20,12 @@ interface CatalogSource {
     suspend fun shelves(server: Server): Outcome<List<CatalogShelf>>
 
     /** A page of books, optionally scoped to a shelf and/or filtered by a search query. */
+    /**
+     * [formats] (issue #287): only these content formats, null = all. A source that can filter
+     * server-side should — [net.dexxicon.reader.core.data.CatalogRepository] still filters the
+     * page it gets back, so one that can't may ignore it, but then a rare format can sit many
+     * pages deep in a large catalogue.
+     */
     suspend fun books(
         server: Server,
         shelfId: String?,
@@ -26,6 +33,7 @@ interface CatalogSource {
         sort: BookSort,
         page: Int,
         pageSize: Int,
+        formats: Set<ContentFormat>? = null,
     ): Outcome<BookPage>
 
     suspend fun detail(server: Server, bookId: String): Outcome<BookDetail>
@@ -62,5 +70,6 @@ interface CatalogSource {
         sort: BookSort,
         page: Int,
         pageSize: Int,
+        formats: Set<ContentFormat>? = null,
     ): Outcome<BookPage> = Outcome.Failure(DexxiconError.NotFound("Not supported by this server"))
 }

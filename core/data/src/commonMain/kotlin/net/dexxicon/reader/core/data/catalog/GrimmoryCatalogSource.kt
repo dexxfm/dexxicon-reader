@@ -63,6 +63,7 @@ class GrimmoryCatalogSource(
         sort: BookSort,
         page: Int,
         pageSize: Int,
+        formats: Set<ContentFormat>?,
     ): Outcome<BookPage> = call {
         // Ktor's URLBuilder percent-encodes each parameter for us — java.net.URLEncoder
         // (the original androidMain version's choice) is JVM-only, unreachable from iOS.
@@ -143,6 +144,7 @@ class GrimmoryCatalogSource(
         sort: BookSort,
         page: Int,
         pageSize: Int,
+        formats: Set<ContentFormat>?,
     ): Outcome<BookPage> = call {
         val size = pageSize.coerceAtMost(MAX_APP_PAGE)
         val url = if (group.kind == BookGroupKind.SERIES) {

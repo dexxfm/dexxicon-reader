@@ -21,6 +21,8 @@ import net.dexxicon.reader.core.serverapi.browse.BookOrbitBook
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitPagination
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitQuery
+import net.dexxicon.reader.core.serverapi.browse.BookOrbitFilterRule
+import net.dexxicon.reader.core.serverapi.browse.BookOrbitFilterGroup
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitSort
 import io.ktor.client.plugins.ResponseException
 import io.ktor.http.URLBuilder
@@ -47,6 +49,7 @@ class BookOrbitCatalogSource(
         sort: BookSort,
         page: Int,
         pageSize: Int,
+        formats: Set<ContentFormat>?,
     ): Outcome<BookPage> = call {
         val url = when (shelfId) {
             null -> server.resolve("/api/v1/books/query")
@@ -58,6 +61,7 @@ class BookOrbitCatalogSource(
                 sort = sortModel(sort),
                 q = query?.trim()?.takeIf { it.isNotEmpty() },
                 pagination = BookOrbitPagination(page = page, size = pageSize),
+                filter = formatFilter(formats),
             ),
         )
         BookPage(
@@ -123,9 +127,10 @@ class BookOrbitCatalogSource(
         sort: BookSort,
         page: Int,
         pageSize: Int,
+        formats: Set<ContentFormat>?,
     ): Outcome<BookPage> {
         val queryPath = when (group.kind) {
-            BookGroupKind.LIBRARY -> return books(server, group.id, query, sort, page, pageSize)
+            BookGroupKind.LIBRARY -> return books(server, group.id, query, sort, page, pageSize, formats)
             BookGroupKind.COLLECTION -> "/api/v1/collections/${group.id}/books/query"
             BookGroupKind.SMART -> "/api/v1/smart-scopes/${group.id}/books/query"
             BookGroupKind.SERIES -> null
@@ -140,6 +145,7 @@ class BookOrbitCatalogSource(
                         sort = sortModel(sort),
                         q = query?.trim()?.takeIf { it.isNotEmpty() },
                         pagination = BookOrbitPagination(page = page, size = pageSize),
+                        filter = formatFilter(formats),
                     ),
                 )
             } else {
@@ -253,6 +259,21 @@ class BookOrbitCatalogSource(
         return filename?.substringAfterLast('.', "")?.lowercase()?.takeIf { it.isNotBlank() }
     }
 
+    /**
+     * issue #287 — [formats] as a server-side `format includesAny [...]` rule: the file formats
+     * [formatOf] maps to each. Filtering only the returned page left "All libraries" + Comics
+     * paging through a large library's other books (thousands, on a big server) before any
+     * comic turned up. Null (no filter) for all formats, or none BookOrbit can name.
+     */
+    private fun formatFilter(formats: Set<ContentFormat>?): BookOrbitFilterGroup? {
+        val names = formats?.flatMap { FILE_FORMATS[it].orEmpty() }?.takeIf { it.isNotEmpty() } ?: return null
+        return BookOrbitFilterGroup(
+            type = "group",
+            join = "AND",
+            rules = listOf(BookOrbitFilterRule(type = "rule", field = "format", operator = "includesAny", value = names)),
+        )
+    }
+
     private fun formatOf(format: String?): ContentFormat = when (format?.lowercase()) {
         "epub", "kepub" -> ContentFormat.EPUB
         "pdf" -> ContentFormat.PDF
@@ -267,6 +288,17 @@ class BookOrbitCatalogSource(
     private companion object {
         /** The series endpoints' own `@Max(100)` page-size cap. */
         const val MAX_SERIES_PAGE = 100
+
+        /** The server's file format names per content format — [formatOf] in reverse. */
+        val FILE_FORMATS: Map<ContentFormat, List<String>> = mapOf(
+            ContentFormat.EPUB to listOf("epub", "kepub"),
+            ContentFormat.PDF to listOf("pdf"),
+            ContentFormat.COMIC to listOf("cbz", "cbr"),
+            ContentFormat.AUDIOBOOK to listOf("m4b", "mp3", "m4a", "opus", "ogg", "flac", "aac"),
+            ContentFormat.MOBI to listOf("mobi", "prc"),
+            ContentFormat.AZW3 to listOf("azw3", "azw"),
+            ContentFormat.FB2 to listOf("fb2"),
+        )
     }
 
     private suspend inline fun <T> call(block: () -> T): Outcome<T> = try {

@@ -70,11 +70,12 @@ class CatalogRepository(
         sort: BookSort,
         page: Int,
         pageSize: Int = DEFAULT_PAGE_SIZE,
-        /** Keep only these content formats; null = all. Applied client-side to the page. */
+        /** Keep only these content formats; null = all. Passed to the source (issue #287) and
+         *  applied client-side to the page too. */
         formats: Set<ContentFormat>? = null,
     ): Outcome<BookPage> = withContext(io) {
         val (server, source) = resolve(serverId) ?: return@withContext notFound()
-        val result = source.books(server, shelfId, query, sort, page, pageSize)
+        val result = source.books(server, shelfId, query, sort, page, pageSize, formats)
         when {
             formats == null -> result
             result is Outcome.Success -> Outcome.Success(
@@ -113,7 +114,7 @@ class CatalogRepository(
 
         val results = coroutineScope {
             servers.map { server ->
-                async { server to sourceFor(server).books(server, null, query, sort, page, pageSize) }
+                async { server to sourceFor(server).books(server, null, query, sort, page, pageSize, formats) }
             }.awaitAll()
         }
 
@@ -231,7 +232,7 @@ class CatalogRepository(
                 async {
                     val server = serverRepository.get(group.serverId)
                         ?: return@async null to notFound<BookPage>()
-                    server to sourceFor(server).groupBooks(server, group, query, sort, page, pageSize)
+                    server to sourceFor(server).groupBooks(server, group, query, sort, page, pageSize, formats)
                 }
             }.awaitAll()
         }

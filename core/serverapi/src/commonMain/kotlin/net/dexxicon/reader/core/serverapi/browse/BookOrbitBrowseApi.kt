@@ -103,6 +103,26 @@ data class BookOrbitQuery(
     val sort: List<BookOrbitSort> = emptyList(),
     val q: String? = null,
     val pagination: BookOrbitPagination,
+    /** issue #287 — narrows the query server-side (e.g. to comics); omitted when null. */
+    val filter: BookOrbitFilterGroup? = null,
+)
+
+/** A `BookQuery` `GroupRule` (server `packages/types/src/query.ts`). No defaults on purpose:
+ *  the client's JSON doesn't encode default values, and the server needs `type`/`join`. */
+@Serializable
+data class BookOrbitFilterGroup(
+    val type: String,
+    val join: String,
+    val rules: List<BookOrbitFilterRule>,
+)
+
+/** A `StandardRule` whose value is a list, e.g. `format includesAny [cbz, cbr]`. */
+@Serializable
+data class BookOrbitFilterRule(
+    val type: String,
+    val field: String,
+    val operator: String,
+    val value: List<String>,
 )
 
 @Serializable
