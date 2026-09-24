@@ -41,6 +41,9 @@ interface DownloadRepository {
 
     /** Queue (or re-queue) an offline copy of [detail]. */
     suspend fun enqueue(detail: BookDetail): EnqueueResult
+
+    /** issue #282 — refresh an existing download's series name/number (no-op without one). */
+    suspend fun updateSeries(serverId: String, bookId: String, series: String?, seriesIndex: Double?)
     suspend fun remove(serverId: String, bookId: String)
 
     /** issue #206 — server removal cascade: cancels/removes every download still tied to

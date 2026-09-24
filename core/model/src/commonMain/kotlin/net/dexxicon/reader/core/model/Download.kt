@@ -7,6 +7,9 @@ data class Download(
     val title: String,
     val authors: List<String> = emptyList(),
     val series: String? = null,
+    /** issue #282 — the book's place in [series], so the Downloaded shelf can show its badge
+     *  without a progress row (a downloaded book that was never opened has none). */
+    val seriesIndex: Double? = null,
     val coverUrl: String? = null,
     val format: ContentFormat = ContentFormat.UNKNOWN,
     val status: DownloadStatus = DownloadStatus.QUEUED,

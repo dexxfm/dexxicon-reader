@@ -144,6 +144,7 @@ fun Download.toBookDetail(): BookDetail = BookDetail(
         title = title,
         authors = authors,
         series = series,
+        seriesIndex = seriesIndex,
         coverUrl = coverUrl,
         format = format,
     ),

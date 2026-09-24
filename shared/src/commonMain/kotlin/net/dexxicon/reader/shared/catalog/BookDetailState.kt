@@ -82,6 +82,7 @@ class BookDetailState(
                     detail = result.value
                     loading = false
                     loadSeries(result.value)
+                    refreshSeriesBadges(result.value)
                 }
                 is Outcome.Failure -> {
                     // Offline? Fall back to what the downloaded copy remembers.
@@ -109,6 +110,17 @@ class BookDetailState(
                 webUrl = server?.webBookUrl(bid),
             )
         }
+
+    /** issue #282 — Home's Continue and Downloaded shelves show the series badge from what was
+     *  stored when the book was opened or downloaded; bring those up to date with the server. */
+    private fun refreshSeriesBadges(detail: BookDetail) {
+        val s = detail.summary
+        if (s.series == null && s.seriesIndex == null) return
+        scope.launch {
+            runCatching { container.progressRepository.updateSeries(serverId, bookId, s.series, s.seriesIndex) }
+            runCatching { container.downloadRepository.updateSeries(serverId, bookId, s.series, s.seriesIndex) }
+        }
+    }
 
     private fun loadSeries(detail: BookDetail) {
         val name = detail.summary.series?.takeIf { it.isNotBlank() } ?: return

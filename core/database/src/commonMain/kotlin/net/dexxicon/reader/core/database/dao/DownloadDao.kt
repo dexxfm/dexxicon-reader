@@ -45,6 +45,10 @@ interface DownloadDao {
     @Query("DELETE FROM downloads WHERE key = :key")
     suspend fun deleteByKey(key: String)
 
+    /** issue #282 — refresh a download's series name/number from the server's current detail. */
+    @Query("UPDATE downloads SET series = :series, seriesIndex = :seriesIndex WHERE key = :key")
+    suspend fun updateSeries(key: String, series: String?, seriesIndex: Double?)
+
     /** issue #206 — server removal cascade; `observeAll()` (Home's Downloaded shelf) has no
      *  server scoping, so a deleted server's downloads — which cache their own title/cover —
      *  would otherwise keep showing up there forever. Returned so the caller can also clean

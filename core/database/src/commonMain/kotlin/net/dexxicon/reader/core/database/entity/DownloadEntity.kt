@@ -32,6 +32,8 @@ data class DownloadEntity(
     @ColumnInfo(defaultValue = "0") val createdAt: Long = 0L,
     /** See [Download.durationMs]'s own doc comment. */
     @ColumnInfo(defaultValue = "NULL") val durationMs: Long? = null,
+    /** issue #282 — see [Download.seriesIndex]. */
+    @ColumnInfo(defaultValue = "NULL") val seriesIndex: Double? = null,
 ) {
     fun toDomain(): Download = Download(
         serverId = serverId,
@@ -39,6 +41,7 @@ data class DownloadEntity(
         title = title,
         authors = authors.split('\n').filter { it.isNotBlank() },
         series = series,
+        seriesIndex = seriesIndex,
         coverUrl = coverUrl,
         format = runCatching { ContentFormat.valueOf(format) }.getOrDefault(ContentFormat.UNKNOWN),
         status = runCatching { DownloadStatus.valueOf(status) }.getOrDefault(DownloadStatus.QUEUED),
@@ -62,6 +65,7 @@ data class DownloadEntity(
             format: ContentFormat,
             sourceUrl: String,
             durationMs: Long? = null,
+            seriesIndex: Double? = null,
         ): DownloadEntity = DownloadEntity(
             key = "$serverId::$bookId",
             serverId = serverId,
@@ -80,6 +84,7 @@ data class DownloadEntity(
             updatedAt = Clock.System.now().toEpochMilliseconds(),
             createdAt = Clock.System.now().toEpochMilliseconds(),
             durationMs = durationMs,
+            seriesIndex = seriesIndex,
         )
     }
 }
