@@ -34,6 +34,8 @@ interface CatalogSource {
         page: Int,
         pageSize: Int,
         formats: Set<ContentFormat>? = null,
+        /** issue #293 — a catalog facet (see [BookPage.facets]) to list instead: its URL. */
+        facetHref: String? = null,
     ): Outcome<BookPage>
 
     suspend fun detail(server: Server, bookId: String): Outcome<BookDetail>
@@ -71,5 +73,6 @@ interface CatalogSource {
         page: Int,
         pageSize: Int,
         formats: Set<ContentFormat>? = null,
+        facetHref: String? = null,
     ): Outcome<BookPage> = Outcome.Failure(DexxiconError.NotFound("Not supported by this server"))
 }

@@ -40,7 +40,25 @@ internal object Opds2Parser {
                     OpdsSearch.Template(href)
                 }
             },
+            facets = root.array("facets").mapNotNull { (it as? JsonObject)?.let { g -> facetGroup(g, url) } },
         )
+    }
+
+    /** issue #293 — `{"metadata": {"title": …}, "links": [{title, href, properties: {active, numberOfItems}}]}`. */
+    private fun facetGroup(g: JsonObject, base: String): OpdsFacetGroup? {
+        val title = g.obj("metadata")?.let { title(it["title"]) } ?: return null
+        val facets = g.array("links").mapNotNull { item ->
+            val link = item as? JsonObject ?: return@mapNotNull null
+            val href = link.href(base) ?: return@mapNotNull null
+            val props = link.obj("properties")
+            OpdsFacet(
+                title = link.string("title")?.trim() ?: return@mapNotNull null,
+                href = href,
+                active = (props?.get("active") as? JsonPrimitive)?.booleanOrNull == true,
+                count = props?.long("numberOfItems")?.toInt(),
+            )
+        }
+        return OpdsFacetGroup(title, facets).takeIf { facets.isNotEmpty() }
     }
 
     /** A single publication document (`application/opds-publication+json`), e.g. a detail page. */

@@ -18,6 +18,8 @@ import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookSummary
 import net.dexxicon.reader.core.model.CatalogShelf
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.Facet
+import net.dexxicon.reader.core.model.FacetGroup
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.serverapi.opds.OpdsAcquisition
 import net.dexxicon.reader.core.serverapi.opds.OpdsClient
@@ -46,9 +48,14 @@ import net.dexxicon.reader.core.serverapi.opds.OpdsPublication
  * any instance can refetch that feed and find it — the reader resolves books through its own
  * graph's instance, and ids must survive a restart ([entryBookId]).
  *
+ * Sorting and filtering (issue #293) go through the catalog's own facets: each page reports them
+ * ([BookPage.facets]) and a chosen one comes back as `facetHref`, the list to show instead. The
+ * app's [BookSort] and format filter can't be expressed in OPDS, so [sort] and [formats] are
+ * ignored here ([BookPage.appSortApplies] is false).
+ *
  * Scaffolding (issue #291): only open-access downloads are offered, in formats the app reads
- * itself (EPUB, PDF, comics). Borrowing (e.g. Open Library's Internet Archive loans), sorting and
- * format filtering are left for later; [sort] and [formats] are ignored here.
+ * itself (EPUB, PDF, comics). Borrowing (e.g. Open Library's Internet Archive loans) is left
+ * for later.
  */
 class OpdsCatalogSource(private val client: OpdsClient) : CatalogSource {
 
@@ -85,8 +92,11 @@ class OpdsCatalogSource(private val client: OpdsClient) : CatalogSource {
         page: Int,
         pageSize: Int,
         formats: Set<ContentFormat>?,
+        facetHref: String?,
     ): Outcome<BookPage> = call {
         val start = when {
+            // issue #293 — a chosen facet is its own list (it already carries any search).
+            facetHref != null -> facetHref
             !query.isNullOrBlank() -> {
                 val root = client.feed(server.baseUrl)
                 val search = root.search ?: return@call BookPage(emptyList(), page, hasMore = false)
@@ -98,7 +108,7 @@ class OpdsCatalogSource(private val client: OpdsClient) : CatalogSource {
         val url = pageUrl(server, start, page) ?: return@call BookPage(emptyList(), page, hasMore = false)
         var feed = client.feed(url)
         // The whole catalog, when its root is navigation-only: show its first section instead.
-        if (shelfId == null && query.isNullOrBlank() && page == 0 && publicationsOf(feed).isEmpty()) {
+        if (facetHref == null && shelfId == null && query.isNullOrBlank() && page == 0 && publicationsOf(feed).isEmpty()) {
             sections(feed).firstOrNull()?.let { first -> feed = client.feed(first.href) }
         }
         rememberNext(server, start, page, feed.nextUrl)
@@ -108,6 +118,11 @@ class OpdsCatalogSource(private val client: OpdsClient) : CatalogSource {
             books = publications.map { it.toSummary(server, bookId(it, feed.url)) },
             page = page,
             hasMore = feed.nextUrl != null,
+            facets = feed.facets.map { g ->
+                FacetGroup(g.title, g.facets.map { Facet(it.title, it.href, it.active, it.count) })
+            },
+            // A catalog sorts only through its own facets, if at all.
+            appSortApplies = false,
         )
     }
 
@@ -119,7 +134,8 @@ class OpdsCatalogSource(private val client: OpdsClient) : CatalogSource {
         page: Int,
         pageSize: Int,
         formats: Set<ContentFormat>?,
-    ): Outcome<BookPage> = books(server, group.id, query, sort, page, pageSize, formats)
+        facetHref: String?,
+    ): Outcome<BookPage> = books(server, group.id, query, sort, page, pageSize, formats, facetHref)
 
     override suspend fun detail(server: Server, bookId: String): Outcome<BookDetail> = call {
         val listed = lock.withLock { recent[bookId] }

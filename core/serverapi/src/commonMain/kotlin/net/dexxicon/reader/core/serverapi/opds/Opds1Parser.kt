@@ -15,6 +15,8 @@ internal object Opds1Parser {
     private const val IMAGE = "http://opds-spec.org/image"
     private const val THUMBNAIL = "http://opds-spec.org/image/thumbnail"
     private val GUTENBERG_BOOK = Regex("""^https?://(www\.|m\.)?gutenberg\.org/ebooks/(\d+)\.opds$""")
+    private val GUTENBERG_LIST = Regex("""^https?://(www\.|m\.)?gutenberg\.org/ebooks/search\.opds/""")
+    private const val FACET = "http://opds-spec.org/facet"
 
     fun parseFeed(body: String, url: String): OpdsFeed {
         val feed = XmlTree.parse(body)
@@ -36,6 +38,43 @@ internal object Opds1Parser {
                     OpdsSearch.Template(resolveTemplate(url, href))
                 }
             },
+            facets = facets(links, url) + gutenbergSort(url),
+        )
+    }
+
+    /** issue #293 — `rel="http://opds-spec.org/facet"` links, grouped by `opds:facetGroup`. */
+    private fun facets(links: List<XmlTree.Node>, base: String): List<OpdsFacetGroup> =
+        links.filter { it.attr("rel") == FACET && it.attr("href") != null }
+            .groupBy { it.attr("facetGroup")?.trim()?.takeIf { g -> g.isNotBlank() } ?: "Filter" }
+            .map { (group, items) ->
+                OpdsFacetGroup(
+                    title = group,
+                    facets = items.map { l ->
+                        OpdsFacet(
+                            title = l.attr("title")?.trim()?.takeIf { it.isNotBlank() } ?: l.attr("href")!!,
+                            href = resolveUrl(base, l.attr("href")!!),
+                            active = l.attr("activeFacet") == "true",
+                            count = l.attr("count")?.toIntOrNull(),
+                        )
+                    },
+                )
+            }
+
+    /**
+     * issue #293 — Project Gutenberg publishes no facets, but its lists and searches take a
+     * `sort_order` parameter (`downloads`, `release_date`, `title`), so offer those as a sort.
+     */
+    private fun gutenbergSort(url: String): List<OpdsFacetGroup> {
+        if (!GUTENBERG_LIST.containsMatchIn(url)) return emptyList()
+        val current = queryParam(url, "sort_order")
+        val choices = listOf("Popular" to "downloads", "Newest" to "release_date", "Title" to "title")
+        return listOf(
+            OpdsFacetGroup(
+                title = "Sort order",
+                facets = choices.map { (title, value) ->
+                    OpdsFacet(title, withQueryParam(url, "sort_order", value), active = current == value)
+                },
+            ),
         )
     }
 
@@ -184,4 +223,18 @@ internal object XmlTree {
         }
         return root ?: throw OpdsFormatException("Empty XML document")
     }
+}
+
+/** The first value of [key] in [url]'s query string, decoded no further. */
+internal fun queryParam(url: String, key: String): String? =
+    url.substringAfter('?', "").substringBefore('#').split('&')
+        .firstOrNull { it.substringBefore('=') == key }?.substringAfter('=', "")
+
+/** [url] with [key] set to [value] — replacing any existing value, and dropping paging
+ *  (`start_index`/`page`), since a new order starts from the top. */
+internal fun withQueryParam(url: String, key: String, value: String): String {
+    val base = url.substringBefore('?').substringBefore('#')
+    val kept = url.substringAfter('?', "").substringBefore('#').split('&')
+        .filter { it.isNotBlank() && it.substringBefore('=') !in setOf(key, "start_index", "page") }
+    return base + "?" + (kept + "$key=$value").joinToString("&")
 }

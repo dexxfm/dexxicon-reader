@@ -26,6 +26,9 @@ import net.dexxicon.reader.core.model.AggregatedBookPage
 import net.dexxicon.reader.core.model.BookGroup
 import net.dexxicon.reader.core.model.BookGroupKind
 import net.dexxicon.reader.core.model.BookSort
+import net.dexxicon.reader.core.model.BookPage
+import net.dexxicon.reader.core.model.FacetGroup
+import net.dexxicon.reader.core.model.Facet
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.ContentFilter
 import net.dexxicon.reader.core.model.DownloadStatus
@@ -72,6 +75,12 @@ data class LibraryUiState(
     val refreshing: Boolean = false,
     val endReached: Boolean = false,
     val error: String? = null,
+    /** issue #293 — the current list's own sort/filter choices (one OPDS catalog's facets). */
+    val facets: List<FacetGroup> = emptyList(),
+    /** The facet chosen from [facets], listed instead of the scope's usual books. */
+    val facetHref: String? = null,
+    /** False for a catalog that only sorts through its own facets — see [BookPage.appSortApplies]. */
+    val appSortApplies: Boolean = true,
 )
 
 /** Per-book overlays keyed by "serverId::bookId" — a row matches on any of its copies. */
@@ -199,11 +208,19 @@ class LibraryState(
     fun selectLibrary(library: BookGroup?) {
         val next = library?.let { LibraryScope.Groups(it.name, listOf(it)) } ?: LibraryScope.All
         if (next == _uiState.value.scope) return
-        _uiState.update { it.copy(scope = next) }
+        _uiState.update { it.copy(scope = next, facetHref = null, facets = emptyList(), appSortApplies = true) }
         reload()
     }
 
-    fun onQueryChange(value: String) = _uiState.update { it.copy(query = value) }
+    // issue #293 — a chosen facet belongs to the old search's results, so a new search drops it.
+    fun onQueryChange(value: String) = _uiState.update { it.copy(query = value, facetHref = null) }
+
+    /** issue #293 — list one of the catalog's own sort/filter choices instead. */
+    fun onFacetSelected(facet: Facet) {
+        if (facet.href == _uiState.value.facetHref) return
+        _uiState.update { it.copy(facetHref = facet.href) }
+        reload()
+    }
 
     /** Persists Library's own sort choice — the Settings default is untouched. The actual
      *  [LibraryUiState.sort] update and [reload] happen when that write is reflected back
@@ -308,6 +325,7 @@ class LibraryState(
             sort = state.sort,
             page = nextPage,
             formats = state.filter.formats,
+            facetHref = state.facetHref,
         )
     }
 
@@ -322,6 +340,9 @@ class LibraryState(
                     val merged = prev + result.value.books
                     it.copy(
                         books = merged.distinctBy { book -> book.key },
+                        // issue #293 — a list's facets come with its first page.
+                        facets = if (replace) result.value.facets else it.facets,
+                        appSortApplies = if (replace) result.value.appSortApplies else it.appSortApplies,
                         endReached = endReached,
                         refreshing = false,
                         error = null,

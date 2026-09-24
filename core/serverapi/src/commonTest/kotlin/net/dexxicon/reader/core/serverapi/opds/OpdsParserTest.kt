@@ -133,4 +133,59 @@ class OpdsParserTest {
         assertEquals("https://example.com/b", resolveUrl("https://example.com/opds/x/", "../../b"))
         assertEquals("http://other.org/x", resolveUrl(base, "http://other.org/x"))
     }
+
+    // ---- Facets: sort and filter (issue #293) -----------------------------------------------
+
+    @Test
+    fun opds2FacetsParseWithTheirActiveChoiceAndCounts() {
+        val body = """{"metadata":{"title":"Search"},"links":[],"facets":[
+            {"metadata":{"title":"Availability"},"links":[
+              {"title":"Everything","href":"/opds/search?query=x","type":"application/opds+json","properties":{"active":true}},
+              {"title":"Open Access","href":"/opds/search?query=x&mode=open_access","type":"application/opds+json"}]},
+            {"metadata":{"title":"Language"},"links":[
+              {"title":"English","href":"/opds/search?query=x&language=en","properties":{"numberOfItems":3729841}}]}]}"""
+        val facets = Opds2Parser.parseFeed(body, "https://openlibrary.org/opds/search?query=x").facets
+        assertEquals(listOf("Availability", "Language"), facets.map { it.title })
+        assertEquals("Everything", facets[0].facets.single { it.active }.title)
+        assertEquals("https://openlibrary.org/opds/search?query=x&mode=open_access", facets[0].facets[1].href)
+        assertEquals(3729841, facets[1].facets[0].count)
+    }
+
+    @Test
+    fun opds1FacetLinksGroupByFacetGroup() {
+        val body = """<feed xmlns="http://www.w3.org/2005/Atom" xmlns:opds="http://opds-spec.org/2010/catalog"
+              xmlns:thr="http://purl.org/syndication/thread/1.0"><title>Books</title>
+            <link rel="http://opds-spec.org/facet" href="/opds/books?sort=title" title="Title" opds:facetGroup="Sort by"/>
+            <link rel="http://opds-spec.org/facet" href="/opds/books?sort=new" title="Newest" opds:facetGroup="Sort by" opds:activeFacet="true"/>
+            <link rel="http://opds-spec.org/facet" href="/opds/books?lang=fr" title="French" opds:facetGroup="Language" thr:count="12"/>
+            </feed>"""
+        val facets = Opds1Parser.parseFeed(body, "https://calibre.example/opds/books").facets
+        assertEquals(listOf("Sort by", "Language"), facets.map { it.title })
+        assertEquals("Newest", facets[0].facets.single { it.active }.title)
+        assertEquals("https://calibre.example/opds/books?lang=fr", facets[1].facets.single().href)
+        assertEquals(12, facets[1].facets.single().count)
+    }
+
+    @Test
+    fun gutenbergListsOfferTheirSortOrders() {
+        val url = "https://www.gutenberg.org/ebooks/search.opds/?sort_order=downloads&start_index=26"
+        val sort = Opds1Parser.parseFeed(OpdsFixtures.GUTENBERG_POPULAR, url).facets.single()
+        assertEquals("Sort order", sort.title)
+        assertEquals(listOf("Popular", "Newest", "Title"), sort.facets.map { it.title })
+        assertEquals("Popular", sort.facets.single { it.active }.title)
+        // A new order starts from the first page.
+        assertEquals("https://www.gutenberg.org/ebooks/search.opds/?sort_order=title", sort.facets.last().href)
+    }
+
+    @Test
+    fun gutenbergSearchKeepsItsQueryWhenSorted() {
+        val sort = Opds1Parser.parseFeed(OpdsFixtures.GUTENBERG_POPULAR, "https://www.gutenberg.org/ebooks/search.opds/?query=moby").facets.single()
+        assertTrue(sort.facets.none { it.active })
+        assertEquals("https://www.gutenberg.org/ebooks/search.opds/?query=moby&sort_order=release_date", sort.facets[1].href)
+    }
+
+    @Test
+    fun theGutenbergRootIsNotSortable() {
+        assertTrue(Opds1Parser.parseFeed(OpdsFixtures.GUTENBERG_ROOT, "https://www.gutenberg.org/ebooks.opds/").facets.isEmpty())
+    }
 }

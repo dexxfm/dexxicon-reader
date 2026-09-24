@@ -26,7 +26,14 @@ data class OpdsFeed(
     /** The next page of this feed, when it's paged. */
     val nextUrl: String? = null,
     val search: OpdsSearch? = null,
+    /** issue #293 — this feed's sort/filter choices (OPDS 1 facet links, OPDS 2 `facets`). */
+    val facets: List<OpdsFacetGroup> = emptyList(),
 )
+
+/** issue #293 — an OPDS facet group, e.g. "Language", and its choices. */
+data class OpdsFacetGroup(val title: String, val facets: List<OpdsFacet>)
+
+data class OpdsFacet(val title: String, val href: String, val active: Boolean = false, val count: Int? = null)
 
 data class OpdsLink(val title: String, val href: String, val type: String? = null)
 
