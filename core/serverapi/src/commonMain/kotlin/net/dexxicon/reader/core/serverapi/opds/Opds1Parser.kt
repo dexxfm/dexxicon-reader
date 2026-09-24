@@ -15,6 +15,7 @@ internal object Opds1Parser {
     private const val IMAGE = "http://opds-spec.org/image"
     private const val THUMBNAIL = "http://opds-spec.org/image/thumbnail"
     private val GUTENBERG_BOOK = Regex("""^https?://(www\.|m\.)?gutenberg\.org/ebooks/(\d+)\.opds$""")
+    private val GUTENBERG_DOWNLOADS = Regex("""[\d,]+ downloads?""")
     private val GUTENBERG_LIST = Regex("""^https?://(www\.|m\.)?gutenberg\.org/ebooks/search\.opds/""")
     private const val FACET = "http://opds-spec.org/facet"
 
@@ -78,6 +79,34 @@ internal object Opds1Parser {
         )
     }
 
+    /** issue #295 — an Atom text construct (`type` text, html or xhtml) as paragraphs. */
+    private fun paragraphs(node: XmlTree.Node): List<String> = when (node.attr("type")) {
+        "xhtml" -> OpdsText.paragraphs(node.markedText)
+        "html" -> OpdsText.htmlParagraphs(node.deepText)
+        else -> OpdsText.paragraphsOf(node.deepText)
+    }
+
+    /**
+     * issue #295 — a Gutenberg book entry's `<content>` is its whole catalogue record as
+     * "Label: value" paragraphs, most of which repeat the book's details (title, author,
+     * subjects, language, …). Keep its summary when it has one; otherwise the record minus
+     * those repeats.
+     */
+    private fun gutenbergDescription(paragraphs: List<String>): List<String> {
+        val labelled = paragraphs.map { p ->
+            GUTENBERG_LABEL.matchEntire(p)?.let { it.groupValues[1] to it.groupValues[2].trim() } ?: (null to p)
+        }
+        labelled.firstOrNull { it.first == "Summary" }?.let { return listOf(it.second) }
+        return labelled.filterNot { it.first in GUTENBERG_REPEATS }.map { (label, text) ->
+            if (label == null) text else "$label: $text"
+        }
+    }
+
+    private val GUTENBERG_LABEL = Regex("""(?s)([A-Z][A-Za-z .]{0,24}):\s*(.+)""")
+    private val GUTENBERG_REPEATS = setOf(
+        "Title", "Author", "EBook No.", "Published", "Downloads", "Language", "Subject", "LoCC", "Category", "Rights",
+    )
+
     /** An OpenSearch description's Atom (OPDS) template, else its first one. */
     fun parseOpenSearchTemplate(body: String, url: String): String? {
         val urls = XmlTree.parse(body).all("Url")
@@ -114,15 +143,22 @@ internal object Opds1Parser {
             return Entry.Navigation(OpdsLink(title, resolveUrl(base, href), feedLink.attr("type")))
         }
 
+        // issue #295 — Gutenberg's own book entries (`/ebooks/<n>.opds`) name authors "Last, First".
+        val gutenbergEntry = GUTENBERG_BOOK.containsMatchIn(base)
         val authors = e.all("author").mapNotNull { it.child("name")?.deepText?.trim()?.takeIf { n -> n.isNotBlank() } }
-        val content = (e.child("summary") ?: e.child("content"))?.deepText?.trim()?.takeIf { it.isNotBlank() }
+            .map { if (gutenbergEntry) OpdsText.uninvertName(it) else it }
+        val paragraphs = (e.child("summary") ?: e.child("content"))?.let(::paragraphs).orEmpty()
+        val content = OpdsText.join(if (gutenbergEntry) gutenbergDescription(paragraphs) else paragraphs)
         val gutenbergId = gutenberg?.groupValues?.get(2)
         return Entry.Publication(
             OpdsPublication(
                 id = e.child("id")?.deepText?.trim()?.takeIf { it.isNotBlank() } ?: title,
                 title = title,
-                // Gutenberg list entries carry the author as their only content.
-                authors = authors.ifEmpty { listOfNotNull(content?.takeIf { gutenberg != null }) },
+                // Gutenberg list entries carry the author as their only content, or, for a book
+                // with none, its download count (issue #295), which is no author.
+                authors = authors.ifEmpty {
+                    listOfNotNull(content?.takeIf { gutenberg != null && !GUTENBERG_DOWNLOADS.matches(it) })
+                },
                 summary = content?.takeIf { gutenberg == null },
                 language = e.child("language")?.deepText?.trim(),
                 published = (e.child("issued") ?: e.child("published"))?.deepText?.trim(),
@@ -130,7 +166,10 @@ internal object Opds1Parser {
                 coverUrl = cover ?: gutenbergId?.let { "https://www.gutenberg.org/cache/epub/$it/pg$it.cover.medium.jpg" },
                 thumbnailUrl = thumbnail ?: cover ?: gutenbergId?.let { "https://www.gutenberg.org/cache/epub/$it/pg$it.cover.small.jpg" },
                 acquisitions = acquisitions,
-                categories = e.all("category").mapNotNull { it.attr("label") ?: it.attr("term") },
+                categories = e.all("category")
+                    // A DCMI type ("Text", "Sound") is the kind of resource, not a subject.
+                    .filterNot { it.attr("scheme")?.endsWith("/DCMIType") == true }
+                    .mapNotNull { it.attr("label") ?: it.attr("term") },
                 detailUrl = (entryLink ?: feedLink.takeIf { gutenberg != null })?.attr("href")?.let { resolveUrl(base, it) },
             ),
         )
@@ -193,7 +232,9 @@ internal object XmlTree {
         val children = mutableListOf<Node>()
         internal val text = StringBuilder()
         /** All text inside this element, children included, in document order. */
-        val deepText: String get() = text.toString()
+        val deepText: String get() = text.toString().replace(OpdsText.BREAK, ' ')
+        /** [deepText] with [OpdsText.BREAK] where (X)HTML block elements start and end. */
+        val markedText: String get() = text.toString()
         fun attr(name: String) = attributes[name]
         fun child(name: String) = children.firstOrNull { it.name == name }
         fun all(name: String) = children.filter { it.name == name }
@@ -210,10 +251,14 @@ internal object XmlTree {
                         reader.getAttributeLocalName(it) to reader.getAttributeValue(it)
                     }
                     val node = Node(reader.localName, attrs)
+                    if (node.name in OpdsText.BLOCK_ELEMENTS) stack.forEach { it.text.append(OpdsText.BREAK) }
                     stack.lastOrNull()?.children?.add(node) ?: run { root = node }
                     stack.addLast(node)
                 }
-                EventType.END_ELEMENT -> stack.removeLastOrNull()
+                EventType.END_ELEMENT -> {
+                    val node = stack.removeLastOrNull()
+                    if (node?.name in OpdsText.BLOCK_ELEMENTS) stack.forEach { it.text.append(OpdsText.BREAK) }
+                }
                 EventType.TEXT, EventType.CDSECT, EventType.ENTITY_REF, EventType.IGNORABLE_WHITESPACE -> {
                     val t = reader.text
                     stack.forEach { it.text.append(t) }
