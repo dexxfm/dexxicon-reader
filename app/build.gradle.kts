@@ -91,7 +91,7 @@ android {
 // is actually scheduled; pass -PallowUnsignedRelease for a local build you won't distribute.
 //
 // Scoped to :app's own tasks (t.path, not just t.name) — every plain com.android.library
-// module (:core:datastore/:core:format/:core:media/:core:opds) has its own harmless
+// module (:core:datastore/:core:format/:core:media) has its own harmless
 // packageReleaseResources task (AAPT2 resource linking for its Release variant, not signing
 // anything) that Gradle schedules as part of ordinary cross-variant graph resolution even
 // for a plain `testDebugUnitTest testAndroidHostTest` run — an unqualified name check

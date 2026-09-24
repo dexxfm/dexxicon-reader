@@ -57,7 +57,6 @@ kotlin {
             implementation(libs.kotlincrypto.hash.md)
         }
         androidMain.dependencies {
-            implementation(project(":core:opds"))
             implementation(project(":core:format"))
             implementation(project(":core:media"))
 
