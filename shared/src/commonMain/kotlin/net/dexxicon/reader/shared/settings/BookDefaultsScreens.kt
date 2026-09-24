@@ -211,6 +211,8 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
                 onCheckedChange = { on -> update { it.copy(comicSmartZoom = on) } },
             )
         }
+        // issue #285 — same gap as between this screen's other switch rows.
+        LayoutSpacer(Modifier.height(12.dp))
         SettingRow(
             title = "Right-to-left (manga)",
             subtitle = "Applied automatically to comics genre-tagged \"manga\" — this is the " +

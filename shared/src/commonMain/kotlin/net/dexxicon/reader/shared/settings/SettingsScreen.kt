@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer as LayoutSpacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.abs
 import kotlin.math.round
@@ -166,101 +166,82 @@ fun SettingsScreen(
             }
 
             SettingsSection("Appearance") {
-                Text("Theme", style = MaterialTheme.typography.bodyMedium)
-                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AppTheme.entries.forEach { theme ->
-                        FilterChip(
-                            selected = prefs.theme == theme,
-                            onClick = { state.setTheme(theme) },
-                            label = { Text(theme.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                        )
+                SettingGroup("Theme") {
+                    ChipRow {
+                        AppTheme.entries.forEach { theme ->
+                            FilterChip(
+                                selected = prefs.theme == theme,
+                                onClick = { state.setTheme(theme) },
+                                label = { Text(theme.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                            )
+                        }
                     }
                 }
-
-                LayoutSpacer(Modifier.height(16.dp))
-                Text("Book layout", style = MaterialTheme.typography.bodyMedium)
-                Text(
+                SettingGroup(
+                    "Book layout",
                     "The default for the Library and a server's catalog. Each screen keeps " +
                         "its own grid/list toggle; changing this here resets them all.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BookViewMode.entries.forEach { mode ->
-                        FilterChip(
-                            selected = prefs.bookViewDefault == mode,
-                            onClick = { state.setBookViewDefault(mode) },
-                            label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                        )
+                ) {
+                    ChipRow {
+                        BookViewMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = prefs.bookViewDefault == mode,
+                                onClick = { state.setBookViewDefault(mode) },
+                                label = { Text(mode.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                            )
+                        }
                     }
                 }
-
-                LayoutSpacer(Modifier.height(16.dp))
-                Text("Default sort", style = MaterialTheme.typography.bodyMedium)
-                Text(
+                SettingGroup(
+                    "Default sort",
                     "The order new lists start in for the Library and a server's catalog. Each " +
                         "screen keeps its own sort; changing this here resets them all.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    BookSort.entries.forEach { sort ->
-                        FilterChip(
-                            selected = prefs.bookSortDefault == sort,
-                            onClick = { state.setBookSortDefault(sort) },
-                            label = { Text(sort.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                        )
+                ) {
+                    ChipRow {
+                        BookSort.entries.forEach { sort ->
+                            FilterChip(
+                                selected = prefs.bookSortDefault == sort,
+                                onClick = { state.setBookSortDefault(sort) },
+                                label = { Text(sort.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                            )
+                        }
                     }
                 }
-
-                LayoutSpacer(Modifier.height(16.dp))
-                Text("Tapping a cover", style = MaterialTheme.typography.bodyMedium)
-                Text(
+                SettingGroup(
+                    "Tapping a cover",
                     "In the catalog and Library — Home's Continue/On Deck shelves always jump " +
                         "straight into the reader either way.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CoverTapAction.entries.forEach { action ->
-                        FilterChip(
-                            selected = prefs.coverTapAction == action,
-                            onClick = { state.setCoverTapAction(action) },
-                            label = { Text(action.label) },
-                        )
+                ) {
+                    ChipRow {
+                        CoverTapAction.entries.forEach { action ->
+                            FilterChip(
+                                selected = prefs.coverTapAction == action,
+                                onClick = { state.setCoverTapAction(action) },
+                                label = { Text(action.label) },
+                            )
+                        }
                     }
                 }
-
-                LayoutSpacer(Modifier.height(16.dp))
-                Text("Glass intensity", style = MaterialTheme.typography.bodyMedium)
-                Text(
+                SettingGroup(
+                    "Glass intensity",
                     "How strong the floating nav bar's blurred-glass look is. Off keeps the " +
                         "flat tint from before and never blurs anything, for low-end devices or " +
                         "if you just prefer it flat.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassIntensity.entries.forEach { intensity ->
-                        FilterChip(
-                            selected = prefs.glassIntensity == intensity,
-                            onClick = { state.setGlassIntensity(intensity) },
-                            label = { Text(intensity.name.lowercase().replaceFirstChar { it.uppercase() }) },
-                        )
+                ) {
+                    ChipRow {
+                        GlassIntensity.entries.forEach { intensity ->
+                            FilterChip(
+                                selected = prefs.glassIntensity == intensity,
+                                onClick = { state.setGlassIntensity(intensity) },
+                                label = { Text(intensity.name.lowercase().replaceFirstChar { it.uppercase() }) },
+                            )
+                        }
                     }
                 }
             }
 
             SettingsSection("Book Defaults") {
-                Text(
-                    "The look, page-turn feel and playback options each format opens with.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                SettingDescription("The look, page-turn feel and playback options each format opens with.")
                 NavRow(
                     title = "Audiobooks",
                     subtitle = "Default speed, skip silence",
@@ -280,66 +261,56 @@ fun SettingsScreen(
                 ) {
                     Switch(checked = prefs.downloadsWifiOnly, onCheckedChange = state::setDownloadsWifiOnly)
                 }
-
-                LayoutSpacer(Modifier.height(16.dp))
-                Text("Storage limit", style = MaterialTheme.typography.bodyMedium)
-                Text(
+                SettingGroup(
+                    "Storage limit",
                     buildString {
                         append(formatGigabytes(usedBytes)).append(" used")
                         prefs.downloadLimitBytes?.let { append(" of ").append(formatGigabytes(it)) }
                         append(". A download that would go over is skipped.")
                     },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 2.dp),
-                )
-                FlowRow(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DOWNLOAD_LIMIT_OPTIONS.forEach { (label, bytes) ->
-                        FilterChip(
-                            selected = prefs.downloadLimitBytes == bytes,
-                            onClick = { state.setDownloadLimit(bytes) },
-                            label = { Text(label) },
-                        )
+                ) {
+                    ChipRow {
+                        DOWNLOAD_LIMIT_OPTIONS.forEach { (label, bytes) ->
+                            FilterChip(
+                                selected = prefs.downloadLimitBytes == bytes,
+                                onClick = { state.setDownloadLimit(bytes) },
+                                label = { Text(label) },
+                            )
+                        }
                     }
                 }
 
                 if (onPickSaveFolder != null && state.canSaveCopies) {
-                    LayoutSpacer(Modifier.height(16.dp))
-                    Text("Save copies to", style = MaterialTheme.typography.bodyMedium)
-                    Text(
+                    SettingGroup(
+                        "Save copies to",
                         "The download button beside “Make available offline” saves a copy of the " +
                             "book file here, to use outside the app. Offline books you read in the " +
                             "app stay in the app's own storage either way.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp),
-                    )
-                    Row(
-                        Modifier.fillMaxWidth().padding(top = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text(
-                            prefs.saveCopiesFolderName ?: "Downloads",
-                            style = MaterialTheme.typography.bodyLarge,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (prefs.saveCopiesFolderUri != null) {
-                            TextButton(onClick = state::useDownloadsForCopies) { Text("Use Downloads") }
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                prefs.saveCopiesFolderName ?: "Downloads",
+                                style = MaterialTheme.typography.bodyMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (prefs.saveCopiesFolderUri != null) {
+                                TextButton(onClick = state::useDownloadsForCopies) { Text("Use Downloads") }
+                            }
+                            TextButton(onClick = onPickSaveFolder) { Text("Choose folder") }
                         }
-                        TextButton(onClick = onPickSaveFolder) { Text("Choose folder") }
+                        SettingDescription(
+                            "Android doesn't let apps pick the top level of internal storage, or the " +
+                                "Download folder itself — choose or create a folder inside them instead " +
+                                "(for Downloads itself, use “Use Downloads”).",
+                        )
                     }
-                    Text(
-                        "Android doesn't let apps pick the top level of internal storage, or the " +
-                            "Download folder itself — choose or create a folder inside them instead " +
-                            "(for Downloads itself, use “Use Downloads”).",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
                 }
             }
 
             SettingsSection("Reading sync") {
-                Text(
+                SettingDescription(
                     if (KOREADER_SYNC_UI) {
                         "Reading & listening position syncs with each server. BookOrbit and Grimmory " +
                             "sync through their own library API (same as the web reader); other OPDS " +
@@ -348,8 +319,6 @@ fun SettingsScreen(
                         "Reading & listening position syncs with BookOrbit and Grimmory servers " +
                             "through their own library API (same as the web reader)."
                     },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (syncRows.isEmpty()) {
                     Text(
@@ -389,25 +358,17 @@ fun SettingsScreen(
                 ) {
                     Switch(checked = prefs.showFormatBadges, onCheckedChange = state::setShowFormatBadges)
                 }
-                if (prefs.showFormatBadges) FormatLegend(Modifier.padding(top = 8.dp))
+                if (prefs.showFormatBadges) FormatLegend()
             }
 
             if (onReportProblem != null) {
                 SettingsSection("Feedback") {
-                    Row(
-                        Modifier.fillMaxWidth().clickable(onClick = onReportProblem),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column {
-                            Text("Report a problem", style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                "Opens an email with your device details and a zip of the app's logs " +
-                                    "attached. Nothing is sent until you send it.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    NavRow(
+                        title = "Report a problem",
+                        subtitle = "Opens an email with your device details and a zip of the app's logs " +
+                            "attached. Nothing is sent until you send it.",
+                        onClick = onReportProblem,
+                    )
                 }
             }
 
@@ -422,37 +383,20 @@ fun SettingsScreen(
 
 @Composable
 private fun NativeSyncRow(row: SyncServerRow) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text(row.name, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                "Syncs with the library",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            row.lastSyncedAt?.let { at ->
-                Text(
-                    "Last synced ${relativeTime(at)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+    // issue #285 — a plain row like the rest of the section, not a card nested in its card.
+    Column(Modifier.fillMaxWidth()) {
+        SettingTitle(row.name)
+        SettingDescription("Syncs with the library")
+        row.lastSyncedAt?.let { at -> SettingDescription("Last synced ${relativeTime(at)}") }
     }
 }
 
 /** issue #277 — a non-native server's sync status while KOReader setup is hidden. */
 @Composable
 private fun KoSyncStatusRow(row: SyncServerRow) {
-    Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp)) {
-            Text(row.name, style = MaterialTheme.typography.bodyLarge)
-            Text(
-                if (row.configured) "Syncs with KOReader" else "Reading position stays on this device",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+    Column(Modifier.fillMaxWidth()) {
+        SettingTitle(row.name)
+        SettingDescription(if (row.configured) "Syncs with KOReader" else "Reading position stays on this device")
     }
 }
 
@@ -581,19 +525,61 @@ private fun KoSyncServerCard(
     }
 }
 
+/*
+ * issue #285 — Settings' building blocks. Every row title, description and control group goes
+ * through these, so they share one type scale and one spacing rule: the section spaces its
+ * settings [SETTING_GAP] apart, and each setting keeps its own title, description and controls
+ * tight together. (Before, a 10dp section gap stacked with a 16dp spacer per setting and the
+ * pieces' own padding — uneven gaps — titles mixed bodyMedium/bodyLarge, and a row's text column
+ * took the full width, pushing its switch or chevron past the card's edge.)
+ */
+private val SETTING_GAP = 16.dp
+
 @Composable
 private fun SettingsSection(title: String, content: @Composable () -> Unit) {
     Card(Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(Modifier.padding(16.dp)) {
             Text(
                 title,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
-            HorizontalDivider()
-            content()
+            HorizontalDivider(Modifier.padding(top = 8.dp, bottom = 12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(SETTING_GAP)) { content() }
         }
     }
+}
+
+@Composable
+private fun SettingTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.bodyLarge)
+}
+
+@Composable
+private fun SettingDescription(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier,
+    )
+}
+
+/** One labelled setting — title, optional description, then its controls. */
+@Composable
+private fun SettingGroup(title: String, description: String? = null, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        SettingTitle(title)
+        description?.let { SettingDescription(it, Modifier.padding(top = 2.dp)) }
+        Column(Modifier.padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
+    }
+}
+
+/** A setting's choice chips, wrapping onto more lines on a narrow screen. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ChipRow(content: @Composable () -> Unit) {
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) { content() }
 }
 
 /** A Settings row that navigates elsewhere — the Servers and Book Defaults entries. */
@@ -601,12 +587,11 @@ private fun SettingsSection(title: String, content: @Composable () -> Unit) {
 private fun NavRow(title: String, subtitle: String, onClick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick),
-        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column {
-            Text(title, style = MaterialTheme.typography.bodyMedium)
-            Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            SettingTitle(title)
+            SettingDescription(subtitle)
         }
         Text("›", style = MaterialTheme.typography.titleLarge)
     }
@@ -616,14 +601,12 @@ private fun NavRow(title: String, subtitle: String, onClick: () -> Unit) {
 internal fun SettingRow(title: String, subtitle: String?, trailing: @Composable () -> Unit) {
     Row(
         Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Column {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
-            subtitle?.let {
-                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
+        // issue #285 — weight, so a long subtitle wraps instead of pushing the switch off-card.
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+            SettingTitle(title)
+            subtitle?.let { SettingDescription(it) }
         }
         trailing()
     }
