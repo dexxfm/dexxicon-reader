@@ -5,6 +5,7 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.BookSort
+import net.dexxicon.reader.core.model.ContentFormat
 import net.dexxicon.reader.core.model.CatalogShelf
 import net.dexxicon.reader.core.model.Server
 
@@ -25,6 +26,7 @@ class OpdsCatalogSource : CatalogSource {
         sort: BookSort,
         page: Int,
         pageSize: Int,
+        formats: Set<ContentFormat>?,
     ): Outcome<BookPage> = unsupported()
 
     override suspend fun detail(server: Server, bookId: String): Outcome<BookDetail> = unsupported()
