@@ -125,7 +125,10 @@ class CatalogRepository(
             return@withContext results.firstNotNullOfOrNull { it.second as? Outcome.Failure }
                 ?: Outcome.Failure(DexxiconError.Network("Couldn't reach any server"))
         }
-        val merged = mergeAggregated(pages, sort)
+        val merged = mergeAggregated(pages, sort).copy(
+            // issue #293 — with a mix of servers the app's sort still orders some of them.
+            appSortApplies = pages.any { (_, p) -> p.appSortApplies },
+        )
         Outcome.Success(
             if (formats == null) merged
             else merged.copy(books = merged.books.filter { it.format in formats }),
@@ -225,14 +228,17 @@ class CatalogRepository(
         page: Int,
         pageSize: Int = DEFAULT_PAGE_SIZE,
         formats: Set<ContentFormat>? = null,
+        /** issue #293 — a catalog facet to list instead (only meaningful for one group). */
+        facetHref: String? = null,
     ): Outcome<AggregatedBookPage> = withContext(io) {
         if (groups.isEmpty()) return@withContext Outcome.Success(AggregatedBookPage(emptyList(), hasMore = false))
+        val facet = facetHref.takeIf { groups.size == 1 }
         val results = coroutineScope {
             groups.map { group ->
                 async {
                     val server = serverRepository.get(group.serverId)
                         ?: return@async null to notFound<BookPage>()
-                    server to sourceFor(server).groupBooks(server, group, query, sort, page, pageSize, formats)
+                    server to sourceFor(server).groupBooks(server, group, query, sort, page, pageSize, formats, facet)
                 }
             }.awaitAll()
         }
@@ -245,7 +251,11 @@ class CatalogRepository(
                 ?: Outcome.Failure(DexxiconError.Network("Couldn't reach any server"))
         }
         val isSeries = groups.all { it.kind == BookGroupKind.SERIES }
-        val merged = mergeAggregated(pages, if (isSeries) BookSort.SERIES else sort)
+        val merged = mergeAggregated(pages, if (isSeries) BookSort.SERIES else sort).copy(
+            // issue #293 — one catalog's own sort/filter choices, when the list is one catalog's.
+            facets = pages.singleOrNull()?.second?.facets.orEmpty(),
+            appSortApplies = pages.any { (_, p) -> p.appSortApplies },
+        )
         Outcome.Success(
             if (formats == null) merged
             else merged.copy(books = merged.books.filter { it.format in formats }),

@@ -36,6 +36,7 @@ kotlin {
             api(project(":core:common"))
             implementation(project(":core:network"))
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.xmlutil.core)
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.content.negotiation)
         }

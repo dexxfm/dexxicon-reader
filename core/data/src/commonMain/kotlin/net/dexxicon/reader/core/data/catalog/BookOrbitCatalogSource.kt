@@ -50,6 +50,7 @@ class BookOrbitCatalogSource(
         page: Int,
         pageSize: Int,
         formats: Set<ContentFormat>?,
+        facetHref: String?,
     ): Outcome<BookPage> = call {
         val url = when (shelfId) {
             null -> server.resolve("/api/v1/books/query")
@@ -128,6 +129,7 @@ class BookOrbitCatalogSource(
         page: Int,
         pageSize: Int,
         formats: Set<ContentFormat>?,
+        facetHref: String?,
     ): Outcome<BookPage> {
         val queryPath = when (group.kind) {
             BookGroupKind.LIBRARY -> return books(server, group.id, query, sort, page, pageSize, formats)

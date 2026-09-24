@@ -13,6 +13,40 @@ data class BookPage(
     val page: Int,
     val hasMore: Boolean,
     val total: Int? = null,
+    /** issue #293 — the catalog's own sort/filter choices for this list (OPDS facets). */
+    val facets: List<FacetGroup> = emptyList(),
+    /** False when the source can't apply [BookSort] (OPDS: a catalog sorts only through its own
+     *  facets, if at all), so screens offer the catalog's sort instead of the app's. */
+    val appSortApplies: Boolean = true,
+)
+
+/**
+ * issue #293 — one of a catalog's sort or filter dimensions (an OPDS facet group), e.g.
+ * Open Library's "Language" or Project Gutenberg's "Sort order". Choosing a [Facet] reloads the
+ * list from its [Facet.href].
+ */
+data class FacetGroup(val title: String, val facets: List<Facet>) {
+    /** The choice in effect, when the catalog says (OPDS `activeFacet` / `properties.active`). */
+    val active: Facet? get() = facets.firstOrNull { it.active }
+
+    /** A sort order rather than a filter, judged by the group's title. */
+    val isSort: Boolean get() = SORT_TITLE.containsMatchIn(title)
+
+    /** Narrowed from the default: something other than the group's first ("All") choice. */
+    val isNarrowed: Boolean get() = active != null && active != facets.firstOrNull()
+
+    private companion object {
+        val SORT_TITLE = Regex("sort|order", RegexOption.IGNORE_CASE)
+    }
+}
+
+data class Facet(
+    val title: String,
+    /** The list with this facet applied. */
+    val href: String,
+    val active: Boolean = false,
+    /** How many books it holds, when the catalog says. */
+    val count: Int? = null,
 )
 
 /** One server's copy of a book, as merged into an [AggregatedBook]. */
@@ -49,6 +83,10 @@ data class AggregatedBook(
 data class AggregatedBookPage(
     val books: List<AggregatedBook>,
     val hasMore: Boolean,
+    /** issue #293 — see [BookPage.facets]; only for a list from a single catalog. */
+    val facets: List<FacetGroup> = emptyList(),
+    /** See [BookPage.appSortApplies]. */
+    val appSortApplies: Boolean = true,
 )
 
 /** A book/comic/audiobook as shown in a grid — enough to render a card and open detail. */

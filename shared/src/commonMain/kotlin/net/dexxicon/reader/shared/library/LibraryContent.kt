@@ -1,5 +1,19 @@
 package net.dexxicon.reader.shared.library
 
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import net.dexxicon.reader.core.model.Facet
+import net.dexxicon.reader.core.model.FacetGroup
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -226,6 +240,7 @@ fun LibraryBooksPane(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val catalogSort = uiState.facets.firstOrNull { it.isSort }
             if (uiState.scope.isSeries) {
                 // A series is always shown in series order — there's nothing to sort.
                 Text(
@@ -233,6 +248,17 @@ fun LibraryBooksPane(
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            } else if (!uiState.appSortApplies) {
+                // issue #293 — an OPDS catalog sorts only its own way, if at all.
+                if (catalogSort != null) {
+                    FacetSortChip(catalogSort, state::onFacetSelected)
+                } else {
+                    Text(
+                        "Catalog order",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             } else {
                 val next = BookSort.entries[(uiState.sort.ordinal + 1) % BookSort.entries.size]
                 FilterChip(
@@ -241,7 +267,11 @@ fun LibraryBooksPane(
                     label = { Text("Sort: ${uiState.sort.name.lowercase()}") },
                 )
             }
-            ViewModeToggle(uiState.viewMode, state::toggleViewMode)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val filters = uiState.facets.filterNot { it.isSort }
+                if (filters.isNotEmpty()) FacetFiltersChip(filters, state::onFacetSelected)
+                ViewModeToggle(uiState.viewMode, state::toggleViewMode)
+            }
         }
 
         PullToRefreshBox(
@@ -436,6 +466,100 @@ private fun LibraryMenu(expanded: Boolean, onDismiss: () -> Unit, actions: Libra
         onDetails = actions.onDetails,
         onDownloadOrRemove = actions.onDownloadOrRemove,
     )
+}
+
+/** issue #293 — a catalog's own sort order (an OPDS sort facet group), as a menu. */
+@Composable
+private fun FacetSortChip(group: FacetGroup, onSelect: (Facet) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    Box {
+        FilterChip(
+            selected = false,
+            onClick = { expanded = true },
+            label = { Text("Sort: ${group.active?.title?.lowercase() ?: "catalog order"}") },
+            trailingIcon = { Icon(Icons.Filled.ArrowDropDown, contentDescription = null) },
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            group.facets.forEach { facet ->
+                DropdownMenuItem(
+                    text = { Text(facet.title) },
+                    leadingIcon = if (facet.active) {
+                        { Icon(Icons.Filled.Check, contentDescription = "Current") }
+                    } else {
+                        null
+                    },
+                    onClick = {
+                        expanded = false
+                        onSelect(facet)
+                    },
+                )
+            }
+        }
+    }
+}
+
+/**
+ * issue #293 — a catalog's own filters (its non-sort OPDS facet groups, e.g. Open Library's
+ * Availability and Language), each a full-width dropdown in a sheet. The chip counts the groups
+ * narrowed from their default.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FacetFiltersChip(groups: List<FacetGroup>, onSelect: (Facet) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val narrowed = groups.count { it.isNarrowed }
+    FilterChip(
+        selected = narrowed > 0,
+        onClick = { open = true },
+        label = { Text(if (narrowed > 0) "Filters · $narrowed" else "Filters") },
+        leadingIcon = { Icon(Icons.Filled.FilterList, contentDescription = null) },
+    )
+    if (open) {
+        ModalBottomSheet(onDismissRequest = { open = false }) {
+            Column(
+                Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text("Filters", style = MaterialTheme.typography.titleMedium)
+                groups.forEach { group ->
+                    FacetDropdown(group) { facet ->
+                        open = false
+                        onSelect(facet)
+                    }
+                }
+                Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FacetDropdown(group: FacetGroup, onSelect: (Facet) -> Unit) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = group.active?.title ?: "Any",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(group.title) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            group.facets.forEach { facet ->
+                DropdownMenuItem(
+                    text = { Text(facet.count?.let { "${facet.title}  ($it)" } ?: facet.title) },
+                    onClick = {
+                        expanded = false
+                        onSelect(facet)
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                )
+            }
+        }
+    }
 }
 
 @Composable

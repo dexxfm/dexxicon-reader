@@ -28,12 +28,14 @@ import net.dexxicon.reader.core.data.download.DownloadRepository
 import net.dexxicon.reader.core.data.sync.DigestSource
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.AcquisitionRelation
 import java.io.File
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.core.reader.PublicationStreamer
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.reader.ReaderLocatorStore
+import net.dexxicon.reader.core.reader.RemoteBookCache
 import net.dexxicon.reader.core.datastore.ReaderPreferencesStore
 
 import net.dexxicon.reader.feature.reader.epub.navigation.EpubReaderRoute
@@ -69,6 +71,7 @@ class EpubReaderViewModel @Inject constructor(
     private val progressRepository: ReadingProgressRepository,
     private val highlightRepository: HighlightRepository,
     private val bookmarkRepository: BookmarkRepository,
+    private val remoteBookCache: RemoteBookCache,
     preferencesStore: ReaderPreferencesStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -149,8 +152,20 @@ class EpubReaderViewModel @Inject constructor(
                 _state.value = EpubReaderState.Error("This book isn't an EPUB")
                 return
             }
-            digestSource = DigestSource.Remote(acquisition.href)
-            streamer.open(acquisition.href, MediaType.EPUB)
+            if (acquisition.relation == AcquisitionRelation.OPEN_ACCESS) {
+                // issue #291 — an OPDS catalog's open-access file: fetch it whole, then open the
+                // copy (ranged streaming stalled on Gutenberg's large EPUBs; see RemoteBookCache).
+                // Only the OPDS source marks acquisitions OPEN_ACCESS — BookOrbit/Grimmory stream.
+                val file = runCatching { remoteBookCache.fetch(acquisition.href, "epub") }.getOrElse {
+                    _state.value = EpubReaderState.Error("Couldn't download this book from the catalog")
+                    return
+                }
+                digestSource = DigestSource.LocalFile(file.path)
+                streamer.open(file, MediaType.EPUB)
+            } else {
+                digestSource = DigestSource.Remote(acquisition.href)
+                streamer.open(acquisition.href, MediaType.EPUB)
+            }
         }
 
         when (opened) {
