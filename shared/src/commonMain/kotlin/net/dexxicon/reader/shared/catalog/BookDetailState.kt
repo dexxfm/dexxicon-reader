@@ -73,29 +73,49 @@ class BookDetailState(
         container.progressRepository.observe(serverId, bookId)
             .stateIn(scope, SharingStarted.WhileSubscribed(5_000), null)
 
+    /** issue #301 — a pull-to-retry after [error] is in flight. */
+    var retrying by mutableStateOf(false)
+        private set
+
     init {
         scope.launch {
             copies = resolveCopies(copyIds.ifEmpty { listOf(serverId to bookId) })
+            load()
+        }
+    }
 
-            when (val result = container.catalogRepository.detail(serverId, bookId)) {
-                is Outcome.Success -> {
-                    detail = result.value
-                    loading = false
-                    loadSeries(result.value)
-                    refreshSeriesBadges(result.value)
+    /** issue #301 — try loading again after an error (a catalog's passing 504, a dropped
+     *  connection). The error stays on screen, under the refresh indicator, until it resolves. */
+    fun retry() {
+        if (retrying) return
+        retrying = true
+        scope.launch {
+            load()
+            retrying = false
+        }
+    }
+
+    private suspend fun load() {
+        when (val result = container.catalogRepository.detail(serverId, bookId)) {
+            is Outcome.Success -> {
+                detail = result.value
+                error = null
+                loading = false
+                loadSeries(result.value)
+                refreshSeriesBadges(result.value)
+            }
+            is Outcome.Failure -> {
+                // Offline? Fall back to what the downloaded copy remembers.
+                val offline = container.downloadRepository.get(serverId, bookId)
+                    ?.takeIf { it.status == DownloadStatus.DONE }
+                    ?.toBookDetail()
+                if (offline != null) {
+                    detail = offline
+                    error = null
+                } else {
+                    error = result.error.message ?: "Couldn't load this book"
                 }
-                is Outcome.Failure -> {
-                    // Offline? Fall back to what the downloaded copy remembers.
-                    val offline = container.downloadRepository.get(serverId, bookId)
-                        ?.takeIf { it.status == DownloadStatus.DONE }
-                        ?.toBookDetail()
-                    if (offline != null) {
-                        detail = offline
-                    } else {
-                        error = result.error.message ?: "Couldn't load this book"
-                    }
-                    loading = false
-                }
+                loading = false
             }
         }
     }
