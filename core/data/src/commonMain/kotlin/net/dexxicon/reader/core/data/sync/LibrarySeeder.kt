@@ -53,14 +53,19 @@ class LibrarySeeder(
             )
         } catch (e: ResponseException) {
             val status = e.response.status.value
+            Logger.w(TAG, "continue lists ${server.type} ${server.displayName}: HTTP $status")
             if (status == 401 || status == 403) {
                 Outcome.Failure(DexxiconError.Unauthorized("HTTP $status"))
             } else {
                 Outcome.Failure(DexxiconError.Unknown("HTTP $status", e))
             }
         } catch (e: IOException) {
+            Logger.w(TAG, "continue lists ${server.type} ${server.displayName}: ${e.message}")
             Outcome.Failure(DexxiconError.Network(e.message ?: "Network error"))
         } catch (e: Exception) {
+            // issue #283 — this surfaced only as Home's "didn't respond properly" banner, with
+            // nothing in the log to say what the server actually sent.
+            Logger.w(TAG, "continue lists ${server.type} ${server.displayName}: ${e::class.simpleName}: ${e.message}")
             Outcome.Failure(DexxiconError.Unknown(e.message, e))
         }
     }

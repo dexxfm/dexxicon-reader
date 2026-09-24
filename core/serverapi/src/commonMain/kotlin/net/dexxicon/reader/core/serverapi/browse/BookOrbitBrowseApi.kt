@@ -10,6 +10,11 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 
 /**
  * BookOrbit native browse endpoints (JWT bearer). Discovered from the web client:
@@ -31,6 +36,9 @@ import kotlinx.serialization.Serializable
  * `books/{bookId}/audio-progress` routes instead.
  */
 class BookOrbitBrowseApi(private val client: HttpClient) {
+    /** Decodes [dashboardScroller]'s cards — same settings as the HTTP client's own JSON. */
+    private val scrollerJson = Json { ignoreUnknownKeys = true; isLenient = true; explicitNulls = false }
+
 
     suspend fun libraries(url: String): List<BookOrbitLibrary> = client.get(url).body()
 
@@ -56,8 +64,20 @@ class BookOrbitBrowseApi(private val client: HttpClient) {
     /** `GET /api/v1/smart-scopes` (issue #254) — same book/podcast split as [collections]. */
     suspend fun smartScopes(url: String): List<BookOrbitSmartScope> = client.get(url).body()
 
-    /** `GET /api/v1/dashboard/scrollers/{continue-reading|continue-listening}` → book cards. */
-    suspend fun dashboardScroller(url: String): List<BookOrbitBook> = client.get(url).body()
+    /**
+     * `GET /api/v1/dashboard/scrollers/{continue-reading|continue-listening|want-to-read}` →
+     * book cards. issue #283 — BookOrbit 3.0 wraps them in a `DashboardScrollerResponse`
+     * (`{ books, total }`); older servers return the bare array. Both are accepted — the bare
+     * array alone made every sync on a 3.0 server fail ("didn't respond properly" on Home).
+     */
+    suspend fun dashboardScroller(url: String): List<BookOrbitBook> {
+        val books = when (val body: JsonElement = client.get(url).body()) {
+            is JsonArray -> body
+            is JsonObject -> body["books"] as? JsonArray ?: JsonArray(emptyList())
+            else -> JsonArray(emptyList())
+        }
+        return scrollerJson.decodeFromJsonElement(ListSerializer(BookOrbitBook.serializer()), books)
+    }
 
     /** Null on a server older than 2.10 (the whole `/audiobooks` controller 404s — there's no
      * per-endpoint way to tell "no manifest for this book" apart from "no such controller",
