@@ -13,7 +13,7 @@ Google client libraries aren't required.
 
   python tools/play_upload.py --list-tracks
   python tools/play_upload.py --aab app/build/outputs/bundle/release/dexxicon-reader-1.3.0.aab \
-      --track alpha --name 1.3.0 --notes-file notes.txt [--draft] [--validate-only]
+      --track internal --name 1.3.0 --notes-file notes.txt [--draft] [--validate-only]
 """
 import argparse
 import base64
@@ -132,7 +132,7 @@ def main() -> None:
     parser.add_argument("--package", default=PACKAGE)
     parser.add_argument("--list-tracks", action="store_true", help="show the app's tracks and exit")
     parser.add_argument("--aab", type=Path)
-    parser.add_argument("--track", help="e.g. internal, alpha (the default closed track), production")
+    parser.add_argument("--track", help="internal (the release flow's default), alpha (closed testing), production")
     parser.add_argument("--name", help="release name shown in Play Console, e.g. 1.3.0")
     parser.add_argument("--notes-file", type=Path, help="en-US 'What's new' text (max 500 characters)")
     parser.add_argument("--draft", action="store_true", help="save as a draft release instead of rolling it out")
