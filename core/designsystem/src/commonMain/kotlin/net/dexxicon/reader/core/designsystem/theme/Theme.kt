@@ -79,6 +79,7 @@ fun DexxiconTheme(
 ) {
     val dynamicScheme = if (dynamicColor) resolveDynamicColorScheme(darkTheme) else null
     val colorScheme = dynamicScheme ?: if (darkTheme) DarkColors else LightColors
+    SystemBarsAppearance(darkTheme)
 
     CompositionLocalProvider(LocalCoverBadges provides coverBadges) {
         MaterialTheme(
@@ -96,3 +97,7 @@ fun DexxiconTheme(
  * falls back to [LightColors]/[DarkColors]. */
 @Composable
 internal expect fun resolveDynamicColorScheme(darkTheme: Boolean): ColorScheme?
+
+/** issue #306 — light or dark system-bar icons to match [darkTheme]. A no-op on iOS. */
+@Composable
+internal expect fun SystemBarsAppearance(darkTheme: Boolean)

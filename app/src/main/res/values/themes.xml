@@ -11,8 +11,12 @@
         <item name="colorPrimary">@color/dexxicon_primary</item>
         <item name="colorPrimaryDark">@color/dexxicon_window_bg</item>
         <item name="colorAccent">@color/dexxicon_primary</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
+        <!--
+          issue #306 — Android 15+ still draws this colour (translucent) behind 3-button
+          navigation, so it must stay transparent; the system then adds its own light or dark
+          contrast scrim to match the bar appearance DexxiconTheme sets. The status bar colour
+          and cutout mode are no longer set: Android 15+ ignores both for an edge-to-edge app.
+        -->
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>

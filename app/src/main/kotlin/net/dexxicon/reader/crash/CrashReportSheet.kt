@@ -11,6 +11,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Button
 import androidx.compose.material3.Surface
@@ -42,9 +43,19 @@ fun CrashReportSheet(
     var note by remember { mutableStateOf("") }
     val text = remember(report) { runCatching { report.readText() }.getOrDefault("") }
 
-    ModalBottomSheet(onDismissRequest = onKeep) {
+    // issue #306 — the sheet is taller than half the screen, so opening it half-expanded left
+    // "Send report" below the fold, behind the navigation bar. Open it fully, and let it scroll
+    // on a short screen.
+    ModalBottomSheet(
+        onDismissRequest = onKeep,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
         Column(
-            Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text("Dexxicon Reader closed unexpectedly", style = MaterialTheme.typography.titleMedium)

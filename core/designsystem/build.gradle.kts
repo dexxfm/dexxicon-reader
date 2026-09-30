@@ -46,5 +46,9 @@ kotlin {
             // whatever content sits behind it as the glass's backdrop source.
             api(libs.liquid.glass)
         }
+        androidMain.dependencies {
+            // WindowInsetsControllerCompat for SystemBars.android.kt (issue #306).
+            implementation(libs.androidx.core.ktx)
+        }
     }
 }
