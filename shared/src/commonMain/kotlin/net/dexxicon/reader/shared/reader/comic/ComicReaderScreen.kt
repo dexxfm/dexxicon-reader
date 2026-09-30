@@ -1,11 +1,12 @@
 package net.dexxicon.reader.shared.reader.comic
 
+import androidx.compose.ui.graphics.luminance
+import net.dexxicon.reader.core.designsystem.theme.LocalDarkTheme
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -155,10 +156,15 @@ private fun ReaderContent(
 ) {
     val scope = rememberCoroutineScope()
     var showSettings by remember { mutableStateOf(false) }
-    val darkTheme = isSystemInDarkTheme()
+    // issue #308 — the app's theme, not the phone's.
+    val darkTheme = LocalDarkTheme.current
+    val surface = preferences.theme.comicSurfaceColor(darkTheme)
 
     Scaffold(
-        containerColor = preferences.theme.comicSurfaceColor(darkTheme),
+        containerColor = surface,
+        // issue #308 — the page-count label sits straight on the reading background, which can be
+        // dark even in a light app (Grey, Black), so pick its colour from the background itself.
+        contentColor = if (surface.luminance() < 0.5f) Color(0xFFE6E7EA) else Color(0xFF1B1C1F),
         topBar = {
             if (chromeVisible) {
                 TopAppBar(
@@ -398,8 +404,8 @@ private fun comicThemeLabel(theme: ReaderTheme): String = when (theme) {
 /** Same shape as [net.dexxicon.reader.shared.reader.pdf.PdfReaderScreen]'s own
  * `pdfSurfaceColor` — duplicated per that function's own doc comment (a pure Compose mapping
  * with no engine dependency belongs beside its own reader, not in a shared-utilities file). */
-private fun ReaderTheme.comicSurfaceColor(systemInDark: Boolean): Color = when (this) {
-    ReaderTheme.SYSTEM -> if (systemInDark) Color(0xFF101114) else Color(0xFFF6F6F6)
+private fun ReaderTheme.comicSurfaceColor(appInDark: Boolean): Color = when (this) {
+    ReaderTheme.SYSTEM -> if (appInDark) Color(0xFF101114) else Color(0xFFF6F6F6)
     ReaderTheme.LIGHT -> Color(0xFFF6F6F6)
     ReaderTheme.SEPIA -> Color(0xFFEFE6D3)
     ReaderTheme.GREY -> Color(0xFF3A3D42)
