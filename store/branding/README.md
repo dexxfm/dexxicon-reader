@@ -28,7 +28,10 @@ tagline right, `#152238` background).
 
 When only the icon changes, keep the promo's text: resize the render to 300×300 and paste it
 over the icon tile at (64, 100) (issue #312 did this for the Aqua muzzle). Keep `icon.svg` in
-step with `app/src/main/res/drawable/ic_launcher_foreground.xml`, which is the source of truth.
+step with `app/src/main/res/drawable/ic_launcher_foreground.xml`, which is the source of truth
+for the artwork. One intended difference (issue #314): the store icon shifts the mark up 9.25
+units so it is vertically centred on the square, while the launcher keeps its original layout
+for Android's icon masks.
 
 Screenshots — `adb shell wm size 2560x1600 && adb shell wm density 400`, restart the app,
 `adb shell screencap -p /sdcard/x.png && adb pull …` per screen, then `adb shell wm size
