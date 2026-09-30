@@ -20,13 +20,18 @@ Google Play (issue #303): when asked to put the AAB on Play, build it
 ```bash
 python tools/play_upload.py --list-tracks
 python tools/play_upload.py --aab app/build/outputs/bundle/release/dexxicon-reader-$1.aab \
-    --track alpha --name $1 --notes-file <notes, max 500 chars>
+    --track internal --name $1 --notes-file <notes, max 500 chars>
 ```
 
 It signs in as a service account whose JSON key lives outside the repo, at
 `~/.config/dexxicon/play-service-account.json` or `$PLAY_SERVICE_ACCOUNT_JSON`. Never print or
-copy the key. `alpha` is Play's default closed-testing track; `--validate-only` does a dry
-run and `--draft` saves the release without rolling it out.
+copy the key. Upload to **`internal`** (internal testing): the user promotes a build to closed
+testing (`alpha`) in Play Console when it's ready, so don't upload to `alpha` or `production`
+unless asked. `--validate-only` does a dry run and `--draft` saves the release without rolling
+it out.
+
+The script replaces every release on the track. Run `--list-tracks` first, and ask before
+discarding a draft that's there.
 
 iOS (issue #304), all through `E:\Claude-Mac-Scripts\mac_run.py`, never raw ssh:
 1. On the Mac: `git worktree add --detach ~/dexxicon-v<ver> v$1` from `~/dexxicon-reader`. Add
