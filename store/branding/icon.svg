@@ -1,9 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="1024" height="1024">
+  <title>Dexxicon Reader</title>
+  <!-- Navy tile: the Android launcher background (ic_launcher_background). -->
   <rect width="108" height="108" fill="#152238"/>
+  <!-- Bookmark ribbon falling from the chin. -->
   <path fill="#8A94A6" d="M48,74 h12 v24 l-6,-7 -6,7 Z"/>
+  <!-- Fox head: one continuous ribbon stroke. -->
   <path fill="none" stroke="#DBE0E8" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"
-        d="M54,80 C 42,80 34,71 32,60 L28,32 L44,44 C 50,41 58,41 64,44 L80,32 L76,60 C 74,71 66,80 54,80 Z"/>
-  <path fill="#3D5A8A" d="M33,61 C 35,71 43,79 54,79 C 65,79 73,71 75,61 C 67,67 61,70 54,70 C 47,70 41,67 33,61 Z"/>
+        d="M54,80 C42,80 34,71 32,60 L28,32 L44,44 C50,41 58,41 64,44 L80,32 L76,60 C74,71 66,80 54,80 Z"/>
+  <!-- Muzzle in the app's Aqua accent (dark-ground step). -->
+  <path fill="#57C9B4" d="M33,61 C35,71 43,79 54,79 C65,79 73,71 75,61 C67,67 61,70 54,70 C47,70 41,67 33,61 Z"/>
+  <!-- Eyes and nose. -->
   <circle cx="45" cy="55" r="2.6" fill="#0F1B31"/>
   <circle cx="63" cy="55" r="2.6" fill="#0F1B31"/>
   <path fill="#0F1B31" d="M54,66 l-4,-5 h8 Z"/>
