@@ -26,6 +26,10 @@ chrome --headless --disable-gpu --force-device-scale-factor=1 \
 then resize with Pillow to 512 / 114, and composite the 1024×500 promo (icon left, title +
 tagline right, `#152238` background).
 
+When only the icon changes, keep the promo's text: resize the render to 300×300 and paste it
+over the icon tile at (64, 100) (issue #312 did this for the Aqua muzzle). Keep `icon.svg` in
+step with `app/src/main/res/drawable/ic_launcher_foreground.xml`, which is the source of truth.
+
 Screenshots — `adb shell wm size 2560x1600 && adb shell wm density 400`, restart the app,
 `adb shell screencap -p /sdcard/x.png && adb pull …` per screen, then `adb shell wm size
 reset && adb shell wm density reset`.
