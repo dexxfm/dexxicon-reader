@@ -1,5 +1,10 @@
 package net.dexxicon.reader.shared.reader.pdf
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -170,7 +175,14 @@ private fun ReaderContent(
         },
         bottomBar = {
             if (state.pageCount > 1) {
-                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
+                // issue #306 — clear of the navigation bar (3-button nav drew over the slider) and,
+                // in landscape, the camera cutout.
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom))
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                ) {
                     Text("Page $currentPage of ${state.pageCount}", style = MaterialTheme.typography.labelMedium)
                     Slider(
                         value = currentPage.coerceIn(1, state.pageCount).toFloat(),

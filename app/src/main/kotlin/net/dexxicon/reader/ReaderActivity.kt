@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -76,7 +75,6 @@ class ReaderActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         // issue #307 — must be in place before super.onCreate restores fragments.
         supportFragmentManager.fragmentFactory = DiscardReadiumNavigatorsFactory
-        enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         discardRestoredNavigators()
 
