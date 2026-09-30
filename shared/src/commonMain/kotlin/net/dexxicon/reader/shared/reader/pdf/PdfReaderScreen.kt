@@ -1,12 +1,13 @@
 package net.dexxicon.reader.shared.reader.pdf
 
+import androidx.compose.ui.graphics.luminance
+import net.dexxicon.reader.core.designsystem.theme.LocalDarkTheme
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -144,10 +145,15 @@ private fun ReaderContent(
     var showBookmarks by remember { mutableStateOf(false) }
     var showToc by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
-    val darkTheme = isSystemInDarkTheme()
+    // issue #308 — the app's theme, not the phone's.
+    val darkTheme = LocalDarkTheme.current
+    val surface = preferences.theme.pdfSurfaceColor(darkTheme)
 
     Scaffold(
-        containerColor = preferences.theme.pdfSurfaceColor(darkTheme),
+        containerColor = surface,
+        // issue #308 — the page-count label sits straight on the reading background, which can be
+        // dark even in a light app (Grey, Black), so pick its colour from the background itself.
+        contentColor = if (surface.luminance() < 0.5f) Color(0xFFE6E7EA) else Color(0xFF1B1C1F),
         topBar = {
             TopAppBar(
                 title = { Text(state.title, maxLines = 1) },
@@ -396,8 +402,8 @@ private fun Bookmark.pageNumber(): Int? = pageFromLocatorJson(locatorJson)
  * PDFKit both render page content as opaque bitmaps, so this only shows in the page spacing,
  * the margins and when zoomed out — not on the page itself.
  */
-private fun ReaderTheme.pdfSurfaceColor(systemInDark: Boolean): Color = when (this) {
-    ReaderTheme.SYSTEM -> if (systemInDark) Color(0xFF101114) else Color(0xFFF6F6F6)
+private fun ReaderTheme.pdfSurfaceColor(appInDark: Boolean): Color = when (this) {
+    ReaderTheme.SYSTEM -> if (appInDark) Color(0xFF101114) else Color(0xFFF6F6F6)
     ReaderTheme.LIGHT -> Color(0xFFF6F6F6)
     ReaderTheme.SEPIA -> Color(0xFFEFE6D3)
     ReaderTheme.GREY -> Color(0xFF3A3D42)

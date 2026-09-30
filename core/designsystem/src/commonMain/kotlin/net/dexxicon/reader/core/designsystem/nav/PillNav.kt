@@ -1,12 +1,12 @@
 package net.dexxicon.reader.core.designsystem.nav
 
+import net.dexxicon.reader.core.designsystem.theme.LocalDarkTheme
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -153,7 +153,8 @@ fun <T> FloatingPillNavBar(
         val tint = if (glassIntensity == GlassIntensity.OFF) {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.82f)
         } else {
-            val baseTint = LiquidGlassDefaults.tintFor(isSystemInDarkTheme())
+            // issue #308 — the app's theme, not the phone's.
+            val baseTint = LiquidGlassDefaults.tintFor(LocalDarkTheme.current)
             baseTint.copy(alpha = (baseTint.alpha * scale).coerceIn(0f, 1f))
         }
         Box(

@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.designsystem.theme
 
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
@@ -81,7 +82,7 @@ fun DexxiconTheme(
     val colorScheme = dynamicScheme ?: if (darkTheme) DarkColors else LightColors
     SystemBarsAppearance(darkTheme)
 
-    CompositionLocalProvider(LocalCoverBadges provides coverBadges) {
+    CompositionLocalProvider(LocalCoverBadges provides coverBadges, LocalDarkTheme provides darkTheme) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = dexxiconTypography(),
@@ -90,6 +91,13 @@ fun DexxiconTheme(
         )
     }
 }
+
+/**
+ * issue #308 — whether [DexxiconTheme] is drawing dark: the in-app Light/Dark/System setting,
+ * resolved. Read this rather than `isSystemInDarkTheme()`, which is the phone's setting and
+ * disagrees whenever the app's theme is set to Light or Dark explicitly.
+ */
+val LocalDarkTheme = staticCompositionLocalOf { false }
 
 /** Android 12+ wallpaper-seeded color scheme — genuinely platform-specific (no iOS
  * equivalent), so this is the one thing behind an expect/actual rather than a runtime check
