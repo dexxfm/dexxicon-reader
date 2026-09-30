@@ -104,7 +104,11 @@ fun ComicReaderScreen(
         is ComicReaderState.Loading -> SharedComicReaderScreen(ComicReaderUiState.Loading, onBack)
         is ComicReaderState.Error -> SharedComicReaderScreen(ComicReaderUiState.Error(s.message), onBack)
         is ComicReaderState.Ready -> ReaderContent(
-            state = s,
+            // issue #307 — after an Activity recreation, start where the reader left off.
+            state = remember(s) {
+                val resume = viewModel.resumeLocator()
+                s.copy(initialLocator = resume, initialPage = resume?.locations?.position ?: s.initialPage)
+            },
             onBack = onBack,
             onLocator = viewModel::onLocatorChanged,
             preferences = preferences,

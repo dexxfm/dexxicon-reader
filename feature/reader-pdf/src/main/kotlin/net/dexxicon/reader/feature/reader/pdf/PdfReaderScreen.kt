@@ -67,7 +67,11 @@ fun PdfReaderScreen(
         is PdfReaderState.Loading -> SharedPdfReaderScreen(PdfReaderUiState.Loading, onBack)
         is PdfReaderState.Error -> SharedPdfReaderScreen(PdfReaderUiState.Error(s.message), onBack)
         is PdfReaderState.Ready -> ReaderContent(
-            state = s,
+            // issue #307 — after an Activity recreation, start where the reader left off.
+            state = remember(s) {
+                val resume = viewModel.resumeLocator()
+                s.copy(initialLocator = resume)
+            },
             preferences = preferences,
             bookmarks = bookmarks,
             onBack = onBack,
