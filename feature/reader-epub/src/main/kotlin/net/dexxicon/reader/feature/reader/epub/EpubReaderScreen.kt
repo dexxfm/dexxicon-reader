@@ -63,7 +63,11 @@ fun EpubReaderScreen(
         is EpubReaderState.Loading -> SharedEpubReaderScreen(EpubReaderUiState.Loading, onBack)
         is EpubReaderState.Error -> SharedEpubReaderScreen(EpubReaderUiState.Error(s.message), onBack)
         is EpubReaderState.Ready -> ReaderContent(
-            state = s,
+            // issue #307 — after an Activity recreation, start where the reader left off.
+            state = remember(s) {
+                val resume = viewModel.resumeLocator()
+                s.copy(initialLocator = resume)
+            },
             preferences = prefs,
             highlights = highlights,
             bookmarks = bookmarks,

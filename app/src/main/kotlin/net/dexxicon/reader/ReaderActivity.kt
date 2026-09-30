@@ -9,7 +9,10 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
+import androidx.fragment.app.FragmentFactory
+import androidx.fragment.app.commitNow
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
@@ -71,8 +74,11 @@ class ReaderActivity : FragmentActivity() {
     lateinit var okHttpClient: OkHttpClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // issue #307 — must be in place before super.onCreate restores fragments.
+        supportFragmentManager.fragmentFactory = DiscardReadiumNavigatorsFactory
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        discardRestoredNavigators()
 
         val serverId = intent.getStringExtra(EXTRA_SERVER_ID).orEmpty()
         val bookId = intent.getStringExtra(EXTRA_BOOK_ID).orEmpty()
@@ -141,6 +147,23 @@ class ReaderActivity : FragmentActivity() {
         }
     }
 
+    /**
+     * issue #307 — when this Activity is recreated (a system dark-mode or font-size change,
+     * process death), the FragmentManager tries to restore the Readium navigator fragment a
+     * reader screen had added. Readium's fragments can only be built by the factory the
+     * screen installs once its publication has loaded, and they sat in a container view that
+     * Compose re-creates with a new id, so a restored one could never work. It crashed with
+     * "could not find Fragment constructor". Restore a placeholder instead and drop it here:
+     * the reader screen then adds a fresh navigator, as on first open, and its ViewModel (which
+     * survives recreation) seeds it with the last position read.
+     */
+    private fun discardRestoredNavigators() {
+        val stale = supportFragmentManager.fragments.filterIsInstance<DiscardedNavigatorFragment>()
+        if (stale.isNotEmpty()) {
+            supportFragmentManager.commitNow(allowStateLoss = true) { stale.forEach(::remove) }
+        }
+    }
+
     companion object {
         private const val EXTRA_SERVER_ID = "serverId"
         private const val EXTRA_BOOK_ID = "bookId"
@@ -163,4 +186,17 @@ class ReaderActivity : FragmentActivity() {
                 .putExtra(EXTRA_BOOK_ID, bookId)
                 .putExtra(EXTRA_FORMAT, format.name)
     }
+}
+
+/** issue #307 — stands in for a Readium navigator fragment the system tried to restore. */
+class DiscardedNavigatorFragment : Fragment()
+
+/** issue #307 — see [ReaderActivity.discardRestoredNavigators]. */
+private object DiscardReadiumNavigatorsFactory : FragmentFactory() {
+    override fun instantiate(classLoader: ClassLoader, className: String): Fragment =
+        if (className.startsWith("org.readium.r2.navigator.")) {
+            DiscardedNavigatorFragment()
+        } else {
+            super.instantiate(classLoader, className)
+        }
 }

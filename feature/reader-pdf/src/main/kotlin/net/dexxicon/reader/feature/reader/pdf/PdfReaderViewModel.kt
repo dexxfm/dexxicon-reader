@@ -172,7 +172,17 @@ class PdfReaderViewModel @Inject constructor(
         }
     }
 
+    /** issue #307 — the last position the reader reported. This ViewModel outlives an
+     *  Activity recreation (e.g. a system dark-mode change), so a re-created navigator starts
+     *  here rather than back where the book was opened. */
+    private var lastLocator: Locator? = null
+
+    /** Where a (re-)created navigator should start: the last position read, else the book's
+     *  resume point. */
+    fun resumeLocator(): Locator? = lastLocator ?: (state.value as? PdfReaderState.Ready)?.initialLocator
+
     fun onLocatorChanged(locator: Locator) {
+        lastLocator = locator
         locatorUpdates.tryEmit(locator)
     }
 
