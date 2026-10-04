@@ -930,10 +930,14 @@ fun AddServerScreen(
 
                 Button(onClick = state::test, enabled = state.canTest) { Text("Test connection") }
 
-                if (KOREADER_SYNC_UI) {
+                // issue #318 — a custom OPDS catalog's optional KOReader sync account.
+                if (state.kind.offersKoSync) {
                     KoReaderRow(
                         summary = koReaderSummary(state.koSyncUrl, state.koSyncUsername),
-                        onClick = { showKoReader = true },
+                        onClick = {
+                            state.onOpenKoReader()
+                            showKoReader = true
+                        },
                     )
                 }
 
@@ -978,7 +982,7 @@ fun AddServerScreen(
         }
     }
 
-    if (KOREADER_SYNC_UI && showKoReader) {
+    if (showKoReader && state.kind.offersKoSync) {
         ModalBottomSheet(onDismissRequest = { showKoReader = false }) {
             KoReaderSheet(
                 url = state.koSyncUrl,
@@ -1028,11 +1032,11 @@ private fun ServerKindDropdown(selected: ServerKind, onSelect: (ServerKind) -> U
 /** Same summary rule as native's `AddEditServerScreen.koReaderSummary` (issue #144). */
 private fun koReaderSummary(url: String, username: String): String {
     val host = url.substringAfter("://").substringBefore('/').trim()
+    // issue #318 — the URL alone may just be the pre-filled default; it's set up once there's an account.
     return when {
-        host.isNotBlank() && username.isNotBlank() -> "$username · $host"
-        host.isNotBlank() -> host
-        username.isNotBlank() -> username
-        else -> "Not set up"
+        username.isBlank() -> "Not set up"
+        host.isNotBlank() -> "$username · $host"
+        else -> username
     }
 }
 
@@ -1073,8 +1077,8 @@ private fun KoReaderSheet(
     ) {
         Text("KOReader (optional)", style = MaterialTheme.typography.titleMedium)
         Text(
-            "Share reading progress with the KOReader app and other devices. Needs a " +
-                "dedicated sync account on the server.",
+            "Share this catalog's reading progress with the KOReader app and other devices, " +
+                "through a KOReader sync server account.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(top = 4.dp, bottom = 16.dp),

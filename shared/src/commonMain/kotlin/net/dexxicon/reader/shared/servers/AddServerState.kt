@@ -12,6 +12,7 @@ import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.ServerProber
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.OidcAuthenticator
+import net.dexxicon.reader.core.model.defaultKoSyncUrlForCatalog
 import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerProbeResult
@@ -148,6 +149,14 @@ class AddServerState(
     fun onUsernameChange(value: String) { username = value; testState = TestState.Idle }
     fun onPasswordChange(value: String) { password = value; testState = TestState.Idle }
     fun onKoSyncUrlChange(value: String) { koSyncUrl = value }
+
+    /** issue #318 — opening the KOReader sheet fills an empty sync URL with the likeliest one
+     *  for this catalog's host, as an editable starting point. */
+    fun onOpenKoReader() {
+        if (koSyncUrl.isNotBlank() || baseUrl.isBlank()) return
+        val catalog = (testState as? TestState.Success)?.baseUrl ?: normalizeUrl(baseUrl)
+        koSyncUrl = defaultKoSyncUrlForCatalog(catalog)
+    }
     fun onKoSyncUsernameChange(value: String) { koSyncUsername = value }
     fun onKoSyncPasswordChange(value: String) { koSyncPassword = value }
 
@@ -203,13 +212,18 @@ class AddServerState(
                     // saved, nothing is sent).
                     authMode = if (kind.isOpds) AuthMode.BASIC else base?.authMode ?: AuthMode.NATIVE,
                     username = username.trim(),
-                    koSyncUrl = koSyncUrl.trim().trimEnd('/').takeIf { it.isNotBlank() },
-                    koSyncUsername = koSyncUsername.trim().takeIf { it.isNotBlank() },
+                    // issue #318 — only a custom OPDS catalog offers KOReader sync: BookOrbit and
+                    // Grimmory sync through their own API, and the built-in catalogs have no
+                    // KOReader server.
+                    // A URL without an account (e.g. just the pre-filled default) isn't kept.
+                    koSyncUrl = koSyncUrl.trim().trimEnd('/')
+                        .takeIf { kind.offersKoSync && it.isNotBlank() && koSyncUsername.isNotBlank() },
+                    koSyncUsername = koSyncUsername.trim().takeIf { kind.offersKoSync && it.isNotBlank() },
                 ),
                 // Blank means "keep the stored password" when editing — never overwrite a
                 // real secret with an empty one just because the field was left untouched.
                 password = password.takeIf { it.isNotBlank() },
-                koSyncPassword = koSyncPassword.takeIf { it.isNotBlank() },
+                koSyncPassword = koSyncPassword.takeIf { kind.offersKoSync && it.isNotBlank() },
             )
             saving = false
             onSaved()
@@ -395,6 +409,9 @@ enum class ServerKind(
     ;
 
     val isOpds: Boolean get() = this != NATIVE
+
+    /** issue #318 — KOReader sync is offered for a custom OPDS catalog only (see save()). */
+    val offersKoSync: Boolean get() = this == OPDS
 
     companion object {
         /** A saved generic server: a built-in catalog if its address is one, else custom OPDS. */
