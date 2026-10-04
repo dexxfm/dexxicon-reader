@@ -49,7 +49,6 @@ import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.GlassIntensity
-import net.dexxicon.reader.shared.KOREADER_SYNC_UI
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.relativeTime
 
@@ -311,14 +310,9 @@ fun SettingsScreen(
 
             SettingsSection("Reading sync") {
                 SettingDescription(
-                    if (KOREADER_SYNC_UI) {
-                        "Reading & listening position syncs with each server. BookOrbit and Grimmory " +
-                            "sync through their own library API (same as the web reader); other OPDS " +
-                            "servers use a KOReader sync account."
-                    } else {
-                        "Reading & listening position syncs with BookOrbit and Grimmory servers " +
-                            "through their own library API (same as the web reader)."
-                    },
+                    "Reading & listening position syncs with BookOrbit and Grimmory through their own " +
+                        "library API (same as the web reader). A custom OPDS catalog can sync with " +
+                        "KOReader through a KOReader sync account.",
                 )
                 if (syncRows.isEmpty()) {
                     Text(
@@ -330,9 +324,8 @@ fun SettingsScreen(
                 syncRows.forEach { row ->
                     if (row.usesNative) {
                         NativeSyncRow(row)
-                    } else if (!KOREADER_SYNC_UI) {
-                        // issue #277 — KOReader setup is hidden for now; just say where this
-                        // server stands (an account set up earlier keeps syncing).
+                    } else if (!row.offersKoSync) {
+                        // issue #318 — Gutenberg / Open Library: no KOReader server to sync with.
                         KoSyncStatusRow(row)
                     } else {
                         KoSyncServerCard(
@@ -391,7 +384,7 @@ private fun NativeSyncRow(row: SyncServerRow) {
     }
 }
 
-/** issue #277 — a non-native server's sync status while KOReader setup is hidden. */
+/** issue #318 — a built-in catalog's sync status: it has no KOReader server to set up. */
 @Composable
 private fun KoSyncStatusRow(row: SyncServerRow) {
     Column(Modifier.fillMaxWidth()) {

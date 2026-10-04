@@ -33,9 +33,10 @@ data class Server(
 
     /** Where this server family hosts its KOReader (kosync) endpoint, by convention. */
     val assumedKoSyncUrl: String
-        get() = normalizedBaseUrl + when (type) {
-            ServerType.BOOKORBIT -> "/api/v1/koreader"
-            else -> "/api/koreader" // BookLore / Grimmory
+        get() = when (type) {
+            ServerType.BOOKORBIT -> "$normalizedBaseUrl/api/v1/koreader"
+            ServerType.GRIMMORY -> "$normalizedBaseUrl/api/koreader"
+            ServerType.GENERIC -> defaultKoSyncUrlForCatalog(baseUrl)
         }
 
     /** The kosync base URL actually used: a custom override, else the assumed one. */
@@ -49,6 +50,19 @@ data class Server(
      */
     fun webBookUrl(bookId: String): String? =
         if (type.supportsNativeApi && bookId.isNotBlank()) resolve("/book/$bookId") else null
+}
+
+/**
+ * issue #318 — the likeliest KOReader sync endpoint for a custom OPDS catalog: `/api/koreader`
+ * on the catalog's host (BookLore/Grimmory/Kavita's convention). A catalog's address is its
+ * feed (e.g. `https://host/opds`), not the server root, so only the scheme, host and port are
+ * kept. Just a starting point; the user can edit it.
+ */
+fun defaultKoSyncUrlForCatalog(catalogUrl: String): String {
+    val trimmed = catalogUrl.trim()
+    val scheme = trimmed.substringBefore("://", "https")
+    val authority = trimmed.substringAfter("://").substringBefore('/').substringBefore('?').substringBefore('#')
+    return "$scheme://$authority/api/koreader"
 }
 
 /** How the app authenticates to a server. */

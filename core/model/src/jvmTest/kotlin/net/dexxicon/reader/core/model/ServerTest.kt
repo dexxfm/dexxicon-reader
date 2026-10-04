@@ -48,6 +48,13 @@ class ServerTest {
     }
 
     @Test
+    fun `a catalog's assumed kosync url hangs off its host, not its feed path`() {
+        val catalog = Server(id = "c", displayName = "C", baseUrl = "http://10.0.0.5:8083/opds/v1.2/catalog?x=1")
+        assertThat(catalog.assumedKoSyncUrl).isEqualTo("http://10.0.0.5:8083/api/koreader")
+        assertThat(defaultKoSyncUrlForCatalog("https://books.example.com/opds")).isEqualTo("https://books.example.com/api/koreader")
+    }
+
+    @Test
     fun `effective kosync url prefers a custom override`() {
         assertThat(server(ServerType.GENERIC, koSyncUrl = "https://sync.example.com/kosync/").effectiveKoSyncUrl)
             .isEqualTo("https://sync.example.com/kosync")

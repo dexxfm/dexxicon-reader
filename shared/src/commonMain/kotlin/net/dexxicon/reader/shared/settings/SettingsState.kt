@@ -18,6 +18,7 @@ import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.GlassIntensity
 import net.dexxicon.reader.core.model.HomeLayout
 import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.servers.ServerKind
 
 /** Mirrors native's `SyncServerRow` (`feature/settings/KoSyncSettingsViewModel.kt`) —
  * one row per configured server in Settings' Reading sync section. */
@@ -26,6 +27,8 @@ data class SyncServerRow(
     val name: String,
     /** BookOrbit / Grimmory sync through their own API; generic OPDS servers use KOReader. */
     val usesNative: Boolean,
+    /** issue #318 — a custom OPDS catalog, the only kind that offers a KOReader account. */
+    val offersKoSync: Boolean,
     val configured: Boolean,
     /** The by-convention kosync URL for this server family (generic servers only). */
     val assumedUrl: String,
@@ -164,6 +167,7 @@ class SettingsState(
                 serverId = s.id,
                 name = s.displayName,
                 usesNative = s.type.supportsNativeApi,
+                offersKoSync = !s.type.supportsNativeApi && ServerKind.forCatalogUrl(s.baseUrl).offersKoSync,
                 configured = s.type.supportsNativeApi || !s.koSyncUsername.isNullOrBlank(),
                 assumedUrl = s.assumedKoSyncUrl,
                 customUrl = s.koSyncUrl.orEmpty(),
