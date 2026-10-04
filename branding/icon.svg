@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="1024" height="1024">
+  <title>Dexxicon Reader</title>
+  <!-- Navy tile: the Android launcher background (ic_launcher_background). -->
+  <rect width="108" height="108" fill="#152238"/>
+  <!-- issue #314: centred vertically on the square store icon. The mark spans y 29.7 (ear tips,
+       incl. the stroke) to 98 (bookmark tip), centre 63.85; shift it up 9.85. The Android
+       launcher foreground keeps the unshifted layout, which suits the launcher's masks. -->
+  <g transform="translate(0,-9.85)">
+    <!-- Bookmark ribbon falling from the chin. -->
+    <path fill="#8A94A6" d="M48,74 h12 v24 l-6,-7 -6,7 Z"/>
+    <!-- Muzzle in the app's Aqua accent (dark-ground step), under the outline so the outline
+         stays an even width (issue #324). -->
+    <path fill="#57C9B4" d="M33,61 C35,71 43,79 54,79 C65,79 73,71 75,61 C67,67 61,70 54,70 C47,70 41,67 33,61 Z"/>
+    <!-- Fox head: one continuous ribbon stroke (issue #324: thinner, softer grey). -->
+    <path fill="none" stroke="#C7CED9" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"
+          d="M54,80 C42,80 34,71 32,60 L28,32 L44,44 C50,41 58,41 64,44 L80,32 L76,60 C74,71 66,80 54,80 Z"/>
+    <!-- Eyes and nose: a mid grey, smaller, eyes closer together (issue #324). -->
+    <circle cx="46.85" cy="55" r="2.35" fill="#9AA4B4"/>
+    <circle cx="61.15" cy="55" r="2.35" fill="#9AA4B4"/>
+    <path fill="#9AA4B4" d="M51.3,61.15 h5.4 l-2.7,2.75 Z"/>
+  </g>
+</svg>

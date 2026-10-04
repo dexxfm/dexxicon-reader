@@ -14,8 +14,9 @@
                           C 50,39 58,39 64,42
                           L83,29 L78,60
                           C 76,72 67,82 54,82 Z
-                          M45,55 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0
-                          M63,55 m-3,0 a3,3 0 1,0 6,0 a3,3 0 1,0 -6,0" />
+                          M46.85,55 m-2.7,0 a2.7,2.7 0 1,0 5.4,0 a2.7,2.7 0 1,0 -5.4,0
+                          M61.15,55 m-2.7,0 a2.7,2.7 0 1,0 5.4,0 a2.7,2.7 0 1,0 -5.4,0" />
+    <!-- issue #324: eye holes moved closer together and smaller, matching the colour icon. -->
     <path
         android:fillColor="#000000"
         android:pathData="M47,79 h14 v20 l-7,-8 -7,8 Z" />

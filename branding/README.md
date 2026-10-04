@@ -1,7 +1,24 @@
-# Store branding assets
+# Branding
 
-Listing assets for the app stores (Amazon Appstore, Google Play). Regenerate whenever the
-icon or the UI changes materially.
+The logo, and listing assets for the app stores (Amazon Appstore, Google Play). Regenerate
+whenever the icon or the UI changes materially. `concepts/` holds the original logo concepts
+(B became the logo). Moved here from `store/branding/` to match other projects (issue #326).
+
+## Logo colours (issue #324)
+
+| Part | Colour |
+|---|---|
+| Background | `#152238` |
+| Head outline (4.6-unit stroke on the 108-unit canvas) | `#C7CED9` |
+| Eyes and nose | `#9AA4B4` |
+| Muzzle | `#57C9B4` (Aqua) |
+| Bookmark | `#8A94A6` |
+
+The muzzle is drawn under the outline. The same artwork is in
+`app/src/main/res/drawable/ic_launcher_foreground.xml` (the source of truth) and the iOS app
+icon, `iosApp/Dexxicon/Assets.xcassets/AppIcon.appiconset/icon-1024.png`. That one is rendered
+from `icon.svg` without the store icon's vertical-centring shift, the same layout as the
+Android launcher.
 
 ## Files
 
