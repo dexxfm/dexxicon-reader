@@ -35,14 +35,14 @@
         android:pathData="M33,61 C 35,71 43,79 54,79 C 65,79 73,71 75,61
                           C 67,67 61,70 54,70 C 47,70 41,67 33,61 Z" />
 
-    <!-- eyes + nose -->
+    <!-- eyes + nose: the outline's grey (issue #324) -->
     <path
-        android:fillColor="#0F1B31"
+        android:fillColor="#DBE0E8"
         android:pathData="M45,55 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
     <path
-        android:fillColor="#0F1B31"
+        android:fillColor="#DBE0E8"
         android:pathData="M63,55 m-2.6,0 a2.6,2.6 0 1,0 5.2,0 a2.6,2.6 0 1,0 -5.2,0" />
     <path
-        android:fillColor="#0F1B31"
+        android:fillColor="#DBE0E8"
         android:pathData="M54,66 l-4,-5 h8 Z" />
 </vector>
