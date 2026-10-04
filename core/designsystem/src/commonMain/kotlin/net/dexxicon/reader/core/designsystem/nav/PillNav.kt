@@ -61,8 +61,9 @@ val FloatingNavClearance = 96.dp
  * estimated from screenshots). iOS's extra margin is reduced so the two totals match.
  *
  * issue #322 — #320 tried lowering the pill to just above the gesture handle. That looked
- * right on the Pixel emulator but crowded the gesture bar on a real phone, so these values
- * were restored. Check on a real device before lowering it again.
+ * right on the Pixel emulator but crowded the gesture bar on a real phone. The user then set
+ * it from their phone: 14dp on Android (2dp under the original 16dp), and iOS 2pt lower to
+ * match. Check on a real device before changing it again.
  */
 internal expect val PillExtraBottomMargin: Dp
 
