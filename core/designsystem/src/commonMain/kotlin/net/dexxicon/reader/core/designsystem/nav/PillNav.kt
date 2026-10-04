@@ -61,9 +61,9 @@ val FloatingNavClearance = 96.dp
  * 40dp total — confirmed via a real on-device inset readout on both platforms, not
  * estimated from screenshots). iOS's extra margin is reduced so the two totals match.
  *
- * issue #320 — lowered to sit like YouTube's bottom bar: the pill's bottom edge ~24 logical
- * units from the screen edge, ~10 above the gesture handle. That's 0 on Android's gesture nav,
- * a small gap above Android's 3-button bar (flush looked cramped), and negative on iOS, where
+ * issue #320 — lowered to sit like YouTube's bottom bar: the pill's bottom edge ~26 logical
+ * units from the screen edge, ~12 above the gesture handle. That's 2dp on Android's gesture
+ * nav, 10dp above Android's 3-button bar (flush looked cramped), and negative on iOS, where
  * it means "move down into the larger safe area".
  */
 @Composable
