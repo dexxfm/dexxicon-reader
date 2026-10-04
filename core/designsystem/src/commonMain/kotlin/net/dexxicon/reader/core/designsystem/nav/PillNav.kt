@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -61,13 +60,11 @@ val FloatingNavClearance = 96.dp
  * 40dp total — confirmed via a real on-device inset readout on both platforms, not
  * estimated from screenshots). iOS's extra margin is reduced so the two totals match.
  *
- * issue #320 — lowered to sit like YouTube's bottom bar: the pill's bottom edge ~26 logical
- * units from the screen edge, ~12 above the gesture handle. That's 2dp on Android's gesture
- * nav, 10dp above Android's 3-button bar (flush looked cramped), and negative on iOS, where
- * it means "move down into the larger safe area".
+ * issue #322 — #320 tried lowering the pill to just above the gesture handle. That looked
+ * right on the Pixel emulator but crowded the gesture bar on a real phone, so these values
+ * were restored. Check on a real device before lowering it again.
  */
-@Composable
-internal expect fun pillExtraBottomMargin(): Dp
+internal expect val PillExtraBottomMargin: Dp
 
 /**
  * Multiplier applied to a [LiquidGlassDefaults.Tier]'s blur radius / saturation-lift-above-1 /
@@ -147,14 +144,7 @@ fun <T> FloatingPillNavBar(
     // it this Box shrinks to wrap the pill's own width, and the pill ends up wherever its
     // parent Column (the host Scaffold's bottomBar slot) puts a Start-aligned child: flush
     // left, not centered (issue #115 PR feedback).
-    // A negative margin (iOS) moves the pill down into the system's bottom inset instead.
-    val extraMargin = pillExtraBottomMargin()
-    val bottomGap = if (extraMargin >= 0.dp) {
-        Modifier.padding(bottom = extraMargin)
-    } else {
-        Modifier.offset(y = -extraMargin)
-    }
-    Box(modifier.fillMaxWidth().then(bottomGap), contentAlignment = Alignment.Center) {
+    Box(modifier.fillMaxWidth().padding(bottom = PillExtraBottomMargin), contentAlignment = Alignment.Center) {
         val tier = LiquidGlassDefaults.forQuality(glassState.quality)
         val scale = glassIntensity.blurScale
         val outline = MaterialTheme.colorScheme.outlineVariant
