@@ -16,9 +16,14 @@ whenever the icon or the UI changes materially. `concepts/` holds the original l
 
 The muzzle is drawn under the outline. The same artwork is in
 `app/src/main/res/drawable/ic_launcher_foreground.xml` (the source of truth) and the iOS app
-icon, `iosApp/Dexxicon/Assets.xcassets/AppIcon.appiconset/icon-1024.png`. That one is rendered
-from `icon.svg` without the store icon's vertical-centring shift, the same layout as the
-Android launcher.
+icon, `iosApp/Dexxicon/Assets.xcassets/AppIcon.appiconset/icon-1024.png`.
+
+**Layout (issue #333):** `icon.svg` centres the fox vertically and scales it 1.25× about the
+tile centre, so it fills about 80% of the tile's height. The store icons, the promo image's
+icon tile, the iOS app icon (rendered straight from `icon.html` at 1024) and the app store
+header (`app-store-header.html`) all use this layout. The Android launcher foreground keeps
+the original, unscaled layout, because Android crops launcher icons to a circle or squircle
+and a 1.25× fox would push the ears out of the adaptive-icon safe zone.
 
 ## Files
 
