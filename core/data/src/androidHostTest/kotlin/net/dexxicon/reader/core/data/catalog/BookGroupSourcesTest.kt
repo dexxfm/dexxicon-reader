@@ -30,7 +30,7 @@ import org.junit.Test
  * endpoints: the right path and parameters go out (both servers answer a wrong one with a
  * 400 or an unfiltered list rather than an error), and what comes back maps onto [BookGroup]s
  * and books correctly. Paths are from each server's own source (BookOrbit's Nest controllers,
- * Grimmory's `app/controller`).
+ * Grimmory's supported web API — issue #335).
  */
 class BookGroupSourcesTest {
 
@@ -132,30 +132,58 @@ class BookGroupSourcesTest {
         assertThat(bodies.first()).contains("\"q\":\"dune\"")
     }
 
-    // --- Grimmory --------------------------------------------------------------------------
+    // --- Grimmory (issue #335: its supported web API) ---------------------------------------
+
+    /**
+     * Answers by path: [routes] maps an encoded path to a JSON body. Any other path gets what
+     * Grimmory 3.5.0 really answers: its web app's `index.html`, with a 200.
+     */
+    private fun routed(routes: Map<String, String>): HttpClient {
+        val engine = MockEngine { request ->
+            requests += request.method to request.url
+            val body = routes[request.url.encodedPath]
+                ?: return@MockEngine respond(
+                    "<!doctype html><html><head><title>Grimmory</title></head></html>",
+                    HttpStatusCode.OK,
+                    headersOf(HttpHeaders.ContentType, "text/html"),
+                )
+            respond(body, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/json"))
+        }
+        return HttpClient(engine) {
+            expectSuccess = true
+            install(ContentNegotiation) { json(json) }
+        }
+    }
+
+    /** One `/books/page` row. */
+    private fun bookJson(id: Long, title: String, type: String, series: String? = null) =
+        """{"id":$id,"metadata":{"title":"$title","authors":["A. Author"]${series?.let { ""","seriesName":"$it","seriesNumber":1.0""" } ?: ""}},
+            "primaryFile":{"id":${id * 10},"bookType":"$type"}}"""
+
+    private fun pageJson(vararg books: String, totalElements: Int = books.size, totalPages: Int = 1) =
+        """{"content":[${books.joinToString(",")}],"page":{"number":0,"size":40,"totalElements":$totalElements,"totalPages":$totalPages}}"""
 
     @Test
-    fun `Grimmory library, shelf and magic shelf books filter the app books endpoint`() = runBlocking<Unit> {
+    fun `Grimmory library, shelf, magic shelf and series books are facets of books page`() = runBlocking<Unit> {
         val source = GrimmoryCatalogSource(
-            GrimmoryBrowseApi(
-                client(
-                    """{"content":[{"id":5,"title":"Dune","authors":["F. H."],"seriesName":"Dune","seriesNumber":1.0,
-                        "primaryFileType":"AUDIOBOOK"}],"page":0,"size":40,"totalElements":1,"totalPages":1,"hasNext":false}""",
-                ),
-            ),
+            GrimmoryBrowseApi(routed(mapOf("/api/v1/books/page" to pageJson(bookJson(5, "Dune", "AUDIOBOOK"))))),
         )
         val page = source.groupBooks(grimmory, BookGroup("gr", BookGroupKind.LIBRARY, "4", "L"), "dune", BookSort.TITLE, 0, 40).value()
         source.groupBooks(grimmory, BookGroup("gr", BookGroupKind.COLLECTION, "6", "S"), null, BookSort.RECENT, 0, 40)
-        source.groupBooks(grimmory, BookGroup("gr", BookGroupKind.SMART, "8", "M"), null, BookSort.RECENT, 0, 40)
+        source.groupBooks(grimmory, BookGroup("gr", BookGroupKind.SMART, "8", "M"), null, BookSort.RECENT, 0, 500)
+        source.groupBooks(grimmory, BookGroup("gr", BookGroupKind.SERIES, "The Expanse", "The Expanse"), null, BookSort.RECENT, 0, 40)
 
-        val (lib, shelf, magic) = requests.map { it.second }
-        assertThat(lib.encodedPath).isEqualTo("/api/v1/app/books")
-        assertThat(lib.parameters["libraryId"]).isEqualTo("4")
-        assertThat(lib.parameters["search"]).isEqualTo("dune")
+        val (lib, shelf, magic, series) = requests.map { it.second }
+        listOf(lib, shelf, magic, series).forEach { assertThat(it.encodedPath).isEqualTo("/api/v1/books/page") }
+        assertThat(lib.parameters.getAll("facet")).containsExactly("library:4")
+        assertThat(lib.parameters["query"]).isEqualTo("dune")
         assertThat(lib.parameters["sort"]).isEqualTo("title")
-        assertThat(shelf.parameters["shelfId"]).isEqualTo("6")
-        assertThat(magic.parameters["magicShelfId"]).isEqualTo("8")
-        assertThat(magic.parameters["sort"]).isEqualTo("addedOn")
+        assertThat(shelf.parameters.getAll("facet")).containsExactly("shelf:6")
+        assertThat(shelf.parameters["sort"]).isEqualTo("-addedOn")
+        assertThat(magic.parameters.getAll("facet")).containsExactly("shelf:magic:8")
+        assertThat(magic.parameters["size"]).isEqualTo("100") // Grimmory's page-size limit
+        assertThat(series.parameters.getAll("facet")).containsExactly("series:The Expanse")
+        assertThat(series.parameters["sort"]).isEqualTo("seriesNumber")
 
         val book = page.books.single()
         assertThat(book.format).isEqualTo(ContentFormat.AUDIOBOOK)
@@ -164,25 +192,92 @@ class BookGroupSourcesTest {
     }
 
     @Test
-    fun `Grimmory series are keyed by name, path-encoded for their books`() = runBlocking<Unit> {
+    fun `Grimmory libraries and magic shelves get their counts from books page`() = runBlocking<Unit> {
         val source = GrimmoryCatalogSource(
             GrimmoryBrowseApi(
-                client(
-                    """{"content":[{"seriesName":"The Expanse","bookCount":9,"authors":["J. S. A. Corey"],
-                        "coverBooks":[{"bookId":12,"primaryFileType":"EPUB"}]}],"page":0,"size":40,"totalPages":3,"hasNext":true}""",
+                routed(
+                    mapOf(
+                        "/api/v1/libraries" to """[{"id":1,"name":"Books","paths":[]},{"id":2,"name":"Comics"}]""",
+                        "/api/v1/shelves" to """[{"id":6,"name":"Favourites","bookCount":12,"publicShelf":false}]""",
+                        "/api/magic-shelves" to """[{"id":8,"name":"Unread sci-fi","filterJson":"{}"}]""",
+                        "/api/v1/books/page" to pageJson(totalElements = 42),
+                    ),
                 ),
             ),
         )
-        val page = source.series(grimmory, null, 0, 40).value()
+        val libraries = source.groups(grimmory, BookGroupKind.LIBRARY).value()
+        val shelves = source.groups(grimmory, BookGroupKind.COLLECTION).value()
+        val magic = source.groups(grimmory, BookGroupKind.SMART).value()
+
+        assertThat(libraries.map { it.name to it.bookCount }).containsExactly("Books" to 42, "Comics" to 42).inOrder()
+        assertThat(shelves.single().bookCount).isEqualTo(12)
+        assertThat(magic.single().id).isEqualTo("8")
+        assertThat(magic.single().bookCount).isEqualTo(42)
+        val counted = requests.map { it.second }.filter { it.encodedPath == "/api/v1/books/page" }
+        assertThat(counted.flatMap { it.parameters.getAll("facet").orEmpty() })
+            .containsExactly("library:1", "library:2", "shelf:magic:8")
+        assertThat(counted.map { it.parameters["size"] }.distinct()).containsExactly("1")
+        // Grimmory rejects `sort=id` (reserved for its tiebreaker) with a 400.
+        assertThat(counted.map { it.parameters["sort"] }.distinct()).containsExactly("addedOn")
+        // Never the deprecated app API (grimmory#2812).
+        assertThat(requests.none { it.second.encodedPath.startsWith("/api/v1/app/") }).isTrue()
+    }
+
+    @Test
+    fun `Grimmory series come from the paged series facet where the server has it`() = runBlocking<Unit> {
+        val source = GrimmoryCatalogSource(
+            GrimmoryBrowseApi(
+                routed(
+                    mapOf(
+                        "/api/v1/books/facets/series" to """{"links":[{"rel":"self","href":"/x"},{"rel":"next","href":"/y"}],
+                            "facets":[{"metadata":{"rel":"facet","key":"series","title":"Series"},
+                            "links":[{"rel":"facet","title":"The Expanse","value":"The Expanse","properties":{"numberOfItems":9}}]}]}""",
+                        "/api/v1/books/page" to pageJson(bookJson(12, "Leviathan Wakes", "EPUB", "The Expanse")),
+                    ),
+                ),
+            ),
+        )
+        val page = source.series(grimmory, "exp", 0, 40).value()
         val group = page.groups.single()
         assertThat(group.id).isEqualTo("The Expanse")
+        assertThat(group.bookCount).isEqualTo(9)
         assertThat(group.coverUrl).isEqualTo("https://grim.test/api/v1/media/book/12/cover")
+        assertThat(group.authors).containsExactly("A. Author")
         assertThat(page.hasMore).isTrue()
+        val facetCall = requests.first().second
+        assertThat(facetCall.parameters["search"]).isEqualTo("exp")
+        assertThat(facetCall.parameters["page"]).isEqualTo("0")
+    }
 
-        source.groupBooks(grimmory, group, null, BookSort.RECENT, 0, 40)
-        val url = requests.last().second
-        assertThat(url.encodedPath).isEqualTo("/api/v1/app/series/The%20Expanse/books")
-        assertThat(url.parameters["sort"]).isEqualTo("seriesNumber")
-        assertThat(url.parameters["dir"]).isEqualTo("asc")
+    @Test
+    fun `Grimmory 3_5 series fall back to the all-facets response, filtered by name`() = runBlocking<Unit> {
+        val source = GrimmoryCatalogSource(
+            GrimmoryBrowseApi(
+                routed(
+                    mapOf(
+                        // No /books/facets/series on 3.5.0 — routed() answers it with index.html.
+                        "/api/v1/books/facets" to """{"facets":[
+                            {"metadata":{"key":"file_type"},"links":[{"value":"EPUB","properties":{"numberOfItems":3}}]},
+                            {"metadata":{"key":"series"},"links":[
+                              {"value":"The Expanse","properties":{"numberOfItems":9}},
+                              {"value":"Dune","properties":{"numberOfItems":6}}]}]}""",
+                        "/api/v1/books/page" to pageJson(bookJson(12, "Leviathan Wakes", "EPUB", "The Expanse")),
+                    ),
+                ),
+            ),
+        )
+        val all = source.series(grimmory, null, 0, 40).value()
+        assertThat(all.groups.map { it.id }).containsExactly("The Expanse", "Dune").inOrder()
+        assertThat(all.hasMore).isFalse()
+
+        val searched = source.series(grimmory, "dun", 0, 40).value()
+        assertThat(searched.groups.map { it.id }).containsExactly("Dune")
+        // The 3.5.0 response has no paging, so there is no page 2.
+        assertThat(source.series(grimmory, null, 1, 40).value().groups).isEmpty()
+
+        // And the Library's format chips still read file_type from it.
+        val chips = source.shelves(grimmory).value()
+        assertThat(chips.single().id).isEqualTo("EPUB")
+        assertThat(chips.single().bookCount).isEqualTo(3)
     }
 }

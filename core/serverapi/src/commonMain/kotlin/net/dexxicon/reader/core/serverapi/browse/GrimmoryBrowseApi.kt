@@ -2,19 +2,46 @@ package net.dexxicon.reader.core.serverapi.browse
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
+import io.ktor.client.plugins.ResponseException
 import io.ktor.client.request.get
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.serializer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonTransformingSerializer
+import net.dexxicon.reader.core.serverapi.progress.GrimmoryAudiobookProgress
+import net.dexxicon.reader.core.serverapi.progress.GrimmoryEpubProgress
+import net.dexxicon.reader.core.serverapi.progress.GrimmoryPagedProgress
 
 /**
- * BookLore / Grimmory native browse endpoints (JWT bearer):
- *   GET /api/v1/libraries
- *   GET /api/v1/books/page?page=&size=&sort=&query=
- *   GET /api/v1/books/{id}
- * Covers: /api/v1/media/book/{id}/cover  (accepts the bearer header).
+ * BookLore / Grimmory browse endpoints (JWT bearer). Only Grimmory's supported web API — issue
+ * #335: its `/api/v1/app/…` "mobile" API is deprecated and being removed (grimmory#2812), and
+ * `app/libraries` already 500s for non-admin users (grimmory#2805).
+ *
+ *   GET /api/v1/libraries                       libraries
+ *   GET /api/v1/shelves                         hand-made shelves (own + public)
+ *   GET /api/magic-shelves                      rule-based shelves — note: no `/v1`
+ *   GET /api/v1/books/page?page=&size=&sort=&query=&facet=&facet_logic=
+ *       every book list: facets `library:{id}`, `shelf:{id}`, `shelf:magic:{id}`,
+ *       `series:{name}`, `file_type:{EPUB|PDF|CBX|AUDIOBOOK|…}`, `read_status:{…}`. Always send
+ *       `sort` (without sort/facet/query the server falls back to a legacy shape), and
+ *       `facet_logic=or` when one facet has several values (3.5.0 defaults to AND). Max size 100.
+ *   GET /api/v1/books/{id}[?withDescription=true]   one book, with its files and progress
+ *   GET /api/v1/books/facets/{name}?search=&page=&size=   one facet's values, paged — unreleased
+ *       Grimmory (after 3.5.0), whose `/books/facets` lists facets without their values.
+ *   GET /api/v1/books/facets[?query=]           3.5.0: every facet with up to 100 values each.
+ * Covers: /api/v1/media/book/{id}/cover (or /audiobook-cover), accepting the bearer header.
  */
 class GrimmoryBrowseApi(private val client: HttpClient) {
 
     suspend fun libraries(url: String): List<GrimmoryLibrary> = client.get(url).body()
+
+    suspend fun shelves(url: String): List<GrimmoryShelf> = client.get(url).body()
+
+    suspend fun magicShelves(url: String): List<GrimmoryShelf> = client.get(url).body()
 
     suspend fun booksPage(url: String): GrimmoryBookPage = client.get(url).body()
 
@@ -22,86 +49,49 @@ class GrimmoryBrowseApi(private val client: HttpClient) {
 
     suspend fun facets(url: String): GrimmoryFacetsResponse = client.get(url).body()
 
-    /** `GET /api/v1/app/books/continue-reading` / `continue-listening` — in-progress books. */
-    suspend fun appInProgress(url: String): List<GrimmoryAppSummary> = client.get(url).body()
-
-    /** `GET /api/v1/app/books?libraryId=|shelfId=|magicShelfId=&search=&sort=&dir=` and
-     *  `GET /api/v1/app/series/{name}/books` / `…/shelves/magic/{id}/books` — every paged
-     *  book list of the app API shares this shape (issues #253, #254, #256). */
-    suspend fun appBooks(url: String): GrimmoryAppPage<GrimmoryAppSummary> = client.get(url).body()
-
-    /** `GET /api/v1/app/libraries` (issue #253). */
-    suspend fun appLibraries(url: String): List<GrimmoryAppLibrary> = client.get(url).body()
-
-    /** `GET /api/v1/app/series?search=&sort=name&dir=asc` (issue #256). */
-    suspend fun appSeries(url: String): GrimmoryAppPage<GrimmoryAppSeries> = client.get(url).body()
-
-    /** `GET /api/v1/app/shelves` (issue #254) — Grimmory's hand-curated shelves. */
-    suspend fun appShelves(url: String): List<GrimmoryAppShelf> = client.get(url).body()
-
-    /** `GET /api/v1/app/shelves/magic` (issue #254) — rule-based shelves. */
-    suspend fun appMagicShelves(url: String): List<GrimmoryAppShelf> = client.get(url).body()
+    /**
+     * `/api/v1/books/facets/{name}` — null where the server predates it. Grimmory 3.5.0
+     * doesn't 404 an unknown path: its web app's catch-all serves `index.html` with a 200,
+     * even under `/api`, so anything that isn't JSON counts as "not supported" too.
+     */
+    suspend fun facetOrNull(url: String): GrimmoryFacetsResponse? = try {
+        val response = client.get(url)
+        if (response.contentType()?.match(ContentType.Application.Json) == true) response.body() else null
+    } catch (e: ResponseException) {
+        if (e.response.status.value == 404) null else throw e
+    }
 }
 
-/** `AppPageResponse<T>` — the app API's page envelope. */
+/** `Shelf` / `MagicShelf` — magic shelves carry no `bookCount`. */
 @Serializable
-data class GrimmoryAppPage<T>(
-    val content: List<T> = emptyList(),
-    val page: Int = 0,
-    val size: Int = 0,
-    val totalElements: Long? = null,
-    val totalPages: Int? = null,
-    val hasNext: Boolean? = null,
-)
-
-@Serializable
-data class GrimmoryAppLibrary(
+data class GrimmoryShelf(
     val id: Long,
     val name: String,
     val bookCount: Int? = null,
 )
 
-/** `AppSeriesSummary` — keyed by name; there's no series id in Grimmory. */
-@Serializable
-data class GrimmoryAppSeries(
-    val seriesName: String,
-    val bookCount: Int? = null,
-    val authors: List<String> = emptyList(),
-    /** Series books in series order, for a representative cover. */
-    val coverBooks: List<GrimmorySeriesCoverBook> = emptyList(),
-)
-
-@Serializable
-data class GrimmorySeriesCoverBook(
-    val bookId: Long,
-    val primaryFileType: String? = null,
-)
-
-/** `AppShelfSummary` / `AppMagicShelfSummary` — magic shelves carry no `bookCount`. */
-@Serializable
-data class GrimmoryAppShelf(
-    val id: Long,
-    val name: String,
-    val bookCount: Int? = null,
-)
-
-/** A row from the app's `continue-reading` / `continue-listening` lists. */
-@Serializable
-data class GrimmoryAppSummary(
-    val id: Long,
-    val title: String? = null,
-    val authors: List<String> = emptyList(),
-    val seriesName: String? = null,
-    val seriesNumber: Double? = null,
-    /** Top-level read progress, 0–100. */
-    val readProgress: Float? = null,
-    val primaryFileType: String? = null,
-)
-
+/** `FacetGroupsResponse` — `/books/facets` and (unreleased Grimmory) `/books/facets/{name}`. */
 @Serializable
 data class GrimmoryFacetsResponse(
     val facets: List<GrimmoryFacet> = emptyList(),
+    /** Paged single-facet responses add a `next` link while more values follow. */
+    val links: List<GrimmoryLink> = emptyList(),
+) {
+    val hasNext: Boolean get() = links.any { "next" in it.rel }
+}
+
+@Serializable
+data class GrimmoryLink(
+    @Serializable(with = RelListSerializer::class)
+    val rel: List<String> = emptyList(),
+    val href: String? = null,
 )
+
+/** Grimmory's `RelSerializer` writes a single rel as a plain string and several as an array. */
+internal object RelListSerializer : JsonTransformingSerializer<List<String>>(ListSerializer(String.serializer())) {
+    override fun transformDeserialize(element: JsonElement): JsonElement =
+        if (element is JsonArray) element else JsonArray(listOf(element))
+}
 
 @Serializable
 data class GrimmoryFacet(
@@ -162,8 +152,11 @@ data class GrimmoryBook(
     val libraryId: Long? = null,
     val libraryName: String? = null,
     val readStatus: String? = null,
+    val lastReadTime: String? = null,
     val metadata: GrimmoryMetadata = GrimmoryMetadata(),
     val primaryFile: GrimmoryFile? = null,
+    /** The book's other files (another format of the same book), each with its own id. */
+    val alternativeFormats: List<GrimmoryFile> = emptyList(),
     /** The current user's own rating (issue #264), 1–5 on the wire despite the `Double` type —
      *  a top-level field on the book itself (confirmed against a live server), *not* nested
      *  under [metadata] despite every other rating-ish field living there. Distinct from the
@@ -172,7 +165,24 @@ data class GrimmoryBook(
      *  body field is a differently-named `rating`, see [net.dexxicon.reader.core.serverapi
      *  .progress.GrimmoryRatingUpdate]. */
     val personalRating: Double? = null,
-)
+    // issue #335 — the current user's progress, per format, 0–100 (on list rows and detail).
+    val epubProgress: GrimmoryEpubProgress? = null,
+    val pdfProgress: GrimmoryPagedProgress? = null,
+    val cbxProgress: GrimmoryPagedProgress? = null,
+    val audiobookProgress: GrimmoryAudiobookProgress? = null,
+) {
+    /** The primary file first, then the other formats. */
+    val files: List<GrimmoryFile> get() = listOfNotNull(primaryFile) + alternativeFormats
+
+    /** The most advanced format progress, 0–100 — what a Continue shelf shows. */
+    val readPercent: Double?
+        get() = listOfNotNull(
+            epubProgress?.percentage,
+            pdfProgress?.percentage,
+            cbxProgress?.percentage,
+            audiobookProgress?.percentage,
+        ).maxOrNull()
+}
 
 @Serializable
 data class GrimmoryMetadata(
@@ -207,6 +217,8 @@ data class GrimmoryChapter(
 
 @Serializable
 data class GrimmoryFile(
+    /** The book file id — what progress writes are keyed by. */
+    val id: Long? = null,
     val bookType: String? = null,
     val extension: String? = null,
     val archiveType: String? = null,

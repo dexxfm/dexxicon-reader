@@ -192,7 +192,8 @@ class AudiobookProgressSync(
             }
         }
         ServerType.GRIMMORY -> {
-            val dto = api.grimmoryProgress(server.resolve("/api/v1/app/books/$bookId/progress"))
+            // issue #335 — the book itself carries the current user's progress.
+            val dto = api.grimmoryProgress(server.resolve("/api/v1/books/$bookId"))
                 .takeIf { it.isSuccessful }?.body()
             val audio = dto?.audiobookProgress
             audio?.positionMs
@@ -266,9 +267,10 @@ class AudiobookProgressSync(
     private suspend fun pushGrimmory(server: Server, bookId: String, percent: Double, positionMs: Long) {
         val bookFileId = grimmoryAudiobookFileId(server, bookId) ?: return
         api.grimmorySaveProgress(
-            server.resolve("/api/v1/app/books/$bookId/progress"),
+            server.resolve("/api/v1/books/progress"),
             GrimmoryUpdateProgress(
-                GrimmoryFileProgress(
+                bookId = bookId.toLongOrNull() ?: return,
+                fileProgress = GrimmoryFileProgress(
                     bookFileId = bookFileId,
                     positionData = positionMs.toString(),
                     progressPercent = percent * 100.0,
@@ -283,10 +285,7 @@ class AudiobookProgressSync(
      * pushes happen every tens of seconds during playback, not on a hot path.
      */
     private suspend fun grimmoryAudiobookFileId(server: Server, bookId: String): Long? {
-        val book = api.grimmoryAppBook(server.resolve("/api/v1/app/books/$bookId"))
-        return book.files.firstOrNull { it.bookType?.equals("AUDIOBOOK", ignoreCase = true) == true }?.id
-            ?: book.files.firstOrNull { it.isPrimaryFile }?.id
-            ?: book.files.firstOrNull()?.id
+        return api.grimmoryBookFiles(server.resolve("/api/v1/books/$bookId")).fileIdFor("AUDIOBOOK")
     }
 }
 

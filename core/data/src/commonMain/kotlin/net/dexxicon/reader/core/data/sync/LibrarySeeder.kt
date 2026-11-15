@@ -12,7 +12,8 @@ import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.serverapi.browse.BookOrbitBrowseApi
-import net.dexxicon.reader.core.serverapi.browse.GrimmoryAppSummary
+import io.ktor.http.URLBuilder
+import net.dexxicon.reader.core.serverapi.browse.GrimmoryBook
 import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 
 /**
@@ -70,17 +71,26 @@ class LibrarySeeder(
         }
     }
 
+    /**
+     * issue #335 — what Grimmory's own web dashboard shows as "continue reading", through its
+     * supported `/books/page` API: books in progress, most recently read first. Audiobooks
+     * included, so one list covers Continue reading and Continue listening.
+     */
     private suspend fun grimmoryRows(server: Server): List<ReadingProgress> {
-        val rows = buildList {
-            addAll(grimmory.appInProgress(server.resolve("/api/v1/app/books/continue-reading?limit=50")))
-            addAll(grimmory.appInProgress(server.resolve("/api/v1/app/books/continue-listening?limit=50")))
-        }
-        return rows.distinctBy { it.id }.mapNotNull { it.toProgress(server) }
+        val url = URLBuilder(server.resolve("/api/v1/books/page")).apply {
+            parameters.append("page", "0")
+            parameters.append("size", "100")
+            parameters.append("sort", "-lastReadTime")
+            listOf("READING", "RE_READING", "PAUSED").forEach { parameters.append("facet", "read_status:$it") }
+            // Grimmory 3.5.0 ANDs several values of one facet unless told otherwise.
+            parameters.append("facet_logic", "or")
+        }.buildString()
+        return grimmory.booksPage(url).content.distinctBy { it.id }.mapNotNull { it.toProgress(server) }
     }
 
-    private fun GrimmoryAppSummary.toProgress(server: Server): ReadingProgress? {
-        val name = title?.takeIf { it.isNotBlank() } ?: return null
-        val format = formatOf(primaryFileType)
+    private fun GrimmoryBook.toProgress(server: Server): ReadingProgress? {
+        val name = metadata.title?.takeIf { it.isNotBlank() } ?: return null
+        val format = formatOf(primaryFile?.bookType ?: primaryFile?.extension)
         val coverPath = if (format == ContentFormat.AUDIOBOOK) {
             "/api/v1/media/book/$id/audiobook-cover"
         } else {
@@ -89,14 +99,14 @@ class LibrarySeeder(
         return ReadingProgress(
             serverId = server.id,
             bookId = id.toString(),
-            percent = readProgress?.let { (it / 100.0).coerceIn(0.0, 1.0) },
+            percent = readPercent?.let { (it / 100.0).coerceIn(0.0, 1.0) },
             title = name,
-            author = authors.joinToString(", ").takeIf { it.isNotBlank() },
+            author = metadata.authors.joinToString(", ").takeIf { it.isNotBlank() },
             coverUrl = server.resolve(coverPath),
             format = format,
             digestUrl = server.resolve("/api/v1/books/$id/content"),
-            series = seriesName?.takeIf { it.isNotBlank() },
-            seriesIndex = seriesNumber,
+            series = metadata.seriesName?.takeIf { it.isNotBlank() },
+            seriesIndex = metadata.seriesNumber,
         )
     }
 
