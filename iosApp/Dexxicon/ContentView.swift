@@ -3,8 +3,13 @@ import SharedKit
 
 struct ContentView: View {
     var body: some View {
+        // issue #336 — Compose draws edge to edge and applies the safe area itself (the app
+        // shell's Scaffold, the nav pill's navigationBarsPadding). This used to ignore only the
+        // keyboard region, so SwiftUI also inset the view below the status bar: a black strip
+        // above the app, then Compose's own status-bar padding again — the empty band above
+        // every screen's title.
         ComposeView()
-            .ignoresSafeArea(.keyboard) // let Compose own the rest of the safe area
+            .ignoresSafeArea()
     }
 }
 
