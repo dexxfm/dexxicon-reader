@@ -198,6 +198,9 @@ class AppContainer(
         override fun authHeader(url: Url) = realAuthHeaderProvider.authHeader(url)
         override fun refreshAuthHeader(url: Url, rejected: String?) =
             realAuthHeaderProvider.refreshAuthHeader(url, rejected)
+        override suspend fun awaitAuthHeader(url: Url) = realAuthHeaderProvider.awaitAuthHeader(url)
+        override suspend fun awaitRefreshedAuthHeader(url: Url, rejected: String?) =
+            realAuthHeaderProvider.awaitRefreshedAuthHeader(url, rejected)
     }
     private val httpClient: HttpClient = createHttpClient(engine, authHeaderProvider)
 

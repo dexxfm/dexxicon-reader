@@ -210,14 +210,14 @@ class IosDownloadRepository(
     override suspend fun remove(serverId: String, bookId: String) = withContext(io) {
         val key = key(serverId, bookId)
         cancelJob(key)
-        dao.find(key)?.localPath?.let { deleteLocal(it) }
+        dao.find(key)?.let { deleteLocal(it) }
         dao.deleteByKey(key)
     }
 
     override suspend fun removeAllForServer(serverId: String) = withContext(io) {
         dao.forServer(serverId).forEach { entity ->
             cancelJob(entity.key)
-            entity.localPath?.let { deleteLocal(it) }
+            deleteLocal(entity)
         }
         dao.deleteForServer(serverId)
     }
@@ -225,12 +225,13 @@ class IosDownloadRepository(
     override suspend fun removeOrphaned() = withContext(io) {
         dao.findOrphaned().forEach { entity ->
             cancelJob(entity.key)
-            entity.localPath?.let { deleteLocal(it) }
+            deleteLocal(entity)
         }
         dao.deleteOrphaned()
     }
 
-    private fun deleteLocal(path: String) {
+    private suspend fun deleteLocal(entity: DownloadEntity) {
+        val path = resolveLocal(entity) ?: entity.localPath ?: return
         runCatching { fs.delete(path.toPath()) }
         runCatching { fs.delete("$path.part".toPath()) }
     }
@@ -242,7 +243,25 @@ class IosDownloadRepository(
     override suspend fun localFile(serverId: String, bookId: String): String? = withContext(io) {
         val entity = dao.find(key(serverId, bookId)) ?: return@withContext null
         if (entity.status != DownloadStatus.DONE.name) return@withContext null
-        entity.localPath?.takeIf { fs.exists(it.toPath()) }
+        resolveLocal(entity)
+    }
+
+    /**
+     * Issue #337 — [DownloadEntity.localPath] is absolute, so it names the app's data container
+     * as it was when the book was downloaded. iOS can move that container (a new UUID in the
+     * path, e.g. after an app update), leaving the stored path pointing nowhere while the file
+     * itself is still in place under today's Documents directory. Look for it there by name and
+     * repair the row; null only when the file really is gone.
+     */
+    private suspend fun resolveLocal(entity: DownloadEntity): String? {
+        val stored = entity.localPath ?: return null
+        if (fs.exists(stored.toPath())) return stored
+        val moved = booksDir(entity.serverId) / stored.toPath().name
+        if (!fs.exists(moved)) return null
+        runCatching {
+            mark(entity.key, DownloadStatus.DONE, entity.downloadedBytes, entity.totalBytes, moved.toString(), null)
+        }
+        return moved.toString()
     }
 
     /** `Documents/library/{serverId}/` — same relative shape as Android's `filesDir/library/

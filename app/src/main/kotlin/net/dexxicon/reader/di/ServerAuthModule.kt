@@ -79,6 +79,9 @@ object ServerAuthModule {
             override fun authHeader(url: Url) = authHeaderProvider.get().authHeader(url)
             override fun refreshAuthHeader(url: Url, rejected: String?) =
                 authHeaderProvider.get().refreshAuthHeader(url, rejected)
+            override suspend fun awaitAuthHeader(url: Url) = authHeaderProvider.get().awaitAuthHeader(url)
+            override suspend fun awaitRefreshedAuthHeader(url: Url, rejected: String?) =
+                authHeaderProvider.get().awaitRefreshedAuthHeader(url, rejected)
         }
         return createHttpClient(engine, deferred)
     }

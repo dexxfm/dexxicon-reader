@@ -61,6 +61,15 @@ class TokenManager internal constructor(
     private val refreshFailedAt = mutableMapOf<String, Long>()
 
     /**
+     * Issue #337 — serverId -> when its last re-auth attempt couldn't reach the server. With no
+     * session in memory (any cold start) every request re-authenticates first, one at a time
+     * under the server's lock; offline, each of those waited out its own network timeout, so
+     * an app with an unreachable server took minutes to show anything. Briefly remembering the
+     * failure lets the queued requests fail at once instead.
+     */
+    private val unreachableAt = mutableMapOf<String, Long>()
+
+    /**
      * Guards [sessions]/[refreshFailedAt]/[locks] themselves — cheap, always-brief
      * bookkeeping touches. `java.util.concurrent.ConcurrentHashMap` isn't available outside
      * the JVM target, so plain maps plus this one small Mutex take its place. Separate from
@@ -79,6 +88,7 @@ class TokenManager internal constructor(
         bookkeeping.withLock {
             sessions[serverId] = session
             refreshFailedAt.remove(serverId)
+            unreachableAt.remove(serverId)
         }
         session.refreshToken?.let { persistRefreshToken(serverId, it) }
         clearNeedsSignIn(serverId)
@@ -130,20 +140,31 @@ class TokenManager internal constructor(
 
     /** A cached "re-auth failed recently" result, or null to go ahead and try. */
     private suspend fun backoffFailure(server: Server): Outcome<NativeSession>? {
-        val failedAt = bookkeeping.withLock { refreshFailedAt[server.id] } ?: return null
-        if (now() - failedAt >= REFRESH_BACKOFF_MILLIS) return null
-        return Outcome.Failure(
-            DexxiconError.Unauthorized("Your ${server.displayName} session expired — sign in again"),
-        )
+        val (failedAt, unreachable) = bookkeeping.withLock { refreshFailedAt[server.id] to unreachableAt[server.id] }
+        if (failedAt != null && now() - failedAt < REFRESH_BACKOFF_MILLIS) {
+            return Outcome.Failure(
+                DexxiconError.Unauthorized("Your ${server.displayName} session expired — sign in again"),
+            )
+        }
+        if (unreachable != null && now() - unreachable < UNREACHABLE_BACKOFF_MILLIS) {
+            return Outcome.Failure(DexxiconError.Network("Can't reach ${server.displayName}"))
+        }
+        return null
     }
 
     private suspend fun Outcome<NativeSession>.record(serverId: String) {
         storeIfSuccess(serverId)
         when {
-            this is Outcome.Success -> bookkeeping.withLock { refreshFailedAt.remove(serverId) }
-            // Only an actual auth rejection backs off. A network blip should retry freely.
+            this is Outcome.Success -> bookkeeping.withLock {
+                refreshFailedAt.remove(serverId)
+                unreachableAt.remove(serverId)
+            }
             this is Outcome.Failure && error is DexxiconError.Unauthorized ->
                 bookkeeping.withLock { refreshFailedAt[serverId] = now() }
+            // A network failure backs off only briefly: long enough to stop a queue of requests
+            // each timing out in turn, short enough to pick the server up again right away.
+            this is Outcome.Failure && error is DexxiconError.Network ->
+                bookkeeping.withLock { unreachableAt[serverId] = now() }
         }
     }
 
@@ -173,6 +194,7 @@ class TokenManager internal constructor(
         bookkeeping.withLock {
             sessions.remove(serverId)
             refreshFailedAt.remove(serverId)
+            unreachableAt.remove(serverId)
         }
     }
 
@@ -185,6 +207,8 @@ class TokenManager internal constructor(
                 clearNeedsSignIn(server.id)
                 return refreshed
             }
+            // Unreachable: a password login would only wait out a second timeout.
+            if (refreshed is Outcome.Failure && refreshed.error is DexxiconError.Network) return refreshed
         }
 
         // Grimmory rotates the refresh token on every use, so the in-memory copy and the
@@ -195,6 +219,7 @@ class TokenManager internal constructor(
         bookkeeping.withLock { sessions[server.id]?.refreshToken }?.let(candidates::add)
         storedRefreshToken(server.id)?.let(candidates::add)
         var tooEarly = false
+        var unreachable: Outcome.Failure? = null
         for (token in candidates) {
             if (notYetUsable(token)) {
                 tooEarly = true
@@ -206,7 +231,11 @@ class TokenManager internal constructor(
                 clearNeedsSignIn(server.id)
                 return refreshed
             }
+            if (refreshed is Outcome.Failure && refreshed.error is DexxiconError.Network) unreachable = refreshed
         }
+        // Issue #337 — offline says nothing about the session: don't declare it dead (or, for a
+        // password server, wait out a second timeout on a login that can't get through either).
+        unreachable?.let { return it }
 
         return when (server.authMode) {
             AuthMode.NATIVE -> {
@@ -293,6 +322,9 @@ class TokenManager internal constructor(
 
         /** After a failed re-auth, don't try again for this long (kills 401 refresh storms). */
         const val REFRESH_BACKOFF_MILLIS = 30 * 1000L
+
+        /** How long an unreachable server's re-auth failure is reused (issue #337). */
+        const val UNREACHABLE_BACKOFF_MILLIS = 10 * 1000L
 
         /** Grimmory's not-before is 2 minutes; anything much further out is a clock problem. */
         const val MAX_NOT_BEFORE_WAIT_MILLIS = 5 * 60 * 1000L

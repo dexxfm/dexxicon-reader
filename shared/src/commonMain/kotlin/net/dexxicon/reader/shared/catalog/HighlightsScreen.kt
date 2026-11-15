@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared.catalog
 
+import net.dexxicon.reader.shared.detailForOpening
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -60,17 +61,14 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.PendingReaderJump
 import net.dexxicon.reader.core.data.ReaderJumpTarget
 import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.core.model.BookDetail
-import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.openReader
-import net.dexxicon.reader.shared.toBookDetail
 
 /**
  * issue #266 — every highlight in one EPUB, like BookLore's own web Highlights tab: search
@@ -102,11 +100,7 @@ class HighlightsState(
      *  rather than a change to where the book resumes. */
     fun open(highlight: Highlight, onOpenReader: OnOpenReader) {
         scope.launch {
-            val detail: BookDetail = (container.catalogRepository.detail(serverId, bookId) as? Outcome.Success)?.value
-                ?: container.downloadRepository.get(serverId, bookId)
-                    ?.takeIf { it.status == DownloadStatus.DONE }
-                    ?.toBookDetail()
-                ?: return@launch
+            val detail: BookDetail = container.detailForOpening(serverId, bookId).detail ?: return@launch
             PendingReaderJump.set(
                 serverId,
                 bookId,

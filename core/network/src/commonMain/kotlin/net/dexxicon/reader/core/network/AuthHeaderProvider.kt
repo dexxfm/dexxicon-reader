@@ -25,6 +25,17 @@ interface AuthHeaderProvider {
      * then hand back the 401 instead of retrying with the same header.
      */
     fun refreshAuthHeader(url: Url, rejected: String? = null): String?
+
+    /**
+     * Issue #337 — suspending forms of the two above, for Ktor's (suspending) plugin. The
+     * blocking forms exist for OkHttp's synchronous interceptor; called from a coroutine they
+     * pin a thread in `runBlocking` for as long as a token refresh takes and can't be
+     * cancelled, so a timeout around an unreachable server's request didn't actually end it.
+     * Forwarding wrappers must forward these too, or they fall back to the blocking forms.
+     */
+    suspend fun awaitAuthHeader(url: Url): String? = authHeader(url)
+
+    suspend fun awaitRefreshedAuthHeader(url: Url, rejected: String?): String? = refreshAuthHeader(url, rejected)
 }
 
 /** No-op default so the network module is usable before `:core:data` binds a real one. */

@@ -21,12 +21,16 @@ import UniformTypeIdentifiers
 /// first.
 final class AudiobookStreamLoader: NSObject, AVAssetResourceLoaderDelegate, URLSessionDataDelegate {
     static let scheme = "dexxicon-stream"
+    /// issue #337 — a plain-HTTP server's stream (a LAN server without TLS). Its own scheme so
+    /// [realURL] can put `http` back: it used to force `https`, so such a server could never
+    /// stream an audiobook on iOS at all.
+    static let plainScheme = "dexxicon-stream-http"
 
     /// The URL to hand to `AVURLAsset` — same host/path/query as [remoteURL], scheme swapped
     /// so `AVAssetResourceLoader` actually calls this delegate.
     static func loaderURL(for remoteURL: URL) -> URL {
         var components = URLComponents(url: remoteURL, resolvingAgainstBaseURL: false)!
-        components.scheme = scheme
+        components.scheme = remoteURL.scheme?.lowercased() == "http" ? plainScheme : scheme
         return components.url ?? remoteURL
     }
 
@@ -55,7 +59,7 @@ final class AudiobookStreamLoader: NSObject, AVAssetResourceLoaderDelegate, URLS
 
     private func realURL(from loaderURL: URL) -> URL? {
         var components = URLComponents(url: loaderURL, resolvingAgainstBaseURL: false)
-        components?.scheme = "https"
+        components?.scheme = loaderURL.scheme == Self.plainScheme ? "http" : "https"
         return components?.url
     }
 

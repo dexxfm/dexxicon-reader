@@ -53,7 +53,12 @@ class AuthHeaderProviderImpl(
         }
     }
 
-    override fun authHeader(url: Url): String? {
+    override fun authHeader(url: Url): String? = runBlocking { awaitAuthHeader(url) }
+
+    override fun refreshAuthHeader(url: Url, rejected: String?): String? =
+        runBlocking { awaitRefreshedAuthHeader(url, rejected) }
+
+    override suspend fun awaitAuthHeader(url: Url): String? {
         val server = serverFor(url) ?: return null
         return when (server.authMode) {
             AuthMode.BASIC -> basicHeader(server)
@@ -61,18 +66,18 @@ class AuthHeaderProviderImpl(
         }
     }
 
-    override fun refreshAuthHeader(url: Url, rejected: String?): String? {
+    override suspend fun awaitRefreshedAuthHeader(url: Url, rejected: String?): String? {
         val server = serverFor(url) ?: return null
         if (server.authMode == AuthMode.BASIC) return null
         val rejectedToken = rejected?.removePrefix("Bearer ")
-        return (runBlocking { tokenManager.forceRefresh(server, rejectedToken) } as? Outcome.Success)
+        return (tokenManager.forceRefresh(server, rejectedToken) as? Outcome.Success)
             ?.let { "Bearer ${it.value}" }
     }
 
-    private fun serverFor(url: Url): Server? {
+    private suspend fun serverFor(url: Url): Server? {
         lookup(serversByAuthority, url)?.let { return it }
         // Cold-start race: the observeAll() collector may not have emitted yet. Load once.
-        val fresh = runBlocking { serverDao.getAll() }
+        val fresh = serverDao.getAll()
             .map { it.toDomain() }
             .associateBy { authorityOf(it.baseUrl) }
         serversByAuthority = fresh
@@ -83,14 +88,14 @@ class AuthHeaderProviderImpl(
         map["${url.host}:${url.port}"]
             ?: map.values.firstOrNull { url.toString().startsWith(it.normalizedBaseUrl) }
 
-    private fun basicHeader(server: Server): String? {
-        val password = runBlocking { credentialStore.getPassword(server.id) } ?: return null
+    private suspend fun basicHeader(server: Server): String? {
+        val password = credentialStore.getPassword(server.id) ?: return null
         val raw = "${server.username}:$password"
         return "Basic " + Base64.Default.encode(raw.encodeToByteArray())
     }
 
-    private fun bearerHeader(server: Server): String? =
-        (runBlocking { tokenManager.bearerToken(server) } as? Outcome.Success)
+    private suspend fun bearerHeader(server: Server): String? =
+        (tokenManager.bearerToken(server) as? Outcome.Success)
             ?.let { "Bearer ${it.value}" }
 
     private fun authorityOf(baseUrl: String): String =
