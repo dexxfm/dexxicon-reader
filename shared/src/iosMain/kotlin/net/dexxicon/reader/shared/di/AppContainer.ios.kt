@@ -36,7 +36,7 @@ actual class PlatformContext
 private class DeferredAuthHeaderProvider : AuthHeaderProvider {
     var delegate: AuthHeaderProvider? = null
     override fun authHeader(url: Url) = delegate?.authHeader(url)
-    override fun refreshAuthHeader(url: Url) = delegate?.refreshAuthHeader(url)
+    override fun refreshAuthHeader(url: Url, rejected: String?) = delegate?.refreshAuthHeader(url, rejected)
 }
 
 /**

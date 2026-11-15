@@ -61,10 +61,11 @@ class AuthHeaderProviderImpl(
         }
     }
 
-    override fun refreshAuthHeader(url: Url): String? {
+    override fun refreshAuthHeader(url: Url, rejected: String?): String? {
         val server = serverFor(url) ?: return null
         if (server.authMode == AuthMode.BASIC) return null
-        return (runBlocking { tokenManager.forceRefresh(server) } as? Outcome.Success)
+        val rejectedToken = rejected?.removePrefix("Bearer ")
+        return (runBlocking { tokenManager.forceRefresh(server, rejectedToken) } as? Outcome.Success)
             ?.let { "Bearer ${it.value}" }
     }
 

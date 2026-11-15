@@ -77,7 +77,8 @@ object ServerAuthModule {
         val engine = OkHttp.create { preconfigured = okHttpClient }
         val deferred = object : AuthHeaderProvider {
             override fun authHeader(url: Url) = authHeaderProvider.get().authHeader(url)
-            override fun refreshAuthHeader(url: Url) = authHeaderProvider.get().refreshAuthHeader(url)
+            override fun refreshAuthHeader(url: Url, rejected: String?) =
+                authHeaderProvider.get().refreshAuthHeader(url, rejected)
         }
         return createHttpClient(engine, deferred)
     }

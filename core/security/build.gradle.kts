@@ -35,10 +35,5 @@ kotlin {
         iosMain.dependencies {
             implementation(libs.multiplatform.settings)
         }
-        // issue #334 — the Keychain write path, run on the iOS simulator.
-        iosTest.dependencies {
-            implementation(kotlin("test"))
-            implementation(libs.kotlinx.coroutines.test)
-        }
     }
 }

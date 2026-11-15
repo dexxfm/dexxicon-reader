@@ -17,14 +17,18 @@ interface AuthHeaderProvider {
     fun authHeader(url: Url): String?
 
     /**
-     * Called after a 401. Should invalidate any cached token for [url]'s server, obtain a
-     * fresh one, and return the new header value — or null if re-auth failed.
+     * Called after a 401 for a request sent with the header value [rejected]. Should obtain
+     * a fresh token for [url]'s server and return the new header value — or null if re-auth
+     * failed. Issue #334: when several requests 401 at once, only the first should refresh;
+     * the rest find the session already replaced (it no longer matches [rejected]) and reuse
+     * the new token. Returning [rejected] itself means "nothing better right now": callers
+     * then hand back the 401 instead of retrying with the same header.
      */
-    fun refreshAuthHeader(url: Url): String?
+    fun refreshAuthHeader(url: Url, rejected: String? = null): String?
 }
 
 /** No-op default so the network module is usable before `:core:data` binds a real one. */
 object NoAuthHeaderProvider : AuthHeaderProvider {
     override fun authHeader(url: Url): String? = null
-    override fun refreshAuthHeader(url: Url): String? = null
+    override fun refreshAuthHeader(url: Url, rejected: String?): String? = null
 }
