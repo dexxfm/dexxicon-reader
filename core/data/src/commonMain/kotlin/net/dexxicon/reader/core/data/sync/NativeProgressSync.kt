@@ -23,6 +23,7 @@ import net.dexxicon.reader.core.serverapi.progress.BookOrbitPlaybackStateUpdate
 import net.dexxicon.reader.core.serverapi.progress.BookOrbitRatingUpdate
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryFileProgress
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryRatingUpdate
+import net.dexxicon.reader.core.serverapi.progress.GrimmoryStatusUpdate
 import net.dexxicon.reader.core.serverapi.progress.GrimmoryUpdateProgress
 import net.dexxicon.reader.core.serverapi.progress.NativeProgressApi
 import net.dexxicon.reader.core.serverapi.progress.ServerStatusUpdate
@@ -83,8 +84,8 @@ class NativeProgressSync(
                     ServerStatusUpdate(status.toBookOrbit()),
                 )
                 ServerType.GRIMMORY -> api.grimmorySetStatus(
-                    server.resolve("/api/v1/app/books/$bookId/status"),
-                    ServerStatusUpdate(status.toGrimmory()),
+                    server.resolve("/api/v1/books/status"),
+                    GrimmoryStatusUpdate(listOf(bookId.toLongOrNull() ?: return@runCatching), status.toGrimmory()),
                 )
                 else -> return@runCatching
             }
@@ -104,7 +105,7 @@ class NativeProgressSync(
      *  `explicitNulls = false` JSON config would drop; Grimmory has a wholly separate
      *  reset-personal-rating route) that it's better scoped as its own follow-up than bolted on
      *  here. [bookId] must parse as a `Long` for Grimmory's route, which addresses books by
-     *  numeric id — every Grimmory book id already is one (see [GrimmoryAppBook.id]); a
+     *  numeric id — every Grimmory book id already is one (see [net.dexxicon.reader.core.serverapi.browse.GrimmoryBook.id]); a
      *  non-numeric id here would only happen for a BookOrbit call, which never reaches this
      *  branch. */
     suspend fun pushRating(server: Server, bookId: String, rating: Int) = withContext(io) {
@@ -333,7 +334,8 @@ class NativeProgressSync(
         bookId: String,
         format: ContentFormat,
     ): NativeProgress? {
-        val response = api.grimmoryProgress(server.resolve("/api/v1/app/books/$bookId/progress"))
+        // issue #335 — the book itself carries the current user's progress.
+        val response = api.grimmoryProgress(server.resolve("/api/v1/books/$bookId"))
         val dto = response.takeIf { it.isSuccessful }?.body() ?: return null
 
         // Grimmory only fills the format sub-object (cbxProgress/pdfProgress/epubProgress)
@@ -368,21 +370,23 @@ class NativeProgressSync(
         position: String?,
     ) {
         val bookFileId = grimmoryBookFileId(server, bookId, format) ?: return
+        val id = bookId.toLongOrNull() ?: return
         val positionData = when (format) {
             ContentFormat.AUDIOBOOK -> positionMs?.toString()
             else -> position
         }
         val body = GrimmoryUpdateProgress(
-            GrimmoryFileProgress(
+            bookId = id,
+            fileProgress = GrimmoryFileProgress(
                 bookFileId = bookFileId,
                 positionData = positionData,
                 progressPercent = percent.coerceIn(0.0, 1.0) * 100.0,
             ),
         )
-        val response = api.grimmorySaveProgress(server.resolve("/api/v1/app/books/$bookId/progress"), body)
+        val response = api.grimmorySaveProgress(server.resolve("/api/v1/books/progress"), body)
         if (!response.isSuccessful) {
             val err = response.errorBody()
-            error("Grimmory progress PUT HTTP ${response.code()}: $err")
+            error("Grimmory progress POST HTTP ${response.code()}: $err")
         }
     }
 
@@ -390,18 +394,15 @@ class NativeProgressSync(
         val cacheKey = "${server.id}::$bookId::$format"
         bookFileIdCacheMutex.withLock { bookFileIdCache[cacheKey] }?.let { return it }
 
-        val book = api.grimmoryAppBook(server.resolve("/api/v1/app/books/$bookId"))
+        val book = api.grimmoryBookFiles(server.resolve("/api/v1/books/$bookId"))
         val wantType = when (format) {
             ContentFormat.AUDIOBOOK -> "AUDIOBOOK"
             ContentFormat.PDF -> "PDF"
             ContentFormat.COMIC -> "CBX"
             else -> "EPUB"
         }
-        return (
-            book.files.firstOrNull { it.bookType?.equals(wantType, ignoreCase = true) == true }?.id
-                ?: book.files.firstOrNull { it.isPrimaryFile }?.id
-                ?: book.files.firstOrNull()?.id
-            )?.also { id -> bookFileIdCacheMutex.withLock { bookFileIdCache[cacheKey] = id } }
+        return book.fileIdFor(wantType)
+            ?.also { id -> bookFileIdCacheMutex.withLock { bookFileIdCache[cacheKey] = id } }
     }
 
     private fun fileIdFrom(url: String?): Long? {

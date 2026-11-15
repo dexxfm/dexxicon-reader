@@ -3,6 +3,7 @@ package net.dexxicon.reader.core.serverapi.progress
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -74,34 +75,64 @@ class NativeProgressApiTest {
         assertEquals("abc", dto?.manifestRevision)
     }
 
+    // ---- Grimmory (issue #335: its supported web API, not the removed /api/v1/app API) ----
+
     @Test
-    fun grimmoryProgressParsesTheNestedAudiobookShape() = runTest {
+    fun grimmoryProgressReadsTheBooksOwnProgressFields() = runTest {
+        // GET /api/v1/books/{id}: progress rides on the Book DTO, 0-100.
         val dto = mockApi(
             """
             {
-              "readProgress": 93.9,
+              "id": 767,
+              "title": "Mind Hack",
               "readStatus": "READING",
-              "audiobookProgress": {
-                "positionMs": 72302094,
-                "trackIndex": 0,
-                "percentage": 93.9,
-                "updatedAt": "2026-09-06T20:04:38Z"
-              }
+              "lastReadTime": "2026-09-06T20:04:38Z",
+              "primaryFile": {"id": 900, "bookType": "AUDIOBOOK"},
+              "audiobookProgress": {"positionMs": 72302094, "trackIndex": 0, "percentage": 93.9},
+              "epubProgress": {"cfi": "epubcfi(/6/4)", "href": "ch1.xhtml", "percentage": 12.5}
             }
             """.trimIndent(),
         ).grimmoryProgress("https://example.test/x").body()
         assertEquals(72302094L, dto?.audiobookProgress?.positionMs)
         assertEquals(93.9, dto?.audiobookProgress?.percentage)
-        assertEquals("2026-09-06T20:04:38Z", dto?.audiobookProgress?.updatedAt)
+        assertEquals(12.5, dto?.epubProgress?.percentage)
+        assertEquals("2026-09-06T20:04:38Z", dto?.lastReadTime)
     }
 
     @Test
-    fun grimmoryAppBookExposesFilesWithAnIdAndType() = runTest {
-        val book = mockApi("""{"id":767,"files":[{"id":900,"bookType":"AUDIOBOOK","primary":true}]}""")
-            .grimmoryAppBook("https://example.test/x")
-        val file = book.files.single()
-        assertEquals(900L, file.id)
-        assertEquals("AUDIOBOOK", file.bookType)
-        assertTrue(file.isPrimaryFile)
+    fun grimmoryBookFilesPicksTheFileOfTheWantedTypeElseThePrimary() = runTest {
+        val book = mockApi(
+            """{"id":767,"primaryFile":{"id":900,"bookType":"EPUB"},
+                "alternativeFormats":[{"id":901,"bookType":"AUDIOBOOK"},{"id":902,"bookType":"PDF"}]}""",
+        ).grimmoryBookFiles("https://example.test/x")
+        assertEquals(listOf(900L, 901L, 902L), book.files.map { it.id })
+        assertEquals(901L, book.fileIdFor("AUDIOBOOK"))
+        assertEquals(902L, book.fileIdFor("pdf"))
+        assertEquals(900L, book.fileIdFor("CBX"))
+    }
+
+    @Test
+    fun grimmoryWritesPostTheSupportedBulkShapedBodies() = runTest {
+        val seen = mutableListOf<Triple<String, String, String>>()
+        val engine = MockEngine { request ->
+            seen += Triple(request.method.value, request.url.encodedPath, request.body.toByteArray().decodeToString())
+            respond("", HttpStatusCode.NoContent)
+        }
+        val api = NativeProgressApi(
+            HttpClient(engine) { install(ContentNegotiation) { json(Json { explicitNulls = false }) } },
+        )
+        api.grimmorySaveProgress(
+            "https://g.test/api/v1/books/progress",
+            GrimmoryUpdateProgress(767, GrimmoryFileProgress(bookFileId = 900, positionData = "5000", progressPercent = 25.0)),
+        )
+        api.grimmorySetStatus("https://g.test/api/v1/books/status", GrimmoryStatusUpdate(listOf(767), "READ"))
+
+        val (save, status) = seen
+        assertEquals("POST", save.first)
+        assertEquals("/api/v1/books/progress", save.second)
+        assertEquals("""{"bookId":767,"fileProgress":{"bookFileId":900,"positionData":"5000","progressPercent":25.0}}""", save.third)
+        assertEquals("POST", status.first)
+        assertEquals("/api/v1/books/status", status.second)
+        assertEquals("""{"bookIds":[767],"status":"READ"}""", status.third)
     }
 }

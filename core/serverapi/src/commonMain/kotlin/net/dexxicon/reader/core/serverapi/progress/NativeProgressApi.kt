@@ -20,8 +20,10 @@ import net.dexxicon.reader.core.network.apiResponse
  *                                     PATCH    `/api/v1/books/{bookId}/audio-progress`
  *  BookOrbit  audiobook (2.10+):      GET      `/api/v1/audiobooks/{bookId}/playback-state`
  *                                     PUT      `/api/v1/audiobooks/{bookId}/playback-state`
- *  Grimmory   all types:             GET/PUT  `/api/v1/app/books/{bookId}/progress`
- *  Grimmory   book-file lookup:       GET      `/api/v1/app/books/{bookId}`  (for bookFileId)
+ *  Grimmory   read, all types:       GET      `/api/v1/books/{bookId}`  (the book's own
+ *                                     epub/pdf/cbx/audiobookProgress, plus its file ids)
+ *  Grimmory   write, all types:      POST     `/api/v1/books/progress`  {bookId, fileProgress}
+ *  (issue #335 — Grimmory's supported web API; its `/api/v1/app/…` API is being removed.)
  *
  * Percentages are 0–100 on the wire.
  *
@@ -75,21 +77,24 @@ class NativeProgressApi(private val client: HttpClient) {
             setBody(body)
         }
 
+    /** `GET /api/v1/books/{bookId}` — the book carries the current user's progress. */
     suspend fun grimmoryProgress(url: String): ApiResponse<GrimmoryProgressResponse> =
         client.apiResponse(url) { method = HttpMethod.Get }
 
+    /** `POST /api/v1/books/progress` (204). */
     suspend fun grimmorySaveProgress(url: String, body: GrimmoryUpdateProgress): ApiResponse<Unit> =
         client.apiResponse(url) {
-            method = HttpMethod.Put
+            method = HttpMethod.Post
             contentType(ContentType.Application.Json)
             setBody(body)
         }
 
-    suspend fun grimmoryAppBook(url: String): GrimmoryAppBook = client.get(url).body()
+    /** `GET /api/v1/books/{bookId}` — for the id of the file a progress write is keyed by. */
+    suspend fun grimmoryBookFiles(url: String): GrimmoryBookFiles = client.get(url).body()
 
     // ---- reading status ----
     //  BookOrbit  PATCH  /api/v1/books/{id}/status        {status:"reading"}  (lower_snake)
-    //  Grimmory   PUT    /api/v1/app/books/{id}/status    {status:"READING"}  (UPPER)
+    //  Grimmory   POST   /api/v1/books/status             {bookIds:[id],status:"READING"}
 
     suspend fun bookOrbitSetStatus(url: String, body: ServerStatusUpdate): ApiResponse<Unit> =
         client.apiResponse(url) {
@@ -98,9 +103,9 @@ class NativeProgressApi(private val client: HttpClient) {
             setBody(body)
         }
 
-    suspend fun grimmorySetStatus(url: String, body: ServerStatusUpdate): ApiResponse<Unit> =
+    suspend fun grimmorySetStatus(url: String, body: GrimmoryStatusUpdate): ApiResponse<Unit> =
         client.apiResponse(url) {
-            method = HttpMethod.Put
+            method = HttpMethod.Post
             contentType(ContentType.Application.Json)
             setBody(body)
         }
@@ -127,6 +132,10 @@ class NativeProgressApi(private val client: HttpClient) {
 
 @Serializable
 data class ServerStatusUpdate(val status: String)
+
+/** Grimmory's `ReadStatusUpdateRequest` is bulk-shaped even for a single book. */
+@Serializable
+data class GrimmoryStatusUpdate(val bookIds: List<Long>, val status: String)
 
 /** Sent as a partial body to BookOrbit's general `PATCH .../metadata` route (every field of
  *  the server's own `UpdateBookMetadataDto` is optional) — omitting every field but `rating`
@@ -188,8 +197,10 @@ data class BookOrbitPlaybackStateUpdate(
 
 // ---- Grimmory / BookLore ----
 
+/** The progress fields of Grimmory's `Book` (issue #335: read from `GET /api/v1/books/{id}`). */
 @Serializable
 data class GrimmoryProgressResponse(
+    /** Only the old `/app` progress endpoint had this top-level %; kept for that shape. */
     val readProgress: Double? = null,
     val readStatus: String? = null,
     val lastReadTime: String? = null,
@@ -222,9 +233,10 @@ data class GrimmoryAudiobookProgress(
     val updatedAt: String? = null,
 )
 
-/** `UpdateProgressRequest` — we always use the non-deprecated `fileProgress` field. */
+/** `ReadProgressRequest` — we always use the non-deprecated `fileProgress` field. */
 @Serializable
 data class GrimmoryUpdateProgress(
+    val bookId: Long,
     val fileProgress: GrimmoryFileProgress,
 )
 
@@ -238,19 +250,22 @@ data class GrimmoryFileProgress(
     val contentSourceProgressPercent: Double? = null,
 )
 
+/** The file ids of Grimmory's `Book`: its primary file, then its other formats. */
 @Serializable
-data class GrimmoryAppBook(
+data class GrimmoryBookFiles(
     val id: Long? = null,
-    val files: List<GrimmoryAppBookFile> = emptyList(),
-)
+    val primaryFile: GrimmoryBookFileRef? = null,
+    val alternativeFormats: List<GrimmoryBookFileRef> = emptyList(),
+) {
+    val files: List<GrimmoryBookFileRef> get() = listOfNotNull(primaryFile) + alternativeFormats
+
+    /** The file of [bookType] (EPUB/PDF/CBX/AUDIOBOOK), else the primary file. */
+    fun fileIdFor(bookType: String): Long? =
+        (files.firstOrNull { it.bookType.equals(bookType, ignoreCase = true) } ?: files.firstOrNull())?.id
+}
 
 @Serializable
-data class GrimmoryAppBookFile(
+data class GrimmoryBookFileRef(
     val id: Long,
     val bookType: String? = null,
-    // Jackson may emit either name depending on the getter; accept both.
-    val isPrimary: Boolean = false,
-    val primary: Boolean = false,
-) {
-    val isPrimaryFile: Boolean get() = isPrimary || primary
-}
+)
