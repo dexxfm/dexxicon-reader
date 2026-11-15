@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared.catalog
 
+import net.dexxicon.reader.shared.detailForOpening
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -186,12 +187,7 @@ class BooksState(
      * silently broke a downloaded audiobook's duration/position display. */
     fun openBook(book: BookSummary, onOpenReader: OnOpenReader) {
         scope.launch {
-            val detail = (container.catalogRepository.detail(serverId, book.id) as? Outcome.Success)
-                ?.value
-                ?: container.downloadRepository.get(serverId, book.id)
-                    ?.takeIf { it.status == DownloadStatus.DONE }
-                    ?.toBookDetail()
-                ?: return@launch
+            val detail = container.detailForOpening(serverId, book.id).detail ?: return@launch
             container.openReader(detail, serverId, book.id, onOpenReader)
         }
     }

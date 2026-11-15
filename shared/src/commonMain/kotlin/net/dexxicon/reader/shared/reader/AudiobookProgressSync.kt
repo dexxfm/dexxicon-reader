@@ -4,6 +4,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import net.dexxicon.reader.core.data.ServerRepository
@@ -66,6 +67,10 @@ class AudiobookProgressSync(
      * stored position and whatever the server has, same "never rewinds" rule as the native
      * app's `ReadingProgressRepository.audiobookResumeMs` — and reports it via [onResolved].
      * Always calls back, even on a network failure (falls back to the local position, or 0).
+     *
+     * Issue #337 — and promptly: playback waits for this, so an unreachable server used to
+     * hold a downloaded book silent through every network timeout in the chain. The server
+     * gets [REMOTE_RESUME_PATIENCE_MS]; after that the local position wins.
      */
     fun resolveResumeMs(
         serverId: String,
@@ -75,8 +80,9 @@ class AudiobookProgressSync(
     ) {
         scope.launch {
             val localMs = localPositionMs(serverId, bookId)
-            val resolved = runCatching { remoteResumeMs(serverId, bookId, durationMs, localMs) }
-                .getOrDefault(localMs)
+            val resolved = runCatching {
+                withTimeoutOrNull(REMOTE_RESUME_PATIENCE_MS) { remoteResumeMs(serverId, bookId, durationMs, localMs) }
+            }.getOrNull() ?: localMs
             withContext(Dispatchers.Main) { onResolved(resolved) }
         }
     }
@@ -161,6 +167,10 @@ class AudiobookProgressSync(
     }
 
     private fun key(serverId: String, bookId: String) = "$serverId::$bookId"
+
+    private companion object {
+        const val REMOTE_RESUME_PATIENCE_MS = 5_000L
+    }
 
     // ---- remote ----
 

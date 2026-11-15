@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared.home
 
+import net.dexxicon.reader.shared.detailForOpening
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -325,11 +326,7 @@ class HomeState(
      * Detail. */
     fun continueReading(item: ContinueItem, onOpenReader: OnOpenReader) {
         scope.launch {
-            val result = container.catalogRepository.detail(item.serverId, item.bookId)
-            val detail = (result as? Outcome.Success)?.value
-                ?: container.downloadRepository.get(item.serverId, item.bookId)
-                    ?.takeIf { it.status == DownloadStatus.DONE }
-                    ?.toBookDetail()
+            val (result, detail) = container.detailForOpening(item.serverId, item.bookId)
             if (detail != null) {
                 container.openReader(detail, item.serverId, item.bookId, onOpenReader)
                 return@launch

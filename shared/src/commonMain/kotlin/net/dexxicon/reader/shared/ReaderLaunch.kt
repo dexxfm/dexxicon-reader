@@ -1,5 +1,9 @@
 package net.dexxicon.reader.shared
 
+import net.dexxicon.reader.core.model.DownloadStatus
+import net.dexxicon.reader.core.common.Outcome
+import net.dexxicon.reader.core.common.DexxiconError
+import kotlinx.coroutines.withTimeoutOrNull
 import io.ktor.http.Url
 import net.dexxicon.reader.core.model.Acquisition
 import net.dexxicon.reader.core.model.AcquisitionRelation
@@ -127,6 +131,36 @@ suspend fun AppContainer.openReader(
         }
     onOpenReader(serverId, bookId, detail.summary.format, url, header, isManga, detail.summary.title, audiobook)
 }
+
+/** What [detailForOpening] found: the server's answer, and the detail to open the book with. */
+data class DetailForOpening(
+    /** The server's own answer — a Network failure if it didn't answer in time. */
+    val result: Outcome<BookDetail>,
+    /** The server's detail, else the downloaded copy's; null when neither is available. */
+    val detail: BookDetail?,
+)
+
+/**
+ * A book's detail for opening it: the server's when it answers, else what a downloaded copy
+ * remembers ([toBookDetail]). Issue #337 — a downloaded book used to wait for the server
+ * request to fail first, which against an unreachable server meant every network timeout in
+ * the chain (a re-auth attempt, then the request itself) before anything played. With a local
+ * copy on hand, the server gets [LOCAL_COPY_PATIENCE_MS]; without one there's nothing else to
+ * open, so it gets as long as it takes.
+ */
+suspend fun AppContainer.detailForOpening(serverId: String, bookId: String): DetailForOpening {
+    val local = downloadRepository.get(serverId, bookId)?.takeIf { it.status == DownloadStatus.DONE }
+    val result = if (local == null) {
+        catalogRepository.detail(serverId, bookId)
+    } else {
+        withTimeoutOrNull(LOCAL_COPY_PATIENCE_MS) { catalogRepository.detail(serverId, bookId) }
+            ?: Outcome.Failure(DexxiconError.Network("The server didn't answer"))
+    }
+    return DetailForOpening(result, (result as? Outcome.Success)?.value ?: local?.toBookDetail())
+}
+
+/** How long a downloaded book waits on its server before opening from the local copy. */
+const val LOCAL_COPY_PATIENCE_MS = 4_000L
 
 /**
  * Reconstructs a degraded [BookDetail] from a completed [Download] — the offline fallback

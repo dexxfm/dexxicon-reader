@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared.catalog
 
+import net.dexxicon.reader.shared.detailForOpening
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -15,13 +16,11 @@ import net.dexxicon.reader.core.model.BookCopy
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookDetail
 import net.dexxicon.reader.core.model.Download
-import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingProgress
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.openReader
-import net.dexxicon.reader.shared.toBookDetail
 
 /**
  * Phase 4 restructure (issue #126) — the one Book Detail state class, replacing *both*
@@ -96,7 +95,9 @@ class BookDetailState(
     }
 
     private suspend fun load() {
-        when (val result = container.catalogRepository.detail(serverId, bookId)) {
+        // issue #337 — a downloaded book opens from its local copy if the server is slow to answer.
+        val (result, local) = container.detailForOpening(serverId, bookId)
+        when (result) {
             is Outcome.Success -> {
                 detail = result.value
                 error = null
@@ -106,9 +107,7 @@ class BookDetailState(
             }
             is Outcome.Failure -> {
                 // Offline? Fall back to what the downloaded copy remembers.
-                val offline = container.downloadRepository.get(serverId, bookId)
-                    ?.takeIf { it.status == DownloadStatus.DONE }
-                    ?.toBookDetail()
+                val offline = local
                 if (offline != null) {
                     detail = offline
                     error = null

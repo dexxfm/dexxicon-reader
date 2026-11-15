@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared.library
 
+import net.dexxicon.reader.shared.detailForOpening
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -266,12 +267,7 @@ class LibraryState(
         val serverId = book.primary.serverId
         val bookId = book.primary.bookId
         scope.launch {
-            val detail = (container.catalogRepository.detail(serverId, bookId) as? Outcome.Success)
-                ?.value
-                ?: container.downloadRepository.get(serverId, bookId)
-                    ?.takeIf { it.status == DownloadStatus.DONE }
-                    ?.toBookDetail()
-                ?: return@launch
+            val detail = container.detailForOpening(serverId, bookId).detail ?: return@launch
             container.openReader(detail, serverId, bookId, onOpenReader)
         }
     }
