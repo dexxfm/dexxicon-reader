@@ -8,4 +8,6 @@ import androidx.compose.ui.unit.dp
 // here brings the two platforms' total bottom clearance to the same ~38 logical units
 // (see PillExtraBottomMargin's doc comment in the commonMain expect declaration).
 // issue #322 — 4pt, lowered 2 to match Android's 14dp.
+// issue #336 — until then the app's SwiftUI host also inset the Compose view by the safe
+// area, so on a real iPhone the pill actually sat a further 34pt higher than this intends.
 internal actual val PillExtraBottomMargin: Dp = 4.dp
