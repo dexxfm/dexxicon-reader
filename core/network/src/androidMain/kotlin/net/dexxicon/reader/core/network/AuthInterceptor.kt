@@ -38,8 +38,8 @@ class AuthInterceptor @Inject constructor(
             return response
         }
 
-        val refreshed = headerProvider.refreshAuthHeader(ktorUrl)
-        if (refreshed == null) {
+        val refreshed = headerProvider.refreshAuthHeader(ktorUrl, header)
+        if (refreshed == null || refreshed == header) {
             Log.i(TAG, "401 on ${original.url.encodedPath} and no refreshed token")
             return response
         }

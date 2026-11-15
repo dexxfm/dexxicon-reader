@@ -196,7 +196,8 @@ class AppContainer(
      * network call would have sent. */
     val authHeaderProvider: AuthHeaderProvider = object : AuthHeaderProvider {
         override fun authHeader(url: Url) = realAuthHeaderProvider.authHeader(url)
-        override fun refreshAuthHeader(url: Url) = realAuthHeaderProvider.refreshAuthHeader(url)
+        override fun refreshAuthHeader(url: Url, rejected: String?) =
+            realAuthHeaderProvider.refreshAuthHeader(url, rejected)
     }
     private val httpClient: HttpClient = createHttpClient(engine, authHeaderProvider)
 

@@ -57,8 +57,8 @@ private fun HttpClient.installAuthHeaderPlugin(provider: AuthHeaderProvider) {
 
         if (call.response.status != HttpStatusCode.Unauthorized) return@intercept call
 
-        val refreshed = provider.refreshAuthHeader(request.url.build())
-            ?: return@intercept call
+        val refreshed = provider.refreshAuthHeader(request.url.build(), header)
+        if (refreshed == null || refreshed == header) return@intercept call
         request.headers.set(AUTH_HEADER, refreshed)
         execute(request)
     }
