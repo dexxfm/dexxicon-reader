@@ -37,6 +37,9 @@ private class DeferredAuthHeaderProvider : AuthHeaderProvider {
     var delegate: AuthHeaderProvider? = null
     override fun authHeader(url: Url) = delegate?.authHeader(url)
     override fun refreshAuthHeader(url: Url, rejected: String?) = delegate?.refreshAuthHeader(url, rejected)
+    override suspend fun awaitAuthHeader(url: Url) = delegate?.awaitAuthHeader(url)
+    override suspend fun awaitRefreshedAuthHeader(url: Url, rejected: String?) =
+        delegate?.awaitRefreshedAuthHeader(url, rejected)
 }
 
 /**

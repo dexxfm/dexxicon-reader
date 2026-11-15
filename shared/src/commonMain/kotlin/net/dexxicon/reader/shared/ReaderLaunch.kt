@@ -112,7 +112,7 @@ suspend fun AppContainer.openReader(
     // Swift-side fix (skip the remote-only AudiobookStreamLoader for a file:// digestUrl).
     val localFile = downloadRepository.localFile(serverId, bookId)
     val url = localFile?.let { "file://$it" } ?: acquisition.href
-    val header = if (localFile != null) null else authHeaderProvider.authHeader(Url(acquisition.href))
+    val header = if (localFile != null) null else authHeaderProvider.awaitAuthHeader(Url(acquisition.href))
     // issue #108 — same genre-tag check as Android's ComicReaderViewModel.mangaGenre.
     val isManga = detail.categories.any { it.contains("manga", ignoreCase = true) }
     // issue #114 — same metadata Android's PlayerViewModel.load() resolves from this exact
