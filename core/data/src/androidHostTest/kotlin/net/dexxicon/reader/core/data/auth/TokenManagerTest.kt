@@ -126,6 +126,28 @@ class TokenManagerTest {
     }
 
     @Test
+    fun anUnreachableServerIsntRetriedByEveryQueuedRequest() = runTest {
+        // Issue #337 — a cold start with the server down: nothing in memory, a usable stored token.
+        secrets.stored[server.id] = grimmory.issue().refreshToken!!
+        skipped += 3 * 60_000
+        grimmory.down = true
+
+        val first = tokens.bearerToken(server)
+        val queued = List(5) { tokens.bearerToken(server) }
+
+        assertThat((first as Outcome.Failure).error).isInstanceOf(DexxiconError.Network::class.java)
+        assertThat(queued.map { (it as Outcome.Failure).error }.all { it is DexxiconError.Network }).isTrue()
+        assertThat(grimmory.refreshCalls).isEqualTo(1)
+        assertThat(tokens.needsSignIn.value).isEmpty()
+
+        // Back online after the short backoff: the next request reaches the server again.
+        grimmory.down = false
+        skipped += 11_000
+        assertThat(tokens.bearerToken(server)).isInstanceOf(Outcome.Success::class.java)
+        assertThat(grimmory.refreshCalls).isEqualTo(2)
+    }
+
+    @Test
     fun notBeforeIsReadFromTheJwtAndIgnoredOnOpaqueTokens() {
         assertThat(notBeforeMillis(jwt(nbfSeconds = 1_700_000_000))).isEqualTo(1_700_000_000_000)
         assertThat(notBeforeMillis("opaque-refresh-token")).isNull()
@@ -150,6 +172,7 @@ private class FakeGrimmory(private val now: () -> Long) {
     private var serial = 0
     var refreshCalls = 0
     var rejectedRefreshes = 0
+    var down = false
 
     fun issue(): NativeSession {
         serial++
@@ -164,6 +187,7 @@ private class FakeGrimmory(private val now: () -> Long) {
     val client = HttpClient(
         MockEngine { request ->
             refreshCalls++
+            if (down) throw kotlinx.io.IOException("Could not connect to the server.")
             val token = Json.parseToJsonElement((request.body as TextContent).text)
                 .jsonObject.getValue("refreshToken").jsonPrimitive.content
             val notBefore = live[token]

@@ -40,6 +40,18 @@ private class DeferredAuthHeaderProvider : AuthHeaderProvider {
 }
 
 /**
+ * Issue #337 — `NSURLRequest`'s default 60 s timeout made every request to an unreachable
+ * server hang for a minute (Android's OkHttp gives up connecting after 20 s). This is the idle
+ * time allowed between bytes, not a cap on a whole transfer, so long downloads and streams are
+ * unaffected.
+ */
+private fun darwinEngine() = Darwin.create {
+    configureRequest { setTimeoutInterval(REQUEST_IDLE_TIMEOUT_SECONDS) }
+}
+
+private const val REQUEST_IDLE_TIMEOUT_SECONDS = 15.0
+
+/**
  * Uses [Dispatchers.Default] where the Android actual uses `Dispatchers.IO` — Kotlin/Native
  * has no equivalent of the JVM's large-pool blocking-IO dispatcher, and
  * `kotlinx.coroutines.Dispatchers.IO` itself is `internal` (not public API) on Native; a
@@ -54,14 +66,14 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
     // download coroutines themselves to run on, independent of any one screen's lifecycle.
     val deferredAuth = DeferredAuthHeaderProvider()
     val downloadRepository = IosDownloadRepository(
-        httpClient = createHttpClient(Darwin.create(), deferredAuth),
+        httpClient = createHttpClient(darwinEngine(), deferredAuth),
         dao = database.downloadDao(),
         appPreferences = AppPreferencesStore(PlatformStorageContext()),
         appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
         io = Dispatchers.Default,
     )
     val container = AppContainer(
-        engine = Darwin.create(),
+        engine = darwinEngine(),
         credentialStore = credentialStore,
         database = database,
         io = Dispatchers.Default,
