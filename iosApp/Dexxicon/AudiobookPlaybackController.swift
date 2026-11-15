@@ -47,6 +47,9 @@ final class AudiobookPlaybackController: NSObject {
         var speed: Float = 1.0
         var sleepTimerEndsAt: Date?
         var sleepAtChapterEnd = false
+        /// issue #337 — AVFoundation's own failure, shown on the player screen rather than
+        /// leaving it looking like it plays while nothing is heard.
+        var playbackError: String?
 
         var currentChapterIndex: Int {
             guard let book else { return 0 }
@@ -76,6 +79,8 @@ final class AudiobookPlaybackController: NSObject {
     private var player: AVPlayer?
     private var loader: AudiobookStreamLoader?
     private var timeObserverToken: Any?
+    private var itemStatusObservation: NSKeyValueObservation?
+    private var itemFailureObserver: NSObjectProtocol?
     private var sleepWorkItem: DispatchWorkItem?
     private var lastPushedPositionMs: Int64 = -1
     // issue #119: CarPlay throttles how often it picks up MPNowPlayingInfoCenter updates —
@@ -162,6 +167,9 @@ final class AudiobookPlaybackController: NSObject {
             item = AVPlayerItem(asset: asset)
         }
 
+        NSLog("DEXXICON_AUDIO start %@ local=%d", remoteURL.isFileURL ? remoteURL.path : remoteURL.absoluteString,
+              remoteURL.isFileURL ? (FileManager.default.fileExists(atPath: remoteURL.path) ? 1 : 0) : -1)
+        observe(item)
         let newPlayer = player ?? AVPlayer()
         player = newPlayer
         newPlayer.replaceCurrentItem(with: item)
@@ -201,6 +209,31 @@ final class AudiobookPlaybackController: NSObject {
                 self.updateNowPlayingInfo()
             }
         )
+    }
+
+    /// issue #337 — a load/decode failure used to be invisible: `state` is set to playing
+    /// optimistically, so a broken item looked like silent playback.
+    private func observe(_ item: AVPlayerItem) {
+        itemStatusObservation = item.observe(\.status, options: [.new]) { [weak self] item, _ in
+            guard item.status == .failed else { return }
+            DispatchQueue.main.async { self?.fail(item, item.error) }
+        }
+        if let itemFailureObserver { NotificationCenter.default.removeObserver(itemFailureObserver) }
+        itemFailureObserver = NotificationCenter.default.addObserver(
+            forName: AVPlayerItem.failedToPlayToEndTimeNotification, object: item, queue: .main
+        ) { [weak self] note in
+            self?.fail(item, note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error)
+        }
+    }
+
+    private func fail(_ item: AVPlayerItem, _ error: Error?) {
+        guard player?.currentItem === item else { return }
+        NSLog("DEXXICON_AUDIO failed: %@", "\(String(describing: error))")
+        player?.pause()
+        state.isPlaying = false
+        state.playbackError = "Couldn't play this audiobook" +
+            ((error as NSError?)?.localizedDescription).map { ": \($0)" }.orEmpty
+        updateNowPlayingInfo()
     }
 
     // MARK: transport
@@ -494,7 +527,7 @@ final class AudiobookPlaybackController: NSObject {
             sleepAtChapterEnd: state.sleepAtChapterEnd,
             currentChapterIndex: Int32(state.currentChapterIndex),
             chapters: book.chapters.map { PlayerChapter(title: $0.title, startMs: $0.startMs) },
-            playbackError: nil
+            playbackError: state.playbackError
         ))
     }
 
@@ -515,4 +548,8 @@ final class AudiobookPlaybackController: NSObject {
     private func cmTime(_ ms: Int64) -> CMTime {
         CMTime(seconds: Double(ms) / 1000.0, preferredTimescale: 1_000)
     }
+}
+
+private extension Optional where Wrapped == String {
+    var orEmpty: String { self ?? "" }
 }
