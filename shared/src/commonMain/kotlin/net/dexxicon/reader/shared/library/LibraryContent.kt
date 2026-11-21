@@ -167,9 +167,11 @@ fun LibraryBooksPane(
     val listState = rememberLazyListState()
     val gridState = rememberLazyGridState()
 
-    fun onTapCover(book: AggregatedBook) = when (uiState.coverTapAction) {
-        CoverTapAction.OPEN_DETAILS -> onOpenBook(book)
-        CoverTapAction.OPEN_BOOK -> state.openBook(book, onOpenReader)
+    fun onTapCover(book: AggregatedBook) = when {
+        // issue #328 — a series card (Kavita) has no book to open: it always shows its list.
+        book.opensGroup != null -> onOpenBook(book)
+        uiState.coverTapAction == CoverTapAction.OPEN_DETAILS -> onOpenBook(book)
+        else -> state.openBook(book, onOpenReader)
     }
 
     val shouldLoadMore by remember {
@@ -199,6 +201,18 @@ fun LibraryBooksPane(
     }
 
     fun actionsFor(book: AggregatedBook): LibraryItemActions {
+        if (book.opensGroup != null) {
+            // A series card: nothing to mark or download as one book, only to open.
+            return LibraryItemActions(
+                downloadStatus = null,
+                onMarkRead = {},
+                onMarkUnread = {},
+                onSetStatus = {},
+                onDetails = { onOpenBook(book) },
+                onDownloadOrRemove = {},
+                catalogOnly = true,
+            )
+        }
         val c = book.primary
         // Status/mark-read applies to every copy so the servers don't disagree.
         val targets = book.copies.map { it.serverId to it.bookId }
@@ -376,6 +390,7 @@ private fun LibraryRow(
         if (series != null) append(if (isEmpty()) "" else " · ").append(series)
         append(if (isEmpty()) "" else " · ")
         append(book.format.name.lowercase())
+        book.opensGroup?.bookCount?.let { append(" · $it books") }
         if (libraries > 1) append(" · On $libraries libraries")
         if (pct != null) append(" · $pct% read")
     }
@@ -410,7 +425,12 @@ private fun LibraryGridCard(
 ) {
     var menuOpen by remember { mutableStateOf(false) }
     val pct = progress?.let { (it * 100).toInt() }
-    val secondary = if (book.copies.size > 1) "On ${book.copies.size} libraries" else book.authorLine
+    val secondary = when {
+        book.copies.size > 1 -> "On ${book.copies.size} libraries"
+        // issue #328 — a series card says how many books it opens onto.
+        book.opensGroup?.bookCount != null -> "${book.opensGroup?.bookCount} books"
+        else -> book.authorLine
+    }
     val series = seriesPositionText(book.series, book.seriesIndex)
         ?.takeIf { LocalCoverBadges.current.showSeriesNumber }
     val label = buildString {

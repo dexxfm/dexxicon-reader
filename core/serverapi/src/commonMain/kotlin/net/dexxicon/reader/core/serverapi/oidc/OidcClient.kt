@@ -44,6 +44,7 @@ class OidcClient(
         ServerType.GRIMMORY -> runCatching { bookloreHandshake(server) }.getOrElse { it.toFailure() }
         // issue #327 — Komga signs in with its own username and password, not SSO.
         ServerType.KOMGA -> Outcome.Failure(DexxiconError.Unsupported("Komga signs in with a username and password"))
+        ServerType.KAVITA -> Outcome.Failure(DexxiconError.Unsupported("Kavita signs in with a username and password"))
         ServerType.GENERIC -> {
             val booklore = runCatching { bookloreHandshake(server) }.getOrElse { it.toFailure() }
             if (booklore is Outcome.Success) {

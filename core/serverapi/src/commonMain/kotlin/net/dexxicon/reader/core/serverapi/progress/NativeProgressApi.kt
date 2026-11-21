@@ -1,5 +1,7 @@
 package net.dexxicon.reader.core.serverapi.progress
 
+import net.dexxicon.reader.core.serverapi.browse.KavitaSeries
+import net.dexxicon.reader.core.serverapi.browse.KavitaChapter
 import io.ktor.http.HttpHeaders
 import io.ktor.client.request.header
 import kotlinx.serialization.json.Json
@@ -152,6 +154,37 @@ class NativeProgressApi(private val client: HttpClient) {
             setBody(body)
         }
 
+    // ---- Kavita (issue #328) ----
+    //  GET  /api/Chapter?chapterId=                      the chapter: its volume and page count
+    //  GET  /api/Search/series-for-chapter?chapterId=    its series (and library)
+    //  GET  /api/Reader/get-progress?chapterId=          {pageNum, lastModifiedUtc…}
+    //  POST /api/Reader/progress                         {libraryId, seriesId, volumeId, chapterId, pageNum}
+    //  POST /api/Reader/mark-multiple-read / -unread     {seriesId, volumeIds, chapterIds}
+    //  `pageNum` counts the pages read: 0 is untouched, the page count means read.
+
+    suspend fun kavitaChapter(url: String): ApiResponse<KavitaChapter> =
+        client.apiResponse(url) { method = HttpMethod.Get }
+
+    suspend fun kavitaSeriesForChapter(url: String): ApiResponse<KavitaSeries> =
+        client.apiResponse(url) { method = HttpMethod.Get }
+
+    suspend fun kavitaProgress(url: String): ApiResponse<KavitaProgress> =
+        client.apiResponse(url) { method = HttpMethod.Get }
+
+    suspend fun kavitaSaveProgress(url: String, body: KavitaProgressUpdate): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+
+    suspend fun kavitaMarkChapters(url: String, body: KavitaMarkChapters): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Post
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+
     // ---- reading status ----
     //  BookOrbit  PATCH  /api/v1/books/{id}/status        {status:"reading"}  (lower_snake)
     //  Grimmory   POST   /api/v1/books/status             {bookIds:[id],status:"READING"}
@@ -192,6 +225,35 @@ class NativeProgressApi(private val client: HttpClient) {
 
 @Serializable
 data class ServerStatusUpdate(val status: String)
+
+/** issue #328 — Kavita's saved position for one chapter (`ProgressDto`, as read back). */
+@Serializable
+data class KavitaProgress(
+    val chapterId: Int = 0,
+    val pageNum: Int = 0,
+    val lastModifiedUtc: String? = null,
+)
+
+/**
+ * issue #328 — the position Kavita is sent. No defaults: the shared JSON config leaves default
+ * values out, and a `pageNum` of 0 has to be sent like any other.
+ */
+@Serializable
+data class KavitaProgressUpdate(
+    val libraryId: Int,
+    val seriesId: Int,
+    val volumeId: Int,
+    val chapterId: Int,
+    val pageNum: Int,
+)
+
+/** issue #328 — chapters to mark read or unread (`MarkVolumesReadDto`). */
+@Serializable
+data class KavitaMarkChapters(
+    val seriesId: Int,
+    val volumeIds: List<Int>,
+    val chapterIds: List<Int>,
+)
 
 /** Grimmory's `ReadStatusUpdateRequest` is bulk-shaped even for a single book. */
 @Serializable

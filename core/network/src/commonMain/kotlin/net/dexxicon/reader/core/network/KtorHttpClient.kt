@@ -68,6 +68,10 @@ private fun isAuthEndpoint(path: String): Boolean =
     path.contains("/auth/login") ||
         path.contains("/auth/refresh") ||
         path.contains("/auth/oidc") ||
+        // issue #328 — Kavita's sign-in: sent while its token is being obtained, so it must
+        // not wait for that token itself.
+        path.contains("/api/Account/login", ignoreCase = true) ||
+        path.contains("/api/Account/refresh-token", ignoreCase = true) ||
         path.contains("/public-settings") ||
         path.contains("/.well-known/") ||
         path.endsWith("/oidc/providers/public")

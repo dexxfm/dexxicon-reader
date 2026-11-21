@@ -80,11 +80,13 @@ data class AggregatedBook(
     val coverUrl: String? = null,
     val format: ContentFormat = ContentFormat.UNKNOWN,
     val copies: List<BookCopy> = emptyList(),
+    /** issue #328 — see [BookSummary.opensGroup]: a card that opens this group's list. */
+    val opensGroup: BookGroup? = null,
 ) {
     val authorLine: String get() = authors.joinToString(", ")
 
     /** Stable list key across recompositions / reorders. */
-    val key: String get() = copies.joinToString(",") { "${it.serverId}:${it.bookId}" }
+    val key: String get() = opensGroup?.key ?: copies.joinToString(",") { "${it.serverId}:${it.bookId}" }
 
     val primary: BookCopy get() = copies.first()
 }
@@ -113,6 +115,12 @@ data class BookSummary(
     /** How this book's server addresses its series (issue #256) — BookOrbit's numeric series
      *  id; null where the server keys series by [series] name alone (Grimmory). */
     val seriesId: String? = null,
+    /**
+     * issue #328 — set when this card stands for a group rather than one book: a Kavita series
+     * of several files is listed as one card, and opening it shows the series' books. [id] is
+     * then the group's own id, never a book's.
+     */
+    val opensGroup: BookGroup? = null,
 ) {
     val authorLine: String get() = authors.joinToString(", ")
 }

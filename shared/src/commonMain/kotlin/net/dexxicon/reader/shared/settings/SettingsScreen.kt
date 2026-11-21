@@ -310,7 +310,7 @@ fun SettingsScreen(
 
             SettingsSection("Reading sync") {
                 SettingDescription(
-                    "Reading & listening position syncs with BookOrbit, Grimmory and Komga through their own " +
+                    "Reading & listening position syncs with BookOrbit, Grimmory, Komga and Kavita through their own " +
                         "library API (same as the web reader). A custom OPDS catalog can sync with " +
                         "KOReader through a KOReader sync account.",
                 )

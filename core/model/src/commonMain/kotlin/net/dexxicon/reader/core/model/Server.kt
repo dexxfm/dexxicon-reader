@@ -39,6 +39,8 @@ data class Server(
             // issue #327 — Komga's KOReader endpoint takes an API key as the user; the app
             // syncs Komga through its own read-progress API instead, so this is never used.
             ServerType.KOMGA -> "$normalizedBaseUrl/koreader"
+            // issue #328 — Kavita's needs an auth key in the path; synced natively instead.
+            ServerType.KAVITA -> "$normalizedBaseUrl/api/koreader"
             ServerType.GENERIC -> defaultKoSyncUrlForCatalog(baseUrl)
         }
 
@@ -52,7 +54,8 @@ data class Server(
      * web UI all declare `/book/:bookId`). Null for generic OPDS servers, which have no known web UI.
      */
     fun webBookUrl(bookId: String): String? =
-        if (type.supportsNativeApi && bookId.isNotBlank()) resolve("/book/$bookId") else null
+        // Kavita's reader routes need the library and series ids as well as the chapter's.
+        if (type.supportsNativeApi && type != ServerType.KAVITA && bookId.isNotBlank()) resolve("/book/$bookId") else null
 }
 
 /**
@@ -97,9 +100,12 @@ enum class ServerType {
     GRIMMORY,
 
     /** issue #327 — Komga, through its own REST API with HTTP Basic sign-in ([AuthMode.BASIC]). */
-    KOMGA;
+    KOMGA,
 
-    val supportsNativeApi: Boolean get() = this == BOOKORBIT || this == GRIMMORY || this == KOMGA
+    /** issue #328 — Kavita, through its own REST API with a JWT from a password sign-in. */
+    KAVITA;
+
+    val supportsNativeApi: Boolean get() = this == BOOKORBIT || this == GRIMMORY || this == KOMGA || this == KAVITA
 
     /**
      * issue #327 — whether bookmarks and highlights sync with this server. Only BookOrbit and
@@ -113,12 +119,12 @@ enum class ServerType {
 
     /**
      * issue #327 — the reading statuses this server can store, in menu order. Komga only knows
-     * read and unread (part-way is just progress); a catalog keeps none.
+     * read and unread (part-way is just progress), and so does Kavita; a catalog keeps none.
      */
     val readingStatuses: List<ReadingStatus>
         get() = when (this) {
             GENERIC -> emptyList()
-            KOMGA -> listOf(ReadingStatus.UNREAD, ReadingStatus.READ)
+            KOMGA, KAVITA -> listOf(ReadingStatus.UNREAD, ReadingStatus.READ)
             BOOKORBIT, GRIMMORY -> ReadingStatus.entries
         }
 }

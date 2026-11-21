@@ -171,7 +171,9 @@ class HomeState(
         combine(pinnedBooks, container.downloadRepository.downloads) { byShelf, downloads ->
             val status = downloads.associate { it.key to it.status }
             byShelf.mapValues { (_, books) ->
-                books.map { book ->
+                // issue #328 — a card standing for a whole series (Kavita) has no book to open
+                // from a Home shelf; the series stays reachable from the Library.
+                books.filter { it.opensGroup == null }.map { book ->
                     val copy = book.primary
                     OnDeckItem(
                         serverId = copy.serverId,

@@ -1,5 +1,6 @@
 package net.dexxicon.reader.di
 
+import net.dexxicon.reader.core.serverapi.browse.KavitaBrowseApi
 import net.dexxicon.reader.core.serverapi.browse.KomgaBrowseApi
 import dagger.Module
 import dagger.Provides
@@ -38,6 +39,11 @@ object ServerApiModule {
     @Provides
     @Singleton
     fun provideKomgaBrowseApi(client: HttpClient): KomgaBrowseApi = KomgaBrowseApi(client)
+
+    /** issue #328 */
+    @Provides
+    @Singleton
+    fun provideKavitaBrowseApi(client: HttpClient): KavitaBrowseApi = KavitaBrowseApi(client)
 
     @Provides
     @Singleton

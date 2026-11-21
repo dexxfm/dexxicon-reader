@@ -1,5 +1,7 @@
 package net.dexxicon.reader.shared.di
 
+import net.dexxicon.reader.core.data.catalog.KavitaCatalogSource
+import net.dexxicon.reader.core.serverapi.browse.KavitaBrowseApi
 import net.dexxicon.reader.core.data.catalog.KomgaCatalogSource
 import net.dexxicon.reader.core.serverapi.browse.KomgaBrowseApi
 import coil3.ImageLoader
@@ -217,6 +219,10 @@ class AppContainer(
     private val bookOrbitBrowseApi = BookOrbitBrowseApi(httpClient)
     private val grimmoryBrowseApi = GrimmoryBrowseApi(httpClient)
     private val komgaBrowseApi = KomgaBrowseApi(httpClient)
+    private val kavitaBrowseApi = KavitaBrowseApi(httpClient)
+
+    /** issue #328 — one instance: Library browsing and Continue reading share its caches. */
+    private val kavitaSource = KavitaCatalogSource(kavitaBrowseApi)
     private val nativeProgressApi = NativeProgressApi(httpClient)
     private val koSyncApi = KoSyncApi(httpClient)
 
@@ -226,7 +232,7 @@ class AppContainer(
         .build()
 
     val tokenManager: TokenManager = TokenManager(nativeAuthClient, credentialStore)
-    val serverProber: ServerProber = ServerProber(nativeAuthClient, io, komgaBrowseApi)
+    val serverProber: ServerProber = ServerProber(nativeAuthClient, io, komgaBrowseApi, kavitaBrowseApi)
     val serverRepository: ServerRepository = ServerRepository(
         serverDao = database.serverDao(),
         credentialStore = credentialStore,
@@ -240,7 +246,7 @@ class AppContainer(
     )
 
     private val nativeProgressSync = NativeProgressSync(nativeProgressApi, bookOrbitBrowseApi, syncStateStore, io)
-    private val librarySeeder = LibrarySeeder(grimmoryBrowseApi, bookOrbitBrowseApi, komgaBrowseApi, io)
+    private val librarySeeder = LibrarySeeder(grimmoryBrowseApi, bookOrbitBrowseApi, komgaBrowseApi, kavitaSource, io)
     /** Phase 4 Stage H (issue #145) — public so Settings' Reading sync section can call
      * [KoSyncRepository.verify] directly, the same shape [progressRepository] already has. */
     val koSyncRepository = KoSyncRepository(
@@ -292,6 +298,7 @@ class AppContainer(
         grimmorySource = GrimmoryCatalogSource(grimmoryBrowseApi),
         bookOrbitSource = BookOrbitCatalogSource(bookOrbitBrowseApi),
         komgaSource = KomgaCatalogSource(komgaBrowseApi),
+        kavitaSource = kavitaSource,
         opdsSource = OpdsCatalogSource(opdsClient),
         io = io,
     )

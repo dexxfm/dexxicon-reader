@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.data
 
+import net.dexxicon.reader.core.serverapi.browse.KavitaBrowseApi
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.io.encoding.Base64
 import net.dexxicon.reader.core.serverapi.browse.KomgaBrowseApi
@@ -27,6 +28,8 @@ class ServerProber(
     private val io: CoroutineDispatcher,
     /** issue #327 — Komga signs in with HTTP Basic, checked before the token-login families. */
     private val komga: KomgaBrowseApi? = null,
+    /** issue #328 — Kavita has its own login route, tried after Komga. */
+    private val kavita: KavitaBrowseApi? = null,
 ) {
     /**
      * issue #267 — a URL typed without a scheme used to become `https://` unconditionally, so a
@@ -64,6 +67,7 @@ class ServerProber(
                 baseUrl = url,
             )
         }
+        kavitaProbe(url, username, password)?.let { return it }
         val candidate = Server(
             id = "",
             displayName = url,
@@ -92,7 +96,7 @@ class ServerProber(
                     )
                 is DexxiconError.Parse ->
                     ServerProbeResult.NotAServer(
-                        "That URL responded, but not like BookOrbit, Grimmory or Komga",
+                        "That URL responded, but not like BookOrbit, Grimmory, Komga or Kavita",
                     )
                 else -> ServerProbeResult.Unreachable(unreachableMessage(url, result.error.message))
             }
@@ -112,6 +116,32 @@ class ServerProber(
         val authorization = "Basic " + Base64.Default.encode("$username:$password".encodeToByteArray())
         return runCatching { api.me(url.trimEnd('/') + "/api/v2/users/me", authorization) }
             .getOrNull()?.let { it.email != null || it.roles.isNotEmpty() } == true
+    }
+
+    /**
+     * issue #328 — Kavita signs in at `/api/Account/login`. A token back means Kavita; a refusal
+     * from a server that answers Kavita's sign-in-free `/api/Admin/exists` means the right server
+     * with the wrong password. Anything else (another family, unreachable) falls through to the
+     * token login, which reports it the usual way. Null = not a Kavita.
+     */
+    private suspend fun kavitaProbe(url: String, username: String, password: String): ServerProbeResult? {
+        val api = kavita ?: return null
+        if (username.isBlank() || password.isBlank()) return null
+        val candidate = Server(id = "", displayName = url, baseUrl = url, type = ServerType.KAVITA, authMode = AuthMode.NATIVE)
+        return when (val login = authClient.kavitaLogin(candidate, username, password)) {
+            is Outcome.Success -> ServerProbeResult.Success(
+                detectedType = ServerType.KAVITA,
+                detectedAuthMode = AuthMode.NATIVE,
+                serverName = null,
+                serverVersion = null,
+                baseUrl = url,
+            )
+            is Outcome.Failure -> {
+                val isKavita = login.error is DexxiconError.Unauthorized &&
+                    runCatching { api.adminExists(candidate.resolve("/api/Admin/exists")) }.getOrNull() != null
+                if (isKavita) ServerProbeResult.InvalidCredentials("Kavita didn't accept that username and password") else null
+            }
+        }
     }
 
     /** issue #267 — the raw TLS failure ("Unable to parse TLS packet header") says nothing

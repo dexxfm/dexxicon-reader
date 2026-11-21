@@ -393,7 +393,7 @@ enum class ServerKind(
     val presetName: String? = null,
     val blurb: String? = null,
 ) {
-    NATIVE("BookOrbit, Grimmory or Komga"),
+    NATIVE("BookOrbit, Grimmory, Komga or Kavita"),
     OPDS(
         "OPDS catalog",
         blurb = "Any OPDS 2.0 or 1.2 catalog: its feed URL, plus a username and password if it needs one.",
