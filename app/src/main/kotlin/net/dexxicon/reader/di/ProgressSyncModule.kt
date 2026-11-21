@@ -1,5 +1,6 @@
 package net.dexxicon.reader.di
 
+import net.dexxicon.reader.core.serverapi.browse.KomgaBrowseApi
 import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Build
@@ -69,8 +70,9 @@ object ProgressSyncModule {
     fun provideLibrarySeeder(
         grimmory: GrimmoryBrowseApi,
         bookOrbit: BookOrbitBrowseApi,
+        komga: KomgaBrowseApi,
         @Dispatcher(DexxiconDispatcher.IO) io: CoroutineDispatcher,
-    ): LibrarySeeder = LibrarySeeder(grimmory, bookOrbit, io)
+    ): LibrarySeeder = LibrarySeeder(grimmory, bookOrbit, komga, io)
 
     @Provides
     @Singleton

@@ -91,6 +91,7 @@ class ServerRepository(
         val path = when (server.type) {
             ServerType.BOOKORBIT -> "/api/v1/auth/me"
             ServerType.GRIMMORY -> "/api/v1/users/me"
+            ServerType.KOMGA -> "/api/v2/users/me"
             else -> return@withContext server.username.takeIf { it.isNotBlank() }
         }
         runCatching { nativeUserApi.me(server.resolve(path)) }.getOrNull()?.let { me ->

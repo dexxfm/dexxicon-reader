@@ -36,6 +36,9 @@ data class Server(
         get() = when (type) {
             ServerType.BOOKORBIT -> "$normalizedBaseUrl/api/v1/koreader"
             ServerType.GRIMMORY -> "$normalizedBaseUrl/api/koreader"
+            // issue #327 — Komga's KOReader endpoint takes an API key as the user; the app
+            // syncs Komga through its own read-progress API instead, so this is never used.
+            ServerType.KOMGA -> "$normalizedBaseUrl/koreader"
             ServerType.GENERIC -> defaultKoSyncUrlForCatalog(baseUrl)
         }
 
@@ -44,9 +47,9 @@ data class Server(
         get() = koSyncUrl?.trimEnd('/')?.takeIf { it.isNotBlank() } ?: assumedKoSyncUrl
 
     /**
-     * issue #260 — this book's page in the server's own web app. Both families happen to use
-     * the same route (BookOrbit's `client/src/router` and Grimmory's `app.routes.ts` both
-     * declare `/book/:bookId`). Null for generic OPDS servers, which have no known web UI.
+     * issue #260 — this book's page in the server's own web app. Every native family happens to
+     * use the same route (BookOrbit's `client/src/router`, Grimmory's `app.routes.ts` and Komga's
+     * web UI all declare `/book/:bookId`). Null for generic OPDS servers, which have no known web UI.
      */
     fun webBookUrl(bookId: String): String? =
         if (type.supportsNativeApi && bookId.isNotBlank()) resolve("/book/$bookId") else null
@@ -91,9 +94,19 @@ data class OidcConfig(
 enum class ServerType {
     GENERIC,
     BOOKORBIT,
-    GRIMMORY;
+    GRIMMORY,
 
-    val supportsNativeApi: Boolean get() = this == BOOKORBIT || this == GRIMMORY
+    /** issue #327 — Komga, through its own REST API with HTTP Basic sign-in ([AuthMode.BASIC]). */
+    KOMGA;
+
+    val supportsNativeApi: Boolean get() = this == BOOKORBIT || this == GRIMMORY || this == KOMGA
+
+    /**
+     * issue #327 — whether bookmarks and highlights sync with this server. Only BookOrbit and
+     * Grimmory have those APIs; elsewhere (Komga, OPDS) they stay on the device. The sync code
+     * used to treat any native server other than BookOrbit as Grimmory.
+     */
+    val syncsAnnotations: Boolean get() = this == BOOKORBIT || this == GRIMMORY
 }
 
 enum class SyncProviderKind { KO_SYNC, KOBO, NATIVE_ANNOTATIONS }

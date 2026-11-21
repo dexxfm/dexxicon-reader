@@ -8,6 +8,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
+import net.dexxicon.reader.core.serverapi.browse.KomgaBook
 import net.dexxicon.reader.core.network.ApiResponse
 import net.dexxicon.reader.core.network.apiResponse
 
@@ -91,6 +92,24 @@ class NativeProgressApi(private val client: HttpClient) {
 
     /** `GET /api/v1/books/{bookId}` — for the id of the file a progress write is keyed by. */
     suspend fun grimmoryBookFiles(url: String): GrimmoryBookFiles = client.get(url).body()
+
+    // ---- Komga (issue #327) ----
+    //  GET    /api/v1/books/{id}                 the book, carrying `readProgress {page, completed}`
+    //  PATCH  /api/v1/books/{id}/read-progress   {page} or {completed:true}  (204)
+    //  DELETE /api/v1/books/{id}/read-progress   back to unread                (204)
+
+    suspend fun komgaBook(url: String): ApiResponse<KomgaBook> =
+        client.apiResponse(url) { method = HttpMethod.Get }
+
+    suspend fun komgaSaveReadProgress(url: String, body: KomgaReadProgressUpdate): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Patch
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
+
+    suspend fun komgaDeleteReadProgress(url: String): ApiResponse<Unit> =
+        client.apiResponse(url) { method = HttpMethod.Delete }
 
     // ---- reading status ----
     //  BookOrbit  PATCH  /api/v1/books/{id}/status        {status:"reading"}  (lower_snake)
@@ -268,4 +287,11 @@ data class GrimmoryBookFiles(
 data class GrimmoryBookFileRef(
     val id: Long,
     val bookType: String? = null,
+)
+
+/** issue #327 — Komga's read-progress write: a 1-based [page], or [completed] to mark it read. */
+@Serializable
+data class KomgaReadProgressUpdate(
+    val page: Int? = null,
+    val completed: Boolean? = null,
 )

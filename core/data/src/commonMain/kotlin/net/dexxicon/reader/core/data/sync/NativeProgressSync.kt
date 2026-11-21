@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.data.sync
 
+import net.dexxicon.reader.core.serverapi.progress.KomgaReadProgressUpdate
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -73,7 +74,11 @@ class NativeProgressSync(
     private val audiobookApiSupportCache = mutableMapOf<String, Boolean>()
 
     fun supports(server: Server): Boolean =
-        server.type == ServerType.BOOKORBIT || server.type == ServerType.GRIMMORY
+        server.type == ServerType.BOOKORBIT || server.type == ServerType.GRIMMORY || server.type == ServerType.KOMGA
+
+    /** Komga page count per "serverId::bookId", for turning an EPUB's percent into a page. */
+    private val komgaPagesMutex = Mutex()
+    private val komgaPages = mutableMapOf<String, Int>()
 
     /** Set the per-user reading status on the server (BookOrbit / Grimmory only). */
     suspend fun pushStatus(server: Server, bookId: String, status: ReadingStatus) = withContext(io) {
@@ -87,6 +92,15 @@ class NativeProgressSync(
                     server.resolve("/api/v1/books/status"),
                     GrimmoryStatusUpdate(listOf(bookId.toLongOrNull() ?: return@runCatching), status.toGrimmory()),
                 )
+                // issue #327 — Komga only knows read, in progress and unread.
+                ServerType.KOMGA -> when (status) {
+                    ReadingStatus.READ -> api.komgaSaveReadProgress(
+                        server.resolve("/api/v1/books/$bookId/read-progress"),
+                        KomgaReadProgressUpdate(completed = true),
+                    )
+                    ReadingStatus.UNREAD -> api.komgaDeleteReadProgress(server.resolve("/api/v1/books/$bookId/read-progress"))
+                    else -> return@runCatching
+                }
                 else -> return@runCatching
             }
             if (!response.isSuccessful) {
@@ -141,6 +155,7 @@ class NativeProgressSync(
             when (server.type) {
                 ServerType.BOOKORBIT -> pullBookOrbit(server, bookId, format, digestUrl)
                 ServerType.GRIMMORY -> pullGrimmory(server, bookId, format)
+                ServerType.KOMGA -> pullKomga(server, bookId, format)
                 else -> null
             }
         }.onSuccess { syncStateStore.markSynced(server.id) }
@@ -164,6 +179,7 @@ class NativeProgressSync(
             when (server.type) {
                 ServerType.BOOKORBIT -> pushBookOrbit(server, bookId, format, digestUrl, percent, positionMs, position)
                 ServerType.GRIMMORY -> pushGrimmory(server, bookId, format, percent, positionMs, position)
+                ServerType.KOMGA -> pushKomga(server, bookId, format, percent, position)
                 else -> {}
             }
         }.onSuccess {
@@ -329,6 +345,55 @@ class NativeProgressSync(
 
     // ---- Grimmory / BookLore ----
 
+    // ---- Komga (issue #327) ----
+
+    /** The book's own read progress: a 1-based page of its Komga page count, or completed. */
+    private suspend fun pullKomga(server: Server, bookId: String, format: ContentFormat): NativeProgress? {
+        val response = api.komgaBook(server.resolve("/api/v1/books/$bookId"))
+        val book = response.takeIf { it.isSuccessful }?.body() ?: return null
+        val pages = book.media.pagesCount
+        if (pages > 0) komgaPagesMutex.withLock { komgaPages["${server.id}::$bookId"] = pages }
+        val progress = book.readProgress ?: return null
+        val percent = when {
+            progress.completed -> 1.0
+            pages > 0 -> (progress.page.toDouble() / pages).coerceIn(0.0, 1.0)
+            else -> return null
+        }
+        return NativeProgress(
+            percent = percent,
+            page = progress.page.takeIf { it > 0 && (format == ContentFormat.PDF || format == ContentFormat.COMIC) },
+            updatedAtMillis = isoToMillis(progress.lastModified) ?: isoToMillis(progress.readDate),
+        )
+    }
+
+    /**
+     * PDFs and comics send their exact page; an EPUB's percent becomes the same share of its Komga
+     * page count (Komga measures an EPUB in its own pages, which its web reader resumes by). The
+     * end of the book marks it read.
+     */
+    private suspend fun pushKomga(server: Server, bookId: String, format: ContentFormat, percent: Double, position: String?) {
+        val url = server.resolve("/api/v1/books/$bookId/read-progress")
+        val body = if (percent >= KOMGA_COMPLETE) {
+            KomgaReadProgressUpdate(completed = true)
+        } else {
+            val page = position?.toIntOrNull()?.takeIf { format == ContentFormat.PDF || format == ContentFormat.COMIC }
+                ?: komgaPageCount(server, bookId)?.let { pages -> (percent * pages).toInt().coerceIn(1, pages) }
+                ?: return
+            KomgaReadProgressUpdate(page = page)
+        }
+        val response = api.komgaSaveReadProgress(url, body)
+        if (!response.isSuccessful) error("Komga read-progress PATCH HTTP ${response.code()}")
+    }
+
+    private suspend fun komgaPageCount(server: Server, bookId: String): Int? {
+        val key = "${server.id}::$bookId"
+        komgaPagesMutex.withLock { komgaPages[key] }?.let { return it }
+        val pages = api.komgaBook(server.resolve("/api/v1/books/$bookId")).takeIf { it.isSuccessful }?.body()
+            ?.media?.pagesCount?.takeIf { it > 0 } ?: return null
+        komgaPagesMutex.withLock { komgaPages[key] = pages }
+        return pages
+    }
+
     private suspend fun pullGrimmory(
         server: Server,
         bookId: String,
@@ -414,6 +479,8 @@ class NativeProgressSync(
         iso?.let { runCatching { Instant.parse(it).toEpochMilliseconds() }.getOrNull() }
 
     private companion object {
+        /** At or past this share of a book, Komga is told it's read. */
+        const val KOMGA_COMPLETE = 0.995
         const val TAG = "NativeProgressSync"
     }
 }
