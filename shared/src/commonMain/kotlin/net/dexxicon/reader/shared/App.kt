@@ -280,7 +280,7 @@ fun App(
             reauthRequests.collect { serverId -> nav.navigate(EditServerRoute(serverId, reauth = true)) }
         }
 
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize().sideColumnFullHeight()) {
             val wide = maxWidth >= RAIL_BREAKPOINT
             // issue #343 — where the system bars run down one side (the iPhone Duo, closed or open
             // in landscape), the pill stands in that column instead of the bottom pill or the rail.

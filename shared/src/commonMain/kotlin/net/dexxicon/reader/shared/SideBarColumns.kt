@@ -1,5 +1,8 @@
 package net.dexxicon.reader.shared
 
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -78,6 +81,16 @@ internal fun sideBarColumn(): SideBarColumn? {
         else -> null
     }
 }
+
+/**
+ * Issue #343 — on the iPhone Duo the status bar and the controls live in the side column, so the
+ * safe area above and below the content isn't needed for anything: marks it used up, so every
+ * Scaffold, top bar and bar padding inside lets the content run the full height. Elsewhere (no
+ * side column) this does nothing.
+ */
+@Composable
+internal fun Modifier.sideColumnFullHeight(): Modifier =
+    if (sideBarColumn() != null) consumeWindowInsets(WindowInsets.safeDrawing.only(WindowInsetsSides.Vertical)) else this
 
 /**
  * A screen's controls in the side column, centred down it like the nav: Apple's order puts
