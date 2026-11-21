@@ -179,28 +179,41 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 private val RAIL_BREAKPOINT = 600.dp
 
 /**
- * Issue #343 — a column of system bars down one side of a portrait screen: the iPhone Duo's
- * cover screen, where the camera and the status bar sit at the top of the trailing edge and
- * iOS reports the column as a side safe-area inset. Apple's own apps stand their tab bar in
- * that column, so the floating pill does too. Null on every other screen: a phone has no side
- * inset in portrait, and landscape's side insets are the camera housing.
+ * Issue #343 — a column of system bars down one side of the screen: the iPhone Duo's outer
+ * screen, and its inner screen in landscape, where the camera and status bar sit at the top of
+ * the trailing edge and iOS reports the column as a side safe-area inset on that edge only.
+ * Apple's guidelines put tab bars and toolbars in that column, icons rather than text, so the
+ * floating pill stands there. Null everywhere else: other iPhones have no side inset in
+ * portrait and one on both sides in landscape, and Android never uses this.
  */
-private class SideBarColumn(val alignment: Alignment, val width: Dp, val onRight: Boolean)
+private class SideBarColumn(val alignment: Alignment, val width: Dp, val onRight: Boolean, val top: Dp)
+
+/** Space between the status bar and the controls under it in the side column. */
+private val SIDE_COLUMN_GAP = 8.dp
+
+/**
+ * Where the side column's controls start when iOS doesn't report a side status bar: below the
+ * outer screen's camera and clock, measured on the simulator (the clock ends near 150pt).
+ */
+private val SIDE_COLUMN_FALLBACK_TOP = 150.dp
 
 /** Narrowest side column the upright pill fits in (52dp items plus 8dp on each side). */
 private val MIN_SIDE_COLUMN = 68.dp
 
 @Composable
 private fun BoxWithConstraintsScope.sideBarColumn(): SideBarColumn? {
-    if (maxHeight <= maxWidth) return null
+    if (!platformHasSideBarColumns) return null
     val density = LocalDensity.current
     val direction = LocalLayoutDirection.current
     val insets = WindowInsets.safeDrawing
     val left = with(density) { insets.getLeft(density, direction).toDp() }
     val right = with(density) { insets.getRight(density, direction).toDp() }
+    // Re-read when the screen changes size (folding or unfolding, rotating).
+    val statusBottom = remember(maxWidth, maxHeight) { sideStatusBarBottom() }
+    val top = statusBottom?.dp ?: SIDE_COLUMN_FALLBACK_TOP
     return when {
-        right >= MIN_SIDE_COLUMN && left == 0.dp -> SideBarColumn(AbsoluteAlignment.BottomRight, right, onRight = true)
-        left >= MIN_SIDE_COLUMN && right == 0.dp -> SideBarColumn(AbsoluteAlignment.BottomLeft, left, onRight = false)
+        right >= MIN_SIDE_COLUMN && left == 0.dp -> SideBarColumn(AbsoluteAlignment.TopRight, right, onRight = true, top = top)
+        left >= MIN_SIDE_COLUMN && right == 0.dp -> SideBarColumn(AbsoluteAlignment.TopLeft, left, onRight = false, top = top)
         else -> null
     }
 }
@@ -302,10 +315,11 @@ fun App(
 
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val wide = maxWidth >= RAIL_BREAKPOINT
-            val showRail = wide && currentTopLevel != null
-            val showBottomBar = !wide && currentTopLevel != null
-            // issue #343 — on the iPhone Duo's cover screen the pill stands in the side column.
+            // issue #343 — where the system bars run down one side (the iPhone Duo, closed or open
+            // in landscape), the pill stands in that column instead of the bottom pill or the rail.
             val sideColumn = sideBarColumn()
+            val showRail = wide && currentTopLevel != null && sideColumn == null
+            val showBottomBar = (!wide || sideColumn != null) && currentTopLevel != null
 
             // Phase 5 (issue #115) — Library + Book Detail side by side once the screen is
             // wide enough: only when Detail is what's actually on top of the back stack *and*
@@ -541,7 +555,7 @@ fun App(
                         }
                     }
                     if (showBottomBar && sideColumn != null) {
-                        // Upright at the bottom of the column, under the clock and in thumb reach.
+                        // Upright at the top of the column, right under the status bar.
                         FloatingPillNavBar(
                             destinations = TopLevelDestination.entries,
                             current = currentTopLevel,
@@ -551,7 +565,9 @@ fun App(
                             glassState = glassState,
                             glassIntensity = theme.glassIntensity,
                             vertical = true,
-                            modifier = Modifier.align(sideColumn.alignment).navigationBarsPadding().width(sideColumn.width),
+                            modifier = Modifier.align(sideColumn.alignment)
+                                .padding(top = sideColumn.top + SIDE_COLUMN_GAP)
+                                .width(sideColumn.width),
                         )
                     }
                 }
