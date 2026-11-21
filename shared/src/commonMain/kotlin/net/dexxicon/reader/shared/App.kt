@@ -197,6 +197,9 @@ private val SIDE_COLUMN_GAP = 8.dp
  */
 private val SIDE_COLUMN_FALLBACK_TOP = 150.dp
 
+/** A side inset below this counts as none (rounding, or a sliver of the display's corner). */
+private val NO_SIDE_INSET = 8.dp
+
 /** Narrowest side column the upright pill fits in (52dp items plus 8dp on each side). */
 private val MIN_SIDE_COLUMN = 68.dp
 
@@ -211,9 +214,10 @@ private fun BoxWithConstraintsScope.sideBarColumn(): SideBarColumn? {
     // Re-read when the screen changes size (folding or unfolding, rotating).
     val statusBottom = remember(maxWidth, maxHeight) { sideStatusBarBottom() }
     val top = statusBottom?.dp ?: SIDE_COLUMN_FALLBACK_TOP
+    println("DEXXICON_DUO insets left=$left right=$right size=${maxWidth}x$maxHeight statusBottom=$statusBottom")
     return when {
-        right >= MIN_SIDE_COLUMN && left == 0.dp -> SideBarColumn(AbsoluteAlignment.TopRight, right, onRight = true, top = top)
-        left >= MIN_SIDE_COLUMN && right == 0.dp -> SideBarColumn(AbsoluteAlignment.TopLeft, left, onRight = false, top = top)
+        right >= MIN_SIDE_COLUMN && left < NO_SIDE_INSET -> SideBarColumn(AbsoluteAlignment.TopRight, right, onRight = true, top = top)
+        left >= MIN_SIDE_COLUMN && right < NO_SIDE_INSET -> SideBarColumn(AbsoluteAlignment.TopLeft, left, onRight = false, top = top)
         else -> null
     }
 }
