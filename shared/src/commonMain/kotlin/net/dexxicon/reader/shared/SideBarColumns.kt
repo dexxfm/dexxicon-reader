@@ -67,8 +67,8 @@ internal sealed interface SideControls
 
 /**
  * Issue #355 — the iPhone Duo's inner screen held upright: the status area is a tall band across
- * the top ([height]), Apple's status icons on its right, so a screen's controls stand in a row
- * at its left, level with those icons, instead of in a toolbar below it.
+ * the top ([height]), Apple's status icons on its right, so a screen's controls (and the app's
+ * nav) stand in a row centred across it, level with those icons, instead of a bar below it.
  */
 internal class StatusBand(val height: Dp) : SideControls
 
@@ -91,7 +91,7 @@ private val MIN_SIDE_COLUMN = 68.dp
 private val MIN_STATUS_BAND = 72.dp
 
 /** Where the status icons sit in the band: a little below its middle, so the row is too. */
-private val STATUS_BAND_ROW_OFFSET = 14.dp
+internal val STATUS_BAND_ROW_OFFSET = 14.dp
 
 /**
  * The side column on this screen, or null: other iPhones have no side inset in portrait and one
@@ -142,7 +142,7 @@ internal fun Modifier.sideColumnFullHeight(): Modifier =
 /**
  * A screen's controls in the side column, centred down it like the nav: Apple's order puts
  * navigation (Back) first, then the actions, with a [SideColumnGap] between groups. In the status
- * band (issue #355) the same buttons run in a row from the left, level with the status icons.
+ * band (issue #355) the same buttons run in a row centred across the top, level with the status icons.
  */
 @Composable
 internal fun BoxScope.SideColumnControls(placement: SideControls, content: @Composable () -> Unit) {
@@ -154,9 +154,9 @@ internal fun BoxScope.SideColumnControls(placement: SideControls, content: @Comp
         ) { content() }
         is StatusBand -> Row(
             Modifier
-                .align(AbsoluteAlignment.TopLeft)
+                .align(Alignment.TopCenter)
                 .height(placement.height)
-                .padding(start = 16.dp, top = STATUS_BAND_ROW_OFFSET),
+                .padding(top = STATUS_BAND_ROW_OFFSET),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) { content() }

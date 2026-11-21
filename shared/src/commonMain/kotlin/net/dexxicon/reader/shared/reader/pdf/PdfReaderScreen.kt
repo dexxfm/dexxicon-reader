@@ -1,5 +1,10 @@
 package net.dexxicon.reader.shared.reader.pdf
 
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import net.dexxicon.reader.shared.sideControls
+import net.dexxicon.reader.shared.SideColumnGap
+import net.dexxicon.reader.shared.SideColumnControls
+import net.dexxicon.reader.shared.SideColumnButton
 import androidx.compose.ui.graphics.luminance
 import net.dexxicon.reader.core.designsystem.theme.LocalDarkTheme
 import androidx.compose.foundation.layout.WindowInsets
@@ -148,18 +153,22 @@ private fun ReaderContent(
     // issue #308 — the app's theme, not the phone's.
     val darkTheme = LocalDarkTheme.current
     val surface = preferences.theme.pdfSurfaceColor(darkTheme)
+    // Issue #355 — on the iPhone Duo the toolbar stands in the side column or the status band.
+    val sideControls = sideControls()
+    val toggleBookmark = { currentBookmark?.let { onDeleteBookmark(it.id) } ?: onAddBookmark() }
 
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = surface,
         // issue #308 — the page-count label sits straight on the reading background, which can be
         // dark even in a light app (Grey, Black), so pick its colour from the background itself.
         contentColor = if (surface.luminance() < 0.5f) Color(0xFFE6E7EA) else Color(0xFF1B1C1F),
         topBar = {
-            TopAppBar(
+            if (sideControls == null) TopAppBar(
                 title = { Text(state.title, maxLines = 1) },
                 navigationIcon = { BackPill(onBack) },
                 actions = {
-                    IconButton(onClick = { currentBookmark?.let { onDeleteBookmark(it.id) } ?: onAddBookmark() }) {
+                    IconButton(onClick = toggleBookmark) {
                         Icon(
                             if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
                             contentDescription = if (currentBookmark != null) "Remove bookmark" else "Add bookmark",
@@ -206,6 +215,25 @@ private fun ReaderContent(
         Box(Modifier.fillMaxSize().padding(padding)) {
             readerContent()
         }
+    }
+    if (sideControls != null) {
+        SideColumnControls(sideControls) {
+            SideColumnButton("chevron.left", Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
+            SideColumnGap()
+            SideColumnButton(
+                symbol = if (currentBookmark != null) "bookmark.fill" else "bookmark",
+                fallback = if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                contentDescription = if (currentBookmark != null) "Remove bookmark" else "Add bookmark",
+                onClick = toggleBookmark,
+                active = currentBookmark != null,
+            )
+            SideColumnButton("bookmark.square", Icons.Filled.Bookmarks, "Bookmarks", { showBookmarks = true })
+            if (state.toc.isNotEmpty()) {
+                SideColumnButton("list.bullet", Icons.AutoMirrored.Filled.ListAlt, "Contents", { showToc = true })
+            }
+            SideColumnButton("slider.horizontal.3", Icons.Filled.Tune, "Display settings", { showSettings = true })
+        }
+    }
     }
 
     if (showBookmarks) {
