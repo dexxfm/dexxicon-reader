@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.designsystem.nav
 
+import androidx.compose.ui.graphics.painter.Painter
 import net.dexxicon.reader.core.designsystem.theme.LocalDarkTheme
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -146,6 +147,8 @@ fun <T> FloatingPillNavBar(
      * trailing edge). The caller places it in that column; this only stacks the items.
      */
     vertical: Boolean = false,
+    /** A platform icon to show instead of [icon] (issue #343: SF Symbols in the Duo's side column). */
+    iconPainter: (@Composable (destination: T, selected: Boolean) -> Painter?)? = null,
 ) {
     // fillMaxWidth() is what actually makes contentAlignment=Center center the pill — without
     // it this Box shrinks to wrap the pill's own width, and the pill ends up wherever its
@@ -224,13 +227,14 @@ fun <T> FloatingPillNavBar(
                             Modifier.size(if (vertical) 46.dp else 44.dp).clip(CircleShape).background(overlay),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(
-                                icon(destination),
-                                contentDescription = label(destination),
-                                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                // A touch smaller than the circle's default glyph, like Apple's side buttons.
-                                modifier = if (vertical) Modifier.size(24.dp) else Modifier,
-                            )
+                            val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            val iconModifier = if (vertical) Modifier.size(24.dp) else Modifier
+                            val painter = iconPainter?.invoke(destination, selected)
+                            if (painter != null) {
+                                Icon(painter, contentDescription = label(destination), tint = tint, modifier = iconModifier)
+                            } else {
+                                Icon(icon(destination), contentDescription = label(destination), tint = tint, modifier = iconModifier)
+                            }
                         }
                     }
                 }

@@ -186,19 +186,7 @@ private val RAIL_BREAKPOINT = 600.dp
  * floating pill stands there. Null everywhere else: other iPhones have no side inset in
  * portrait and one on both sides in landscape, and Android never uses this.
  */
-private class SideBarColumn(val alignment: Alignment, val width: Dp, val onRight: Boolean, val top: Dp)
-
-/** Space between the status bar and the controls under it in the side column. */
-private val SIDE_COLUMN_GAP = 8.dp
-
-/**
- * Where the side column's status bar ends when iOS doesn't report it (on the iPhone Duo it
- * reports a 2pt strip across the top). Measured on the simulator: the outer screen stacks the
- * camera and then the clock (ending near 150pt); the inner screen, whose camera hides, only
- * the clock and status icons (ending near 100pt).
- */
-private val OUTER_STATUS_BOTTOM = 150.dp
-private val INNER_STATUS_BOTTOM = 100.dp
+private class SideBarColumn(val alignment: Alignment, val width: Dp, val onRight: Boolean)
 
 /** A side inset below this counts as none (rounding, or a sliver of the display's corner). */
 private val NO_SIDE_INSET = 8.dp
@@ -214,12 +202,9 @@ private fun BoxWithConstraintsScope.sideBarColumn(): SideBarColumn? {
     val insets = WindowInsets.safeDrawing
     val left = with(density) { insets.getLeft(density, direction).toDp() }
     val right = with(density) { insets.getRight(density, direction).toDp() }
-    // Re-read when the screen changes size (folding or unfolding, rotating).
-    val statusBottom = remember(maxWidth, maxHeight) { sideStatusBarBottom() }
-    val top = statusBottom?.dp ?: if (maxHeight > maxWidth) OUTER_STATUS_BOTTOM else INNER_STATUS_BOTTOM
     return when {
-        right >= MIN_SIDE_COLUMN && left < NO_SIDE_INSET -> SideBarColumn(AbsoluteAlignment.TopRight, right, onRight = true, top = top)
-        left >= MIN_SIDE_COLUMN && right < NO_SIDE_INSET -> SideBarColumn(AbsoluteAlignment.TopLeft, left, onRight = false, top = top)
+        right >= MIN_SIDE_COLUMN && left < NO_SIDE_INSET -> SideBarColumn(AbsoluteAlignment.CenterRight, right, onRight = true)
+        left >= MIN_SIDE_COLUMN && right < NO_SIDE_INSET -> SideBarColumn(AbsoluteAlignment.CenterLeft, left, onRight = false)
         else -> null
     }
 }
@@ -561,7 +546,7 @@ fun App(
                         }
                     }
                     if (showBottomBar && sideColumn != null) {
-                        // Upright at the top of the column, right under the status bar.
+                        // Round buttons, centred down the column, with the system's own symbols.
                         FloatingPillNavBar(
                             destinations = TopLevelDestination.entries,
                             current = currentTopLevel,
@@ -571,9 +556,10 @@ fun App(
                             glassState = glassState,
                             glassIntensity = theme.glassIntensity,
                             vertical = true,
-                            modifier = Modifier.align(sideColumn.alignment)
-                                .padding(top = sideColumn.top + SIDE_COLUMN_GAP)
-                                .width(sideColumn.width),
+                            iconPainter = { destination, selected ->
+                                systemSymbol(if (selected) "${destination.symbol}.fill" else destination.symbol)
+                            },
+                            modifier = Modifier.align(sideColumn.alignment).width(sideColumn.width),
                         )
                     }
                 }

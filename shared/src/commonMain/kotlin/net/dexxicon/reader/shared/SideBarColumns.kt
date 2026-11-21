@@ -1,5 +1,8 @@
 package net.dexxicon.reader.shared
 
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.painter.Painter
+
 /**
  * Issue #343 — whether a side safe-area inset on one edge only can mean a column of system
  * bars (the iPhone Duo's outer screen, and its inner screen in landscape), where Apple's
@@ -9,9 +12,9 @@ package net.dexxicon.reader.shared
 internal expect val platformHasSideBarColumns: Boolean
 
 /**
- * Issue #343 — where the status bar runs down the side, its bottom edge in points from the top
- * of the screen, so the side column's controls can start right below it (Apple's order: the
- * Dynamic Island, the status bar, then toolbars and tab bars). Null when the status bar runs
- * across the top, or the platform has no such thing.
+ * Issue #343 — a system symbol (an SF Symbol on iOS) for controls that sit among the system's
+ * own, like the side-column nav beside the status icons. Null where there are none (Android),
+ * and the caller falls back to its Material icon.
  */
-internal expect fun sideStatusBarBottom(): Double?
+@Composable
+internal expect fun systemSymbol(name: String): Painter?
