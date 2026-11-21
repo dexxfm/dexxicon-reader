@@ -4,6 +4,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import platform.UIKit.UIApplication
 import platform.UIKit.UIWindowScene
+import platform.UIKit.statusBarManager
 
 internal actual val platformHasSideBarColumns: Boolean = true
 
