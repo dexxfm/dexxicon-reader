@@ -1,5 +1,7 @@
 package net.dexxicon.reader.shared
 
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.consumeWindowInsets
@@ -55,7 +57,20 @@ internal expect fun systemSymbol(name: String): Painter?
  * Apple's guidelines put tab bars and toolbars in that column as symbols, not text, so the app's
  * nav and each screen's toolbar stand there as round buttons. Content stays beside the column.
  */
-internal class SideBarColumn(val alignment: Alignment, val width: Dp, val onRight: Boolean)
+internal class SideBarColumn(val alignment: Alignment, val width: Dp, val onRight: Boolean) : SideControls
+
+/**
+ * Where a screen's own controls go on the iPhone Duo: the side column ([SideBarColumn]), or, with
+ * the inner screen held upright, the status band across the top ([StatusBand]).
+ */
+internal sealed interface SideControls
+
+/**
+ * Issue #355 — the iPhone Duo's inner screen held upright: the status area is a tall band across
+ * the top ([height]), Apple's status icons on its right, so a screen's controls stand in a row
+ * at its left, level with those icons, instead of in a toolbar below it.
+ */
+internal class StatusBand(val height: Dp) : SideControls
 
 /**
  * Issue #343 — the gap kept on the edge away from the side column, so a screen's text (the Home
@@ -68,6 +83,15 @@ private val NO_SIDE_INSET = 8.dp
 
 /** Narrowest side column a round button fits in with some room either side. */
 private val MIN_SIDE_COLUMN = 68.dp
+
+/**
+ * Issue #355 — a top inset at least this tall is the Duo's status band (about 82 pt). Other
+ * iPhones' top insets (the Dynamic Island's included) stay near 62 pt, so they never reach it.
+ */
+private val MIN_STATUS_BAND = 72.dp
+
+/** Where the status icons sit in the band: a little below its middle, so the row is too. */
+private val STATUS_BAND_ROW_OFFSET = 14.dp
 
 /**
  * The side column on this screen, or null: other iPhones have no side inset in portrait and one
@@ -88,6 +112,23 @@ internal fun sideBarColumn(): SideBarColumn? {
     }
 }
 
+/** Issue #355 — the Duo's status band across the top, or null (no band, or a side column). */
+@Composable
+internal fun statusBand(): StatusBand? {
+    if (!platformHasSideBarColumns) return null
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val insets = WindowInsets.safeDrawing
+    val top = with(density) { insets.getTop(density).toDp() }
+    val left = with(density) { insets.getLeft(density, direction).toDp() }
+    val right = with(density) { insets.getRight(density, direction).toDp() }
+    return if (top >= MIN_STATUS_BAND && left < NO_SIDE_INSET && right < NO_SIDE_INSET) StatusBand(top) else null
+}
+
+/** Where this screen's own controls go on the Duo: the side column, else the status band, else null. */
+@Composable
+internal fun sideControls(): SideControls? = sideBarColumn() ?: statusBand()
+
 /**
  * Issue #343 — on the iPhone Duo the status bar and the controls live in the side column, so the
  * safe area above and below the content isn't needed for anything: marks it used up, so every
@@ -100,22 +141,32 @@ internal fun Modifier.sideColumnFullHeight(): Modifier =
 
 /**
  * A screen's controls in the side column, centred down it like the nav: Apple's order puts
- * navigation (Back) first, then the actions, with a [SideColumnGap] between groups.
+ * navigation (Back) first, then the actions, with a [SideColumnGap] between groups. In the status
+ * band (issue #355) the same buttons run in a row from the left, level with the status icons.
  */
 @Composable
-internal fun BoxScope.SideColumnControls(column: SideBarColumn, content: @Composable ColumnScope.() -> Unit) {
-    Column(
-        Modifier.align(column.alignment).width(column.width),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-        content = content,
-    )
+internal fun BoxScope.SideColumnControls(placement: SideControls, content: @Composable () -> Unit) {
+    when (placement) {
+        is SideBarColumn -> Column(
+            Modifier.align(placement.alignment).width(placement.width),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) { content() }
+        is StatusBand -> Row(
+            Modifier
+                .align(AbsoluteAlignment.TopLeft)
+                .height(placement.height)
+                .padding(start = 16.dp, top = STATUS_BAND_ROW_OFFSET),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) { content() }
+    }
 }
 
-/** The space between two groups of side-column buttons. */
+/** The space between two groups of side-column buttons (across, in the status band's row). */
 @Composable
 internal fun SideColumnGap() {
-    Spacer(Modifier.height(10.dp))
+    Spacer(Modifier.size(10.dp))
 }
 
 /**

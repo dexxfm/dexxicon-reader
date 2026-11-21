@@ -3,7 +3,7 @@ package net.dexxicon.reader.shared.player
 import net.dexxicon.reader.shared.SideColumnGap
 import net.dexxicon.reader.shared.SideColumnControls
 import net.dexxicon.reader.shared.SideColumnButton
-import net.dexxicon.reader.shared.sideBarColumn
+import net.dexxicon.reader.shared.sideControls
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -112,7 +112,8 @@ fun PlayerScreen(
     var showSpeed by remember { mutableStateOf(false) }
     var showSleep by remember { mutableStateOf(false) }
     // Issue #343 — on the iPhone Duo, everything but the transport moves into the side column.
-    val sideColumn = sideBarColumn()
+    // Issue #355 — held upright, the Duo puts them in the status band across the top instead.
+    val sideColumn = sideControls()
 
     Box(Modifier.fillMaxSize()) {
     Scaffold(
