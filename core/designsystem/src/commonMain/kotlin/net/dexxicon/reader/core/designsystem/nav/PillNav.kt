@@ -169,9 +169,9 @@ fun <T> FloatingPillNavBar(
             val baseTint = LiquidGlassDefaults.tintFor(LocalDarkTheme.current)
             baseTint.copy(alpha = (baseTint.alpha * scale).coerceIn(0f, 1f))
         }
-        // Upright, the items stand in the column of system bars as bare icons, the same as the
-        // status icons above them: no capsule, no shadow (the owner's call on #343). There's
-        // nothing behind them to blur there anyway.
+        // Upright, each item is its own round button in the column of system bars, the way
+        // Apple's own apps lay out iPhone Duo's side controls: a soft fill, no capsule around
+        // the group and no shadow (the owner's call on #343). Nothing behind them to blur.
         val surface = if (vertical) {
             Modifier
         } else {
@@ -200,8 +200,13 @@ fun <T> FloatingPillNavBar(
                     // highlight (see this file's PR discussion, issue #115).
                     val interactionSource = remember { MutableInteractionSource() }
                     val pressed by interactionSource.collectIsPressedAsState()
+                    val idleFill = when {
+                        !vertical -> Color.Transparent
+                        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                    }
                     val overlay by animateColorAsState(
-                        if (pressed) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent,
+                        if (pressed) MaterialTheme.colorScheme.primary.copy(alpha = 0.24f) else idleFill,
                         label = "navItemPress",
                     )
                     Box(
@@ -216,15 +221,15 @@ fun <T> FloatingPillNavBar(
                         contentAlignment = Alignment.Center,
                     ) {
                         Box(
-                            Modifier.size(44.dp).clip(CircleShape).background(overlay),
+                            Modifier.size(if (vertical) 46.dp else 44.dp).clip(CircleShape).background(overlay),
                             contentAlignment = Alignment.Center,
                         ) {
                             Icon(
                                 icon(destination),
                                 contentDescription = label(destination),
                                 tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                // Matches the status icons' size beside them when upright.
-                                modifier = if (vertical) Modifier.size(28.dp) else Modifier,
+                                // A touch smaller than the circle's default glyph, like Apple's side buttons.
+                                modifier = if (vertical) Modifier.size(24.dp) else Modifier,
                             )
                         }
                     }
@@ -238,7 +243,7 @@ fun <T> FloatingPillNavBar(
 @Composable
 private fun PillItems(vertical: Boolean, content: @Composable () -> Unit) {
     if (vertical) {
-        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
     } else {
         Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { content() }
     }
