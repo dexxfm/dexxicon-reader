@@ -107,6 +107,20 @@ enum class ServerType {
      * used to treat any native server other than BookOrbit as Grimmory.
      */
     val syncsAnnotations: Boolean get() = this == BOOKORBIT || this == GRIMMORY
+
+    /** issue #327 — whether the server keeps a per-user rating (BookOrbit, Grimmory). */
+    val hasRatings: Boolean get() = this == BOOKORBIT || this == GRIMMORY
+
+    /**
+     * issue #327 — the reading statuses this server can store, in menu order. Komga only knows
+     * read and unread (part-way is just progress); a catalog keeps none.
+     */
+    val readingStatuses: List<ReadingStatus>
+        get() = when (this) {
+            GENERIC -> emptyList()
+            KOMGA -> listOf(ReadingStatus.UNREAD, ReadingStatus.READ)
+            BOOKORBIT, GRIMMORY -> ReadingStatus.entries
+        }
 }
 
 enum class SyncProviderKind { KO_SYNC, KOBO, NATIVE_ANNOTATIONS }

@@ -1,5 +1,8 @@
 package net.dexxicon.reader.core.serverapi.progress
 
+import io.ktor.http.HttpHeaders
+import io.ktor.client.request.header
+import kotlinx.serialization.json.Json
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
@@ -8,6 +11,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpMethod
 import io.ktor.http.contentType
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 import net.dexxicon.reader.core.serverapi.browse.KomgaBook
 import net.dexxicon.reader.core.network.ApiResponse
 import net.dexxicon.reader.core.network.apiResponse
@@ -110,6 +114,43 @@ class NativeProgressApi(private val client: HttpClient) {
 
     suspend fun komgaDeleteReadProgress(url: String): ApiResponse<Unit> =
         client.apiResponse(url) { method = HttpMethod.Delete }
+
+    //  EPUBs don't take a page: their position is a Readium locator.
+    //  GET /api/v1/books/{id}/positions     every position, each a ready locator with totalProgression
+    //  GET /api/v1/books/{id}/progression   the saved locator (204 when there's none)
+    //  PUT /api/v1/books/{id}/progression   {modified, device, locator}; Komga sets the page from it
+
+    /**
+     * Komga labels these `application/vnd.readium.position-list+json` / `…progression+json`,
+     * which the client's JSON negotiation doesn't claim, so they're read as text and decoded
+     * here. Null when there's none (a 204) or it can't be read.
+     */
+    suspend fun komgaPositions(url: String): KomgaPositions? = readiumJson(url)
+
+    suspend fun komgaProgression(url: String): KomgaProgression? = readiumJson(url)
+
+    /** Komga answers 406 unless the request accepts the Readium type it serves. */
+    private suspend inline fun <reified T> readiumJson(url: String): T? =
+        client.apiResponse<String>(url) {
+            method = HttpMethod.Get
+            header(HttpHeaders.Accept, READIUM_ACCEPT)
+        }.body()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { runCatching { readium.decodeFromString<T>(it) }.getOrNull() }
+
+    private val readium = Json { ignoreUnknownKeys = true; explicitNulls = false }
+
+    private companion object {
+        const val READIUM_ACCEPT =
+            "application/vnd.readium.position-list+json, application/vnd.readium.progression+json, application/json"
+    }
+
+    suspend fun komgaSaveProgression(url: String, body: KomgaProgression): ApiResponse<Unit> =
+        client.apiResponse(url) {
+            method = HttpMethod.Put
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }
 
     // ---- reading status ----
     //  BookOrbit  PATCH  /api/v1/books/{id}/status        {status:"reading"}  (lower_snake)
@@ -294,4 +335,26 @@ data class GrimmoryBookFileRef(
 data class KomgaReadProgressUpdate(
     val page: Int? = null,
     val completed: Boolean? = null,
+)
+
+/** issue #327 — an EPUB's Readium positions, as Komga lists them. */
+@Serializable
+data class KomgaPositions(
+    val total: Int = 0,
+    /** Each a complete locator (`href`, `type`, `locations.totalProgression`, …), sent back as-is. */
+    val positions: List<JsonObject> = emptyList(),
+)
+
+/** issue #327 — Komga's saved EPUB position (Readium's R2Progression). */
+@Serializable
+data class KomgaProgression(
+    val modified: String,
+    val device: KomgaDevice = KomgaDevice(),
+    val locator: JsonObject = JsonObject(emptyMap()),
+)
+
+@Serializable
+data class KomgaDevice(
+    val id: String = "",
+    val name: String = "",
 )

@@ -1,5 +1,7 @@
 package net.dexxicon.reader.feature.reader.pdf
 
+import net.dexxicon.reader.core.model.AcquisitionRelation
+import net.dexxicon.reader.core.reader.RemoteBookCache
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -50,6 +52,7 @@ class PdfReaderViewModel @Inject constructor(
     private val locatorStore: ReaderLocatorStore,
     private val downloadRepository: DownloadRepository,
     private val streamer: PublicationStreamer,
+    private val remoteBookCache: RemoteBookCache,
     private val progressRepository: ReadingProgressRepository,
     private val bookmarkRepository: BookmarkRepository,
     preferencesStore: ReaderPreferencesStore,
@@ -128,7 +131,18 @@ class PdfReaderViewModel @Inject constructor(
                 return
             }
             remoteHref = acquisition.href
-            streamer.open(acquisition.href, MediaType.PDF)
+            if (acquisition.relation == AcquisitionRelation.OPEN_ACCESS) {
+                // issue #327 — a whole-file source (Komga ignores range requests): fetch it in
+                // full, then open the copy.
+                val file = runCatching { remoteBookCache.fetch(acquisition.href, "pdf") }.getOrNull()
+                if (file == null) {
+                    _state.value = PdfReaderState.Error("Couldn't download this PDF from the server")
+                    return
+                }
+                streamer.open(file, MediaType.PDF)
+            } else {
+                streamer.open(acquisition.href, MediaType.PDF)
+            }
         }
 
         when (opened) {

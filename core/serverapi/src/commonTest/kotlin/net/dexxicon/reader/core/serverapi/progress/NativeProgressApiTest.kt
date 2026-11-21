@@ -135,4 +135,23 @@ class NativeProgressApiTest {
         assertEquals("/api/v1/books/status", status.second)
         assertEquals("""{"bookIds":[767],"status":"READ"}""", status.third)
     }
+
+    /** issue #327 — Komga serves positions as Readium JSON, which JSON negotiation doesn't claim. */
+    @Test
+    fun komgaPositionsAreReadWhateverTheirReadiumContentType() = runTest {
+        val payload = """{"total":2,"positions":[
+            {"href":"a.xhtml","type":"application/xhtml+xml","locations":{"progression":0.0,"position":1,"totalProgression":0.0},"koboSpan":"kobo.1.1"},
+            {"href":"b.xhtml","type":"application/xhtml+xml","locations":{"progression":0.5,"position":2,"totalProgression":0.5}}]}"""
+        val engine = MockEngine {
+            respond(payload, HttpStatusCode.OK, headersOf(HttpHeaders.ContentType, "application/vnd.readium.position-list+json"))
+        }
+        val api = NativeProgressApi(
+            HttpClient(engine) { install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; isLenient = true; explicitNulls = false }) } },
+        )
+
+        val positions = api.komgaPositions("https://k.test/api/v1/books/b1/positions")
+
+        assertEquals(2, positions?.positions?.size)
+        assertEquals("b.xhtml", positions?.positions?.get(1)?.get("href").toString().trim('"'))
+    }
 }
