@@ -1,5 +1,13 @@
 package net.dexxicon.reader.shared
 
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.AbsoluteAlignment
+import androidx.compose.foundation.layout.absolutePadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -170,6 +178,33 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 /** Same breakpoint as native's `DexxiconApp.kt` — Material's "medium" window-width class. */
 private val RAIL_BREAKPOINT = 600.dp
 
+/**
+ * Issue #343 — a column of system bars down one side of a portrait screen: the iPhone Duo's
+ * cover screen, where the camera and the status bar sit at the top of the trailing edge and
+ * iOS reports the column as a side safe-area inset. Apple's own apps stand their tab bar in
+ * that column, so the floating pill does too. Null on every other screen: a phone has no side
+ * inset in portrait, and landscape's side insets are the camera housing.
+ */
+private class SideBarColumn(val alignment: Alignment, val width: Dp, val onRight: Boolean)
+
+/** Narrowest side column the upright pill fits in (52dp items plus 8dp on each side). */
+private val MIN_SIDE_COLUMN = 68.dp
+
+@Composable
+private fun BoxWithConstraintsScope.sideBarColumn(): SideBarColumn? {
+    if (maxHeight <= maxWidth) return null
+    val density = LocalDensity.current
+    val direction = LocalLayoutDirection.current
+    val insets = WindowInsets.safeDrawing
+    val left = with(density) { insets.getLeft(density, direction).toDp() }
+    val right = with(density) { insets.getRight(density, direction).toDp() }
+    return when {
+        right >= MIN_SIDE_COLUMN && left == 0.dp -> SideBarColumn(AbsoluteAlignment.BottomRight, right, onRight = true)
+        left >= MIN_SIDE_COLUMN && right == 0.dp -> SideBarColumn(AbsoluteAlignment.BottomLeft, left, onRight = false)
+        else -> null
+    }
+}
+
 /** Phase 5 (issue #115) — same breakpoint [BookDetailContent][net.dexxicon.reader.shared.catalog.BookDetailContent]
  * already uses for its own cover/text split, reused here so Library's two-pane switch lines
  * up with Book Detail's. */
@@ -269,6 +304,8 @@ fun App(
             val wide = maxWidth >= RAIL_BREAKPOINT
             val showRail = wide && currentTopLevel != null
             val showBottomBar = !wide && currentTopLevel != null
+            // issue #343 — on the iPhone Duo's cover screen the pill stands in the side column.
+            val sideColumn = sideBarColumn()
 
             // Phase 5 (issue #115) — Library + Book Detail side by side once the screen is
             // wide enough: only when Detail is what's actually on top of the back stack *and*
@@ -473,7 +510,15 @@ fun App(
                     // clearance so the floating group never permanently covers it — see
                     // FloatingNavClearance's own doc comment.
                     Column(
-                        Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+                        Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                            // Beside the side column, not under it (issue #343).
+                            .then(
+                                when {
+                                    sideColumn == null -> Modifier
+                                    sideColumn.onRight -> Modifier.absolutePadding(right = sideColumn.width)
+                                    else -> Modifier.absolutePadding(left = sideColumn.width)
+                                },
+                            ),
                     ) {
                         nowPlaying?.let { playback ->
                             MiniPlayer(
@@ -483,7 +528,7 @@ fun App(
                                 onDismiss = container.onMiniPlayerDismiss,
                             )
                         }
-                        if (showBottomBar) {
+                        if (showBottomBar && sideColumn == null) {
                             FloatingPillNavBar(
                                 destinations = TopLevelDestination.entries,
                                 current = currentTopLevel,
@@ -494,6 +539,20 @@ fun App(
                                 glassIntensity = theme.glassIntensity,
                             )
                         }
+                    }
+                    if (showBottomBar && sideColumn != null) {
+                        // Upright at the bottom of the column, under the clock and in thumb reach.
+                        FloatingPillNavBar(
+                            destinations = TopLevelDestination.entries,
+                            current = currentTopLevel,
+                            icon = { it.icon },
+                            label = { it.label },
+                            onSelect = { nav.switchTopLevel(it) },
+                            glassState = glassState,
+                            glassIntensity = theme.glassIntensity,
+                            vertical = true,
+                            modifier = Modifier.align(sideColumn.alignment).navigationBarsPadding().width(sideColumn.width),
+                        )
                     }
                 }
             }

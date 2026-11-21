@@ -140,11 +140,18 @@ fun <T> FloatingPillNavBar(
     glassState: LiquidGlassState,
     glassIntensity: GlassIntensity,
     modifier: Modifier = Modifier,
+    /**
+     * Issue #343 — upright, for a screen whose system bars run down one side (the iPhone
+     * Duo's cover screen, where Apple stacks the status bar and tab bars in a column on the
+     * trailing edge). The caller places it in that column; this only stacks the items.
+     */
+    vertical: Boolean = false,
 ) {
     // fillMaxWidth() is what actually makes contentAlignment=Center center the pill — without
     // it this Box shrinks to wrap the pill's own width, and the pill ends up wherever its
     // parent Column (the host Scaffold's bottomBar slot) puts a Start-aligned child: flush
     // left, not centered (issue #115 PR feedback).
+    // Upright, the caller's width is the side column's, so this centres the pill in it.
     Box(modifier.fillMaxWidth().padding(bottom = PillExtraBottomMargin), contentAlignment = Alignment.Center) {
         val tier = LiquidGlassDefaults.forQuality(glassState.quality)
         val scale = glassIntensity.blurScale
@@ -177,7 +184,7 @@ fun <T> FloatingPillNavBar(
                     ),
                 ),
         ) {
-            Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            PillItems(vertical) {
                 destinations.forEach { destination ->
                     val selected = destination == current
                     // The full 74x52dp box is the tap target (accessibility/touch-size), but
@@ -193,7 +200,7 @@ fun <T> FloatingPillNavBar(
                     )
                     Box(
                         Modifier
-                            .size(width = 74.dp, height = 52.dp)
+                            .size(width = if (vertical) 52.dp else 74.dp, height = if (vertical) 64.dp else 52.dp)
                             .selectable(
                                 selected = selected,
                                 interactionSource = interactionSource,
@@ -216,6 +223,16 @@ fun <T> FloatingPillNavBar(
                 }
             }
         }
+    }
+}
+
+/** The pill's items side by side, or stacked when [vertical]. */
+@Composable
+private fun PillItems(vertical: Boolean, content: @Composable () -> Unit) {
+    if (vertical) {
+        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
+    } else {
+        Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { content() }
     }
 }
 
