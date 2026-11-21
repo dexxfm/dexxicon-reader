@@ -99,7 +99,7 @@ class AddServerState(
             scope.launch {
                 serverRepository.get(editingId)?.let { server ->
                     loadedServer = server
-                    if (server.type == ServerType.GENERIC) kind = ServerKind.forCatalogUrl(server.baseUrl)
+                    kind = ServerKind.forServer(server)
                     displayName = server.displayName
                     baseUrl = server.baseUrl
                     username = server.username
@@ -116,7 +116,8 @@ class AddServerState(
      * Editing doesn't — the user may not be touching the URL/credentials at all. */
     val canTest: Boolean
         get() = testState != TestState.Testing && when (kind) {
-            ServerKind.NATIVE -> baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+            ServerKind.NATIVE, ServerKind.KAVITA, ServerKind.KOMGA ->
+                baseUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
             // Credentials are optional for a catalog; a username without a password isn't.
             ServerKind.OPDS -> baseUrl.isNotBlank() && (username.isBlank() || password.isNotBlank() || isEditing)
             else -> true
@@ -176,6 +177,9 @@ class AddServerState(
             testState = when (val result = serverProber.probe(baseUrl, username.trim(), password)) {
                 is ServerProbeResult.Success -> {
                     if (displayName.isBlank()) displayName = prettyHost(result.baseUrl)
+                    // issue #347 — the address is what it is: if it turned out to be another
+                    // family than the one picked (a Kavita under "Komga"), the menu follows it.
+                    ServerKind.forType(result.detectedType)?.let { detected -> if (detected != kind) kind = detected }
                     // issue #267 — show the address that actually worked (the scheme may have
                     // been filled in), so what's saved is what the user sees. Set directly
                     // rather than via onBaseUrlChange, which would reset this very result.
@@ -393,7 +397,11 @@ enum class ServerKind(
     val presetName: String? = null,
     val blurb: String? = null,
 ) {
-    NATIVE("BookOrbit, Grimmory, Komga or Kavita"),
+    // issue #347 — one entry per family whose features differ: BookOrbit and Grimmory share
+    // theirs (statuses, ratings, synced highlights); Kavita and Komga each have their own.
+    NATIVE("BookOrbit or Grimmory"),
+    KAVITA("Kavita"),
+    KOMGA("Komga"),
     OPDS(
         "OPDS catalog",
         blurb = "Any OPDS 2.0 or 1.2 catalog: its feed URL, plus a username and password if it needs one.",
@@ -413,12 +421,24 @@ enum class ServerKind(
     ),
     ;
 
-    val isOpds: Boolean get() = this != NATIVE
+    val isOpds: Boolean get() = this == OPDS || this == GUTENBERG || this == OPEN_LIBRARY
 
     /** issue #318 — KOReader sync is offered for a custom OPDS catalog only (see save()). */
     val offersKoSync: Boolean get() = this == OPDS
 
     companion object {
+        /** The entry a saved server belongs under. */
+        fun forServer(server: Server): ServerKind =
+            forType(server.type) ?: forCatalogUrl(server.baseUrl)
+
+        /** The entry for a native family; null for a catalog (see [forCatalogUrl]). */
+        fun forType(type: ServerType): ServerKind? = when (type) {
+            ServerType.BOOKORBIT, ServerType.GRIMMORY -> NATIVE
+            ServerType.KAVITA -> KAVITA
+            ServerType.KOMGA -> KOMGA
+            ServerType.GENERIC -> null
+        }
+
         /** A saved generic server: a built-in catalog if its address is one, else custom OPDS. */
         fun forCatalogUrl(url: String): ServerKind {
             val host = url.substringAfter("://").substringBefore('/').removePrefix("www.").removePrefix("m.")
