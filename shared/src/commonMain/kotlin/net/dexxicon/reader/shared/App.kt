@@ -179,36 +179,6 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 /** Same breakpoint as native's `DexxiconApp.kt` — Material's "medium" window-width class. */
 private val RAIL_BREAKPOINT = 600.dp
 
-/**
- * Issue #343 — a column of system bars down one side of the screen: the iPhone Duo's outer
- * screen, and its inner screen in landscape, where the camera and status bar sit at the top of
- * the trailing edge and iOS reports the column as a side safe-area inset on that edge only.
- * Apple's guidelines put tab bars and toolbars in that column, icons rather than text, so the
- * floating pill stands there. Null everywhere else: other iPhones have no side inset in
- * portrait and one on both sides in landscape, and Android never uses this.
- */
-private class SideBarColumn(val alignment: Alignment, val width: Dp, val onRight: Boolean)
-
-/** A side inset below this counts as none (rounding, or a sliver of the display's corner). */
-private val NO_SIDE_INSET = 8.dp
-
-/** Narrowest side column the upright pill fits in (52dp items plus 8dp on each side). */
-private val MIN_SIDE_COLUMN = 68.dp
-
-@Composable
-private fun BoxWithConstraintsScope.sideBarColumn(): SideBarColumn? {
-    if (!platformHasSideBarColumns) return null
-    val density = LocalDensity.current
-    val direction = LocalLayoutDirection.current
-    val insets = WindowInsets.safeDrawing
-    val left = with(density) { insets.getLeft(density, direction).toDp() }
-    val right = with(density) { insets.getRight(density, direction).toDp() }
-    return when {
-        right >= MIN_SIDE_COLUMN && left < NO_SIDE_INSET -> SideBarColumn(AbsoluteAlignment.CenterRight, right, onRight = true)
-        left >= MIN_SIDE_COLUMN && right < NO_SIDE_INSET -> SideBarColumn(AbsoluteAlignment.CenterLeft, left, onRight = false)
-        else -> null
-    }
-}
 
 /** Phase 5 (issue #115) — same breakpoint [BookDetailContent][net.dexxicon.reader.shared.catalog.BookDetailContent]
  * already uses for its own cover/text split, reused here so Library's two-pane switch lines
