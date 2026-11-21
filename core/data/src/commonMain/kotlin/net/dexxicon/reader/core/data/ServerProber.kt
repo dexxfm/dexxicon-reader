@@ -1,5 +1,8 @@
 package net.dexxicon.reader.core.data
 
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.io.encoding.Base64
+import net.dexxicon.reader.core.serverapi.browse.KomgaBrowseApi
 import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.model.AuthMode
@@ -22,6 +25,8 @@ import kotlinx.coroutines.withContext
 class ServerProber(
     private val authClient: NativeAuthClient,
     private val io: CoroutineDispatcher,
+    /** issue #327 — Komga signs in with HTTP Basic, checked before the token-login families. */
+    private val komga: KomgaBrowseApi? = null,
 ) {
     /**
      * issue #267 — a URL typed without a scheme used to become `https://` unconditionally, so a
@@ -50,6 +55,15 @@ class ServerProber(
     }
 
     private suspend fun attempt(url: String, username: String, password: String): ServerProbeResult {
+        if (isKomga(url, username, password)) {
+            return ServerProbeResult.Success(
+                detectedType = ServerType.KOMGA,
+                detectedAuthMode = AuthMode.BASIC,
+                serverName = null,
+                serverVersion = null,
+                baseUrl = url,
+            )
+        }
         val candidate = Server(
             id = "",
             displayName = url,
@@ -78,11 +92,26 @@ class ServerProber(
                     )
                 is DexxiconError.Parse ->
                     ServerProbeResult.NotAServer(
-                        "That URL responded, but not like BookOrbit or Grimmory",
+                        "That URL responded, but not like BookOrbit, Grimmory or Komga",
                     )
                 else -> ServerProbeResult.Unreachable(unreachableMessage(url, result.error.message))
             }
         }
+    }
+
+    /**
+     * issue #327 — Komga answers `/api/v2/users/me` for HTTP Basic credentials with the account
+     * and its roles. Anything else (a 401, another server's 404, Grimmory's catch-all HTML page)
+     * isn't a signed-in Komga, and the token-login check that follows reports it properly: a
+     * Komga with a wrong password answers that login with 401, "invalid username or password".
+     */
+    @OptIn(ExperimentalEncodingApi::class)
+    private suspend fun isKomga(url: String, username: String, password: String): Boolean {
+        val api = komga ?: return false
+        if (username.isBlank() || password.isBlank()) return false
+        val authorization = "Basic " + Base64.Default.encode("$username:$password".encodeToByteArray())
+        return runCatching { api.me(url.trimEnd('/') + "/api/v2/users/me", authorization) }
+            .getOrNull()?.let { it.email != null || it.roles.isNotEmpty() } == true
     }
 
     /** issue #267 — the raw TLS failure ("Unable to parse TLS packet header") says nothing

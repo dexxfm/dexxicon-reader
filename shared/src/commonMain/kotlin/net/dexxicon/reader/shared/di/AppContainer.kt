@@ -1,5 +1,7 @@
 package net.dexxicon.reader.shared.di
 
+import net.dexxicon.reader.core.data.catalog.KomgaCatalogSource
+import net.dexxicon.reader.core.serverapi.browse.KomgaBrowseApi
 import coil3.ImageLoader
 import coil3.PlatformContext as CoilPlatformContext
 import coil3.annotation.ExperimentalCoilApi
@@ -214,6 +216,7 @@ class AppContainer(
     private val oidcClient = OidcClient(oidcApi)
     private val bookOrbitBrowseApi = BookOrbitBrowseApi(httpClient)
     private val grimmoryBrowseApi = GrimmoryBrowseApi(httpClient)
+    private val komgaBrowseApi = KomgaBrowseApi(httpClient)
     private val nativeProgressApi = NativeProgressApi(httpClient)
     private val koSyncApi = KoSyncApi(httpClient)
 
@@ -223,7 +226,7 @@ class AppContainer(
         .build()
 
     val tokenManager: TokenManager = TokenManager(nativeAuthClient, credentialStore)
-    val serverProber: ServerProber = ServerProber(nativeAuthClient, io)
+    val serverProber: ServerProber = ServerProber(nativeAuthClient, io, komgaBrowseApi)
     val serverRepository: ServerRepository = ServerRepository(
         serverDao = database.serverDao(),
         credentialStore = credentialStore,
@@ -237,7 +240,7 @@ class AppContainer(
     )
 
     private val nativeProgressSync = NativeProgressSync(nativeProgressApi, bookOrbitBrowseApi, syncStateStore, io)
-    private val librarySeeder = LibrarySeeder(grimmoryBrowseApi, bookOrbitBrowseApi, io)
+    private val librarySeeder = LibrarySeeder(grimmoryBrowseApi, bookOrbitBrowseApi, komgaBrowseApi, io)
     /** Phase 4 Stage H (issue #145) — public so Settings' Reading sync section can call
      * [KoSyncRepository.verify] directly, the same shape [progressRepository] already has. */
     val koSyncRepository = KoSyncRepository(
@@ -288,6 +291,7 @@ class AppContainer(
         serverRepository = serverRepository,
         grimmorySource = GrimmoryCatalogSource(grimmoryBrowseApi),
         bookOrbitSource = BookOrbitCatalogSource(bookOrbitBrowseApi),
+        komgaSource = KomgaCatalogSource(komgaBrowseApi),
         opdsSource = OpdsCatalogSource(opdsClient),
         io = io,
     )

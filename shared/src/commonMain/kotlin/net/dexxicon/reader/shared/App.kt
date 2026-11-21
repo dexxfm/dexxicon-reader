@@ -616,7 +616,7 @@ private fun EmptyServersState(modifier: Modifier, onAddServer: () -> Unit) {
     ) {
         Text("No servers yet", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Add your BookOrbit or Grimmory library to start browsing and reading.",
+            "Add your BookOrbit, Grimmory or Komga library to start browsing and reading.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

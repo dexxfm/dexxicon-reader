@@ -74,9 +74,10 @@ class ServerTest {
     }
 
     @Test
-    fun `supportsNativeApi only for BookOrbit and Grimmory`() {
+    fun `supportsNativeApi for BookOrbit, Grimmory and Komga`() {
         assertThat(ServerType.BOOKORBIT.supportsNativeApi).isTrue()
         assertThat(ServerType.GRIMMORY.supportsNativeApi).isTrue()
+        assertThat(ServerType.KOMGA.supportsNativeApi).isTrue()
         assertThat(ServerType.GENERIC.supportsNativeApi).isFalse()
     }
 }

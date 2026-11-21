@@ -1,5 +1,7 @@
 package net.dexxicon.reader.di
 
+import net.dexxicon.reader.core.data.catalog.KomgaCatalogSource
+import net.dexxicon.reader.core.serverapi.browse.KomgaBrowseApi
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -38,6 +40,11 @@ object CatalogModule {
     fun provideGrimmoryCatalogSource(api: GrimmoryBrowseApi): GrimmoryCatalogSource =
         GrimmoryCatalogSource(api)
 
+    /** issue #327 */
+    @Provides
+    @Singleton
+    fun provideKomgaCatalogSource(api: KomgaBrowseApi): KomgaCatalogSource = KomgaCatalogSource(api)
+
     @Provides
     @Singleton
     fun provideOpdsCatalogSource(client: OpdsClient): OpdsCatalogSource = OpdsCatalogSource(client)
@@ -48,8 +55,9 @@ object CatalogModule {
         serverRepository: ServerRepository,
         grimmorySource: GrimmoryCatalogSource,
         bookOrbitSource: BookOrbitCatalogSource,
+        komgaSource: KomgaCatalogSource,
         opdsSource: OpdsCatalogSource,
         @Dispatcher(DexxiconDispatcher.IO) io: CoroutineDispatcher,
     ): CatalogRepository =
-        CatalogRepository(serverRepository, grimmorySource, bookOrbitSource, opdsSource, io)
+        CatalogRepository(serverRepository, grimmorySource, bookOrbitSource, komgaSource, opdsSource, io)
 }

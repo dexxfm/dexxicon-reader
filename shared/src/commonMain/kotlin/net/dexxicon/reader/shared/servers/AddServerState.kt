@@ -210,7 +210,12 @@ class AddServerState(
                     // action (discoverSso/completeSso) matching native's form exactly.
                     // issue #291 — an OPDS catalog is always HTTP Basic (with no password
                     // saved, nothing is sent).
-                    authMode = if (kind.isOpds) AuthMode.BASIC else base?.authMode ?: AuthMode.NATIVE,
+                    // issue #327 — Komga signs every request with HTTP Basic, like a catalog.
+                    authMode = if (kind.isOpds || (success?.type ?: base?.type) == ServerType.KOMGA) {
+                        AuthMode.BASIC
+                    } else {
+                        base?.authMode ?: AuthMode.NATIVE
+                    },
                     username = username.trim(),
                     // issue #318 — only a custom OPDS catalog offers KOReader sync: BookOrbit and
                     // Grimmory sync through their own API, and the built-in catalogs have no
@@ -388,7 +393,7 @@ enum class ServerKind(
     val presetName: String? = null,
     val blurb: String? = null,
 ) {
-    NATIVE("BookOrbit or Grimmory"),
+    NATIVE("BookOrbit, Grimmory or Komga"),
     OPDS(
         "OPDS catalog",
         blurb = "Any OPDS 2.0 or 1.2 catalog: its feed URL, plus a username and password if it needs one.",

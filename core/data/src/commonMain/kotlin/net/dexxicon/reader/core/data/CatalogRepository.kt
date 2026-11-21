@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.data
 
+import net.dexxicon.reader.core.data.catalog.KomgaCatalogSource
 import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Outcome
 import net.dexxicon.reader.core.data.catalog.BookOrbitCatalogSource
@@ -40,6 +41,7 @@ class CatalogRepository(
     private val serverRepository: ServerRepository,
     private val grimmorySource: GrimmoryCatalogSource,
     private val bookOrbitSource: BookOrbitCatalogSource,
+    private val komgaSource: KomgaCatalogSource,
     private val opdsSource: OpdsCatalogSource,
     private val io: CoroutineDispatcher,
 ) {
@@ -50,6 +52,7 @@ class CatalogRepository(
     private fun sourceFor(server: Server): CatalogSource = when (server.type) {
         ServerType.GRIMMORY -> grimmorySource
         ServerType.BOOKORBIT -> bookOrbitSource
+        ServerType.KOMGA -> komgaSource
         else -> opdsSource
     }
 

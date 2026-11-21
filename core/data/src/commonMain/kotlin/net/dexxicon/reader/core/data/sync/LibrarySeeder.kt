@@ -1,5 +1,8 @@
 package net.dexxicon.reader.core.data.sync
 
+import kotlinx.serialization.json.buildJsonObject
+import net.dexxicon.reader.core.data.catalog.KomgaCatalogSource
+import net.dexxicon.reader.core.serverapi.browse.KomgaBrowseApi
 import io.ktor.client.plugins.ResponseException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
@@ -30,6 +33,7 @@ import net.dexxicon.reader.core.serverapi.browse.GrimmoryBrowseApi
 class LibrarySeeder(
     private val grimmory: GrimmoryBrowseApi,
     private val bookOrbit: BookOrbitBrowseApi,
+    private val komga: KomgaBrowseApi,
     private val io: CoroutineDispatcher,
 ) {
     /** Every in-progress book the server knows about, as progress rows ready to persist. */
@@ -49,6 +53,7 @@ class LibrarySeeder(
                 when (server.type) {
                     ServerType.GRIMMORY -> grimmoryRows(server)
                     ServerType.BOOKORBIT -> bookOrbitRows(server)
+                    ServerType.KOMGA -> komgaRows(server)
                     else -> emptyList()
                 },
             )
@@ -76,6 +81,32 @@ class LibrarySeeder(
      * supported `/books/page` API: books in progress, most recently read first. Audiobooks
      * included, so one list covers Continue reading and Continue listening.
      */
+    /** issue #327 — Komga's in-progress books, most recently read first. */
+    private suspend fun komgaRows(server: Server): List<ReadingProgress> {
+        val url = server.resolve("/api/v1/books/list?page=0&size=100&sort=readProgress.readDate,desc")
+        val body = buildJsonObject { put("condition", KomgaCatalogSource.condition("readStatus", "IN_PROGRESS")) }
+        return komga.bookList(url, body).content.map { book ->
+            val pages = book.media.pagesCount
+            ReadingProgress(
+                serverId = server.id,
+                bookId = book.id,
+                percent = book.readProgress?.let { p ->
+                    if (p.completed) 1.0 else if (pages > 0) (p.page.toDouble() / pages).coerceIn(0.0, 1.0) else null
+                },
+                title = book.title,
+                author = book.metadata.authors.let { a ->
+                    (a.filter { it.role.equals("writer", true) || it.role.equals("author", true) }.ifEmpty { a })
+                        .map { it.name }.distinct().joinToString(", ").takeIf { it.isNotBlank() }
+                },
+                coverUrl = server.resolve("/api/v1/books/${book.id}/thumbnail"),
+                format = KomgaCatalogSource.formatOf(book),
+                digestUrl = server.resolve("/api/v1/books/${book.id}/file"),
+                series = book.seriesTitle?.takeIf { it.isNotBlank() },
+                seriesIndex = book.metadata.numberSort,
+            )
+        }
+    }
+
     private suspend fun grimmoryRows(server: Server): List<ReadingProgress> {
         val url = URLBuilder(server.resolve("/api/v1/books/page")).apply {
             parameters.append("page", "0")

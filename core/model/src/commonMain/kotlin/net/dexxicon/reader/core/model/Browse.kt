@@ -62,6 +62,10 @@ data class BookCopy(
      * highlights or offline copy for it.
      */
     val isCatalog: Boolean = false,
+    /** issue #327 — whether this copy's server keeps a rating (Komga doesn't). */
+    val hasRating: Boolean = !isCatalog,
+    /** issue #327 — the reading statuses this copy's server can store. */
+    val statuses: List<ReadingStatus> = if (isCatalog) emptyList() else ReadingStatus.entries,
 )
 
 /**

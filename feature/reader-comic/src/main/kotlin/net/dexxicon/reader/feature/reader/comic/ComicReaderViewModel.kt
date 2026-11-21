@@ -1,5 +1,7 @@
 package net.dexxicon.reader.feature.reader.comic
 
+import net.dexxicon.reader.core.model.AcquisitionRelation
+import net.dexxicon.reader.core.reader.RemoteBookCache
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -58,6 +60,7 @@ class ComicReaderViewModel @Inject constructor(
     private val downloadRepository: DownloadRepository,
     private val streamer: PublicationStreamer,
     private val archiveNormalizer: ComicArchiveNormalizer,
+    private val remoteBookCache: RemoteBookCache,
     private val preferencesStore: ReaderPreferencesStore,
     private val progressRepository: ReadingProgressRepository,
     savedStateHandle: SavedStateHandle,
@@ -166,7 +169,17 @@ class ComicReaderViewModel @Inject constructor(
             remoteHref = acquisition.href
             val isRar = detail.fileExtension?.lowercase() in setOf("cbr", "rar") ||
                 archiveNormalizer.looksLikeRar(acquisition.href, acquisition.mediaType)
-            if (isRar) {
+            if (acquisition.relation == AcquisitionRelation.OPEN_ACCESS) {
+                // issue #327 — a whole-file source (Komga, which ignores range requests; an OPDS
+                // catalog's file): fetch it in full, then open the copy (repacked if it's a CBR).
+                val file = runCatching { remoteBookCache.fetch(acquisition.href, if (isRar) "cbr" else "cbz") }.getOrNull()
+                    ?.let { runCatching { archiveNormalizer.fromFile(it) }.getOrDefault(it) }
+                if (file == null) {
+                    _state.value = ComicReaderState.Error("Couldn't download this comic from the server")
+                    return
+                }
+                streamer.open(file, MediaType.CBZ)
+            } else if (isRar) {
                 // RAR can't be range-streamed — fetch in full, then repack to CBZ.
                 val cbz = runCatching { archiveNormalizer.fromUrl(acquisition.href) }.getOrNull()
                 if (cbz == null) {
