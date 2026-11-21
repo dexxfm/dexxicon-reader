@@ -57,6 +57,12 @@ internal expect fun systemSymbol(name: String): Painter?
  */
 internal class SideBarColumn(val alignment: Alignment, val width: Dp, val onRight: Boolean)
 
+/**
+ * Issue #343 — the gap kept on the edge away from the side column, so a screen's text (the Home
+ * title, a card's percentage) clears the display's rounded corners now that it runs full height.
+ */
+internal val SIDE_COLUMN_EDGE_GAP = 5.dp
+
 /** A side inset below this counts as none (rounding, or a sliver of the display's corner). */
 private val NO_SIDE_INSET = 8.dp
 

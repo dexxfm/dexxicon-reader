@@ -314,6 +314,15 @@ fun App(
                     // "behind the glass" too, not just the current screen's own content.
                     Row(
                         Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)
+                            // Issue #343 — on the iPhone Duo content now reaches the display's
+                            // rounded corners; a few points on the far side keep text off them.
+                            .then(
+                                when {
+                                    sideColumn == null -> Modifier
+                                    sideColumn.onRight -> Modifier.absolutePadding(left = SIDE_COLUMN_EDGE_GAP)
+                                    else -> Modifier.absolutePadding(right = SIDE_COLUMN_EDGE_GAP)
+                                },
+                            )
                             .liquidGlassSource(glassState),
                     ) {
                         if (showRail) {
