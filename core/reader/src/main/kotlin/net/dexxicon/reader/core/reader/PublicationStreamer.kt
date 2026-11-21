@@ -1,5 +1,11 @@
 package net.dexxicon.reader.core.reader
 
+import org.readium.r2.shared.util.http.HttpContainer
+import org.readium.r2.shared.publication.Metadata
+import org.readium.r2.shared.publication.Manifest
+import org.readium.r2.shared.publication.LocalizedString
+import org.readium.r2.shared.publication.Link
+import net.dexxicon.reader.core.model.PageStreamInfo
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineDispatcher
@@ -9,6 +15,7 @@ import net.dexxicon.reader.core.common.DexxiconError
 import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.common.Outcome
 import org.readium.r2.shared.publication.Publication
+import org.readium.r2.shared.publication.services.PerResourcePositionsService
 import org.readium.r2.shared.util.AbsoluteUrl
 import org.readium.r2.shared.util.asset.Asset
 import org.readium.r2.shared.util.asset.AssetRetriever
@@ -59,6 +66,28 @@ class PublicationStreamer @Inject constructor(
                 DexxiconError.Parse("Couldn't read the downloaded file"),
             )
         openAsset(asset)
+    }
+
+    /**
+     * issue #349 — a comic served page by page (a Kavita chapter made of several files): a
+     * publication whose reading order is the page images themselves, each fetched over HTTP as
+     * the reader reaches it.
+     */
+    fun openPages(stream: PageStreamInfo, title: String): Outcome<Publication> {
+        val urls = (0 until stream.count).map { index ->
+            AbsoluteUrl(stream.pageUrl(index))
+                ?: return Outcome.Failure(DexxiconError.Parse("This comic has an invalid page address"))
+        }
+        val imageType = MediaType(stream.mediaType) ?: MediaType.JPEG
+        val manifest = Manifest(
+            metadata = Metadata(localizedTitle = LocalizedString(title)),
+            readingOrder = urls.map { Link(href = it, mediaType = imageType) },
+        )
+        val container = HttpContainer(baseUrl = null, entries = urls.toSet(), client = httpClient)
+        // One position per page, as the CBZ parser gives an archive: the reader's locators then
+        // carry the page and the share read, which is what progress sync goes by.
+        val services = Publication.ServicesBuilder(positions = PerResourcePositionsService.createFactory(imageType))
+        return Outcome.Success(Publication(manifest, container, services))
     }
 
     private suspend fun openAsset(asset: Asset): Outcome<Publication> =

@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared.di
 
+import net.dexxicon.reader.core.model.PageStreamInfo
 import net.dexxicon.reader.core.data.catalog.KavitaCatalogSource
 import net.dexxicon.reader.core.serverapi.browse.KavitaBrowseApi
 import net.dexxicon.reader.core.data.catalog.KomgaCatalogSource
@@ -460,6 +461,16 @@ class AppContainer(
     }
 
     var comicReaderActions: ComicReaderActions? = null
+
+    /** issue #349 — page streams of the comics opened, per "serverId::bookId" (see openReader). */
+    private val pageStreams = mutableMapOf<String, PageStreamInfo>()
+
+    fun rememberPageStream(serverId: String, bookId: String, stream: PageStreamInfo?) {
+        val key = "$serverId::$bookId"
+        if (stream == null) pageStreams.remove(key) else pageStreams[key] = stream
+    }
+
+    fun pageStream(serverId: String, bookId: String): PageStreamInfo? = pageStreams["$serverId::$bookId"]
 
     val comicProgressBridge: ComicProgressBridge = ComicProgressBridge(progressRepository, scope)
 

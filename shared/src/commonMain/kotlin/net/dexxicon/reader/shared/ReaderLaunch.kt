@@ -99,6 +99,8 @@ suspend fun AppContainer.openReader(
         ?: detail.primaryAcquisition
         ?: return
     bookActions.noteOpened(serverId, bookId, detail)
+    // issue #349 — iOS's comic pager asks for this by book (see comicPageStreamTemplate).
+    rememberPageStream(serverId, bookId, detail.pageStream)
     // issue #250: prefer a downloaded copy's local file over the remote acquisition URL —
     // unlike Android (whose native reader ViewModels ignore this [url] entirely and always
     // re-resolve their own local-vs-remote source independently — see PlayerViewModel's own

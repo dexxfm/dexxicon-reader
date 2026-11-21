@@ -155,7 +155,11 @@ class ComicReaderViewModel @Inject constructor(
 
         var remoteHref: String? = detail?.acquisitions?.firstOrNull { it.format == ContentFormat.COMIC }?.href
             ?: detail?.primaryAcquisition?.href
-        val opened = if (localFile != null) {
+        val pageStream = detail?.pageStream
+        val opened = if (localFile == null && pageStream != null) {
+            // issue #349 — read page by page from the server: there's no single file to open.
+            streamer.openPages(pageStream, detail.summary.title)
+        } else if (localFile != null) {
             // A downloaded .cbr is repacked to CBZ on first open (no-op for real ZIPs).
             val normalized = runCatching { archiveNormalizer.fromFile(localFile) }.getOrDefault(localFile)
             streamer.open(normalized, MediaType.CBZ)

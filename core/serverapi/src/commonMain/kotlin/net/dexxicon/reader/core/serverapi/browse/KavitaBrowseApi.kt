@@ -271,4 +271,11 @@ data class KavitaReadingListItem(
 data class KavitaUser(
     val username: String? = null,
     val email: String? = null,
+    /** The account's own key; page images (`/api/Reader/image`) need one in their URL. */
+    val apiKey: String? = null,
+    /** Named keys, e.g. "opds" and "image-only" (good for images and nothing else). */
+    val authKeys: List<KavitaAuthKey> = emptyList(),
 )
+
+@Serializable
+data class KavitaAuthKey(val name: String? = null, val key: String? = null)

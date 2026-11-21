@@ -59,10 +59,21 @@ data class Acquisition(
 
 enum class AcquisitionRelation { ACQUIRE, OPEN_ACCESS, BORROW, SAMPLE, SUBSCRIBE }
 
-/** OPDS Page Streaming Extension data attached to a comic entry. */
+/**
+ * A comic read page by page from the server rather than as one file: OPDS's Page Streaming
+ * Extension, or (issue #349) a Kavita chapter made of several files. [hrefTemplate] holds
+ * [PAGE_NUMBER], 0-based.
+ */
 data class PageStreamInfo(
     val hrefTemplate: String,
     val count: Int,
     val mediaType: String,
     val lastRead: Int? = null,
-)
+) {
+    /** Page [index]'s image (0-based). */
+    fun pageUrl(index: Int): String = hrefTemplate.replace(PAGE_NUMBER, index.toString())
+
+    companion object {
+        const val PAGE_NUMBER = "{pageNumber}"
+    }
+}

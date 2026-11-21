@@ -201,6 +201,44 @@ class KavitaCatalogSourceTest {
         assertThat(file.mediaType).isEqualTo("application/epub+zip")
     }
 
+    /** issue #349 — a chapter of several files is read page by page, with the image-only key. */
+    @Test
+    fun aChapterOfSeveralFilesIsReadPageByPage() = runTest {
+        val twoFiles = """{"id":752,"volumeId":440,"number":"-100000","range":"-100000","title":"-100000","titleName":"",
+            "minNumber":-100000,"sortOrder":0,"isSpecial":false,"pages":61,"pagesRead":0,"format":1,
+            "files":[{"id":1,"filePath":"/a/Issue 001.cbr","pages":28,"bytes":56502901,"format":1,"extension":".cbr"},
+                     {"id":2,"filePath":"/a/Issue 002.cbr","pages":33,"bytes":67850999,"format":1,"extension":".cbr"}]}"""
+        val source = source(
+            mapOf(
+                "/api/Library/libraries" to libraries,
+                "/api/Chapter?752" to twoFiles,
+                "/api/Search/series-for-chapter?752" to """{"id":309,"name":"Wedding Special","format":1,"libraryId":5}""",
+                "/api/Series/volumes?309" to "[" + volume(440, "1", 1.0, twoFiles) + "]",
+                "/api/Series/metadata?309" to "{}",
+                "/api/Account/refresh-account" to
+                    """{"username":"test","apiKey":"account-key","authKeys":[{"name":"opds","key":"o"},{"name":"image-only","key":"img-key"}]}""",
+            ),
+        )
+
+        val detail = (source.detail(server, "752") as Outcome.Success).value
+
+        val stream = detail.pageStream!!
+        assertThat(stream.count).isEqualTo(61)
+        assertThat(stream.pageUrl(32))
+            .isEqualTo("https://kavita.test/api/Reader/image?chapterId=752&apiKey=img-key&page=32")
+        // A one-file chapter keeps its plain download.
+        assertThat(
+            (source(
+                mapOf(
+                    "/api/Library/libraries" to libraries,
+                    "/api/Chapter?826" to chapter(826, 485, special = true, format = 3, ext = ".epub", pages = 18),
+                    "/api/Search/series-for-chapter?826" to murderbot,
+                    "/api/Series/volumes?351" to murderbotVolumes,
+                ),
+            ).detail(server, "826") as Outcome.Success).value.pageStream,
+        ).isNull()
+    }
+
     @Test
     fun aRefusedSignInIsReportedAsSuch() = runTest {
         val source = source(mapOf("/api/Library/libraries" to "\"\""), status = HttpStatusCode.Unauthorized)

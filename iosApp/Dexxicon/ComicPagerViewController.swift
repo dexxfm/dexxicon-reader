@@ -39,6 +39,15 @@ final class ComicPagerViewController: UIViewController {
     /// already do via their own `rightToLeft`/`forward` inversion.
     private var pageEntries: [ReadiumZIPFoundation.Entry] = []
 
+    /// issue #349 — a comic served page by page (a Kavita chapter made of several files): its
+    /// image URL with `{pageNumber}` (0-based) and its page count, from `:shared`. Nil for a
+    /// normal archive.
+    private var streamTemplate: String?
+    private var streamCount = 0
+
+    /// How many pages this comic has, whichever way it's read.
+    private var pageCount: Int { streamTemplate != nil ? streamCount : pageEntries.count }
+
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
     private var content: ComicPageContentViewController?
     private var saveTask: Task<Void, Never>?
@@ -90,6 +99,20 @@ final class ComicPagerViewController: UIViewController {
 
     @MainActor
     private func loadPages() async {
+        // issue #349 — no single file to open: every page comes from the server as it's shown.
+        if let template = MainViewControllerKt.comicPageStreamTemplate(serverId: serverId, bookId: bookId) {
+            let count = Int(MainViewControllerKt.comicPageStreamCount(serverId: serverId, bookId: bookId))
+            guard count > 0 else {
+                showError("This comic has no readable pages.")
+                return
+            }
+            streamTemplate = template
+            streamCount = count
+            let initialPage = await initialPageFromBridge()
+            embedChrome(initialIndex: ((initialPage ?? 1) - 1).clamped(to: 0...(count - 1)))
+            return
+        }
+
         guard let cbzURL = try? await ComicArchiveNormalizer.normalize(url: url, authHeader: authHeader) else {
             NSLog("[ComicPager] normalize failed for \(url)")
             showError("Couldn't open this comic.")
@@ -118,19 +141,23 @@ final class ComicPagerViewController: UIViewController {
         self.archive = archive
         pageEntries = sorted
 
-        // issue #183: ComicProgressBridge already resolved the local-vs-server position — see
-        // PdfProgressBridge's own reasoning, the same shape one level simpler (a plain page,
-        // not a locator JSON, since there's no real Readium Locator here at all).
-        let initialPage = await withCheckedContinuation { (continuation: CheckedContinuation<Int?, Never>) in
+        let initialPage = await initialPageFromBridge()
+        let initialIndex = ((initialPage ?? 1) - 1).clamped(to: 0...(pageEntries.count - 1))
+
+        embedChrome(initialIndex: initialIndex)
+    }
+
+    /// issue #183: ComicProgressBridge already resolved the local-vs-server position — see
+    /// PdfProgressBridge's own reasoning, the same shape one level simpler (a plain page,
+    /// not a locator JSON, since there's no real Readium Locator here at all).
+    private func initialPageFromBridge() async -> Int? {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Int?, Never>) in
             MainViewControllerKt.comicProgressBridge().initialPage(
                 serverId: serverId, bookId: bookId, digestUrl: digestUrl
             ) { page in
                 continuation.resume(returning: (page?.int32Value).map(Int.init))
             }
         }
-        let initialIndex = ((initialPage ?? 1) - 1).clamped(to: 0...(pageEntries.count - 1))
-
-        embedChrome(initialIndex: initialIndex)
     }
 
     /// Wires this reader's own bridge (issue #183) and embeds `:shared`'s `ComicReaderScreen`
@@ -138,7 +165,7 @@ final class ComicPagerViewController: UIViewController {
     /// this view controller's sole child — replacing the loading indicator.
     private func embedChrome(initialIndex: Int) {
         let content = ComicPageContentViewController(
-            pageCount: pageEntries.count,
+            pageCount: pageCount,
             rightToLeft: initialRightToLeft,
             loadImage: { [weak self] index in await self?.loadImage(at: index) }
         )
@@ -176,7 +203,7 @@ final class ComicPagerViewController: UIViewController {
     private func pushState() {
         MainViewControllerKt.updateComicReaderState(
             state: ComicReaderNativeState(
-                screenState: ComicReaderUiStateReady(title: title_, pageCount: Int32(pageEntries.count)),
+                screenState: ComicReaderUiStateReady(title: title_, pageCount: Int32(pageCount)),
                 currentPage: Int32((content?.currentIndex ?? 0) + 1)
             )
         )
@@ -189,11 +216,11 @@ final class ComicPagerViewController: UIViewController {
         pushState()
 
         saveTask?.cancel()
-        saveTask = Task { [serverId, bookId, pageEntries] in
+        saveTask = Task { [serverId, bookId, pageCount] in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             guard !Task.isCancelled else { return }
             let page = index + 1
-            let percent = Double(page) / Double(max(pageEntries.count, 1))
+            let percent = Double(page) / Double(max(pageCount, 1))
             MainViewControllerKt.comicProgressBridge().save(
                 serverId: serverId, bookId: bookId, page: Int32(page), percent: percent
             )
@@ -244,6 +271,9 @@ final class ComicPagerViewController: UIViewController {
     }
 
     private func loadImage(at index: Int) async -> UIImage? {
+        if let template = streamTemplate {
+            return await loadStreamedImage(template: template, index: index)
+        }
         guard let archive, pageEntries.indices.contains(index) else { return nil }
         var data = Data()
         guard (try? await archive.extract(pageEntries[index], consumer: { chunk in
@@ -253,6 +283,27 @@ final class ComicPagerViewController: UIViewController {
             return nil
         }
         return UIImage(data: data)
+    }
+
+    /// issue #349 — one page of a page-streamed comic, straight from the server (the URL
+    /// carries its own key, so no auth header is needed; the bearer is sent anyway when known).
+    private func loadStreamedImage(template: String, index: Int) async -> UIImage? {
+        guard (0..<streamCount).contains(index),
+              let url = URL(string: template.replacingOccurrences(of: "{pageNumber}", with: String(index)))
+        else { return nil }
+        var request = URLRequest(url: url)
+        if let authHeader { request.setValue(authHeader, forHTTPHeaderField: "Authorization") }
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+                NSLog("[ComicPager] page \(index) answered \((response as? HTTPURLResponse)?.statusCode ?? -1)")
+                return nil
+            }
+            return UIImage(data: data)
+        } catch {
+            NSLog("[ComicPager] page \(index) failed: \(error)")
+            return nil
+        }
     }
 
     private func showError(_ message: String) {
