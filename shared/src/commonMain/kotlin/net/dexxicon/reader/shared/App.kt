@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared
 
+import net.dexxicon.reader.core.model.AggregatedBook
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -255,6 +256,11 @@ fun App(
             nav.navigate(GroupRoute(group.serverId, group.kind.name, group.id, group.name, group.serverName))
         }
         val openBookDetail: (String, String) -> Unit = { serverId, bookId -> nav.navigate(BookDetailRoute(serverId, bookId)) }
+        // issue #328 — a Library card can stand for a whole series (Kavita): it opens the list.
+        val openLibraryBook: (AggregatedBook) -> Unit = { book ->
+            val group = book.opensGroup
+            if (group != null) openGroup(group) else nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId))
+        }
         val backStackEntry by nav.currentBackStackEntryAsState()
         val currentDestination: NavDestination? = backStackEntry?.destination
         val currentTopLevel = TopLevelDestination.entries.firstOrNull { destination ->
@@ -318,7 +324,7 @@ fun App(
                             Box(Modifier.width(LIBRARY_PANE_WIDTH).fillMaxSize()) {
                                 LibraryScreen(
                                     state = libraryState.value,
-                                    onOpenBook = { book -> nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId)) },
+                                    onOpenBook = openLibraryBook,
                                     onOpenReader = onOpenReader,
                                     onOpenSeries = openSeries,
                                     onOpenGroup = openGroup,
@@ -341,7 +347,7 @@ fun App(
                         composable<LibraryRoute> {
                             LibraryScreen(
                                 state = libraryState.value,
-                                onOpenBook = { book -> nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId)) },
+                                onOpenBook = openLibraryBook,
                                 onOpenReader = onOpenReader,
                                 onOpenSeries = openSeries,
                                 onOpenGroup = openGroup,
@@ -357,7 +363,7 @@ fun App(
                                 title = route.name,
                                 subtitle = listOfNotNull(kind.label(), route.serverName).joinToString(" · "),
                                 onBack = { nav.popBackStack() },
-                                onOpenBook = { book -> nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId)) },
+                                onOpenBook = openLibraryBook,
                                 onOpenReader = onOpenReader,
                                 pinnable = group.takeIf { kind != BookGroupKind.SERIES },
                             )
@@ -380,7 +386,7 @@ fun App(
                                 title = route.name,
                                 subtitle = "Series",
                                 onBack = { nav.popBackStack() },
-                                onOpenBook = { book -> nav.navigate(BookDetailRoute(book.primary.serverId, book.primary.bookId)) },
+                                onOpenBook = openLibraryBook,
                                 onOpenReader = onOpenReader,
                             )
                         }
@@ -616,7 +622,7 @@ private fun EmptyServersState(modifier: Modifier, onAddServer: () -> Unit) {
     ) {
         Text("No servers yet", style = MaterialTheme.typography.headlineSmall)
         Text(
-            "Add your BookOrbit, Grimmory or Komga library to start browsing and reading.",
+            "Add your BookOrbit, Grimmory, Komga or Kavita library to start browsing and reading.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

@@ -1,5 +1,7 @@
 package net.dexxicon.reader.core.data.sync
 
+import net.dexxicon.reader.core.serverapi.progress.KavitaProgressUpdate
+import net.dexxicon.reader.core.serverapi.progress.KavitaMarkChapters
 import net.dexxicon.reader.core.serverapi.progress.KomgaDevice
 import net.dexxicon.reader.core.serverapi.progress.KomgaProgression
 import kotlinx.serialization.json.doubleOrNull
@@ -79,7 +81,12 @@ class NativeProgressSync(
     private val audiobookApiSupportCache = mutableMapOf<String, Boolean>()
 
     fun supports(server: Server): Boolean =
-        server.type == ServerType.BOOKORBIT || server.type == ServerType.GRIMMORY || server.type == ServerType.KOMGA
+        server.type == ServerType.BOOKORBIT || server.type == ServerType.GRIMMORY ||
+            server.type == ServerType.KOMGA || server.type == ServerType.KAVITA
+
+    /** issue #328 — where each Kavita chapter sits, per "serverId::chapterId" (see [kavitaRef]). */
+    private val kavitaRefsMutex = Mutex()
+    private val kavitaRefs = mutableMapOf<String, KavitaChapterRef>()
 
     /** Komga's EPUB positions per "serverId::bookId" — see [komgaPositions]. */
     private val komgaPositionsMutex = Mutex()
@@ -105,6 +112,16 @@ class NativeProgressSync(
                     )
                     ReadingStatus.UNREAD -> api.komgaDeleteReadProgress(server.resolve("/api/v1/books/$bookId/read-progress"))
                     else -> return@runCatching
+                }
+                // issue #328 — Kavita, too, knows read and unread only.
+                ServerType.KAVITA -> {
+                    val path = when (status) {
+                        ReadingStatus.READ -> "/api/Reader/mark-multiple-read"
+                        ReadingStatus.UNREAD -> "/api/Reader/mark-multiple-unread"
+                        else -> return@runCatching
+                    }
+                    val ref = kavitaRef(server, bookId)
+                    api.kavitaMarkChapters(server.resolve(path), KavitaMarkChapters(ref.seriesId, emptyList(), listOf(ref.chapterId)))
                 }
                 else -> return@runCatching
             }
@@ -161,6 +178,7 @@ class NativeProgressSync(
                 ServerType.BOOKORBIT -> pullBookOrbit(server, bookId, format, digestUrl)
                 ServerType.GRIMMORY -> pullGrimmory(server, bookId, format)
                 ServerType.KOMGA -> pullKomga(server, bookId, format)
+                ServerType.KAVITA -> pullKavita(server, bookId, format)
                 else -> null
             }
         }.onSuccess { syncStateStore.markSynced(server.id) }
@@ -185,6 +203,7 @@ class NativeProgressSync(
                 ServerType.BOOKORBIT -> pushBookOrbit(server, bookId, format, digestUrl, percent, positionMs, position)
                 ServerType.GRIMMORY -> pushGrimmory(server, bookId, format, percent, positionMs, position)
                 ServerType.KOMGA -> pushKomga(server, bookId, format, percent, position)
+                ServerType.KAVITA -> pushKavita(server, bookId, format, percent, position)
                 else -> {}
             }
         }.onSuccess {
@@ -387,6 +406,10 @@ class NativeProgressSync(
                 server.resolve("/api/v1/books/$bookId/read-progress"),
                 KomgaReadProgressUpdate(completed = true),
             )
+            // issue #328 — marked unread: the row keeps its last page beside the 0, and sending
+            // that page would put the progress straight back. (Page 1 itself is a real 0.)
+            percent <= 0.0 && format != ContentFormat.EPUB && (position?.toIntOrNull() ?: 1) > 1 ->
+                api.komgaDeleteReadProgress(server.resolve("/api/v1/books/$bookId/read-progress"))
             format == ContentFormat.EPUB -> {
                 // Never report success without having sent anything: the row stays dirty instead.
                 val locator = komgaPositions(server, bookId)
@@ -413,6 +436,71 @@ class NativeProgressSync(
         if (positions.isNotEmpty()) komgaPositionsMutex.withLock { komgaPositionsCache[key] = positions }
         return positions
     }
+
+    // ---- Kavita (issue #328) ----
+
+    /**
+     * Kavita keeps one number per chapter, `pageNum`: the pages read, so 0 is untouched and the
+     * page count means read. For a PDF or comic that's the page before the one on screen; for an
+     * EPUB, Kavita's "pages" are its sections, so the share of the book is all there is to go on.
+     */
+    private suspend fun pullKavita(server: Server, bookId: String, format: ContentFormat): NativeProgress? {
+        val ref = kavitaRef(server, bookId)
+        val progress = api.kavitaProgress(server.resolve("/api/Reader/get-progress?chapterId=${ref.chapterId}"))
+            .takeIf { it.isSuccessful }?.body() ?: return null
+        if (progress.pageNum <= 0 || ref.pages <= 0) return null
+        val updatedAt = kavitaMillis(progress.lastModifiedUtc)
+        if (progress.pageNum >= ref.pages) return NativeProgress(1.0, updatedAtMillis = updatedAt)
+        return NativeProgress(
+            percent = (progress.pageNum.toDouble() / ref.pages).coerceIn(0.0, 1.0),
+            page = (progress.pageNum + 1).takeIf { format == ContentFormat.PDF || format == ContentFormat.COMIC },
+            updatedAtMillis = updatedAt,
+        )
+    }
+
+    private suspend fun pushKavita(server: Server, bookId: String, format: ContentFormat, percent: Double, position: String?) {
+        val ref = kavitaRef(server, bookId)
+        if (ref.pages <= 0) error("Kavita chapter $bookId has no pages")
+        val pageNum = when {
+            percent >= KOMGA_COMPLETE -> ref.pages
+            // Page 1, or marked unread (the row keeps its last page beside the 0): nothing read.
+            percent <= 0.0 -> 0
+            format == ContentFormat.EPUB -> (percent * ref.pages).toInt().coerceIn(0, ref.pages - 1)
+            else -> {
+                // The page on screen, 1-based; the last one finishes the book, as in Kavita's reader.
+                val page = position?.toIntOrNull() ?: error("no page to send for $format $bookId")
+                if (page >= ref.pages) ref.pages else (page - 1).coerceAtLeast(0)
+            }
+        }
+        val response = api.kavitaSaveProgress(
+            server.resolve("/api/Reader/progress"),
+            KavitaProgressUpdate(ref.libraryId, ref.seriesId, ref.volumeId, ref.chapterId, pageNum),
+        )
+        if (!response.isSuccessful) error("Kavita progress HTTP ${response.code()}: ${response.errorBody()}")
+    }
+
+    /** The chapter's series, library, volume and page count — fixed unless the file changes. */
+    private suspend fun kavitaRef(server: Server, bookId: String): KavitaChapterRef {
+        val chapterId = bookId.toIntOrNull() ?: error("not a Kavita chapter id: $bookId")
+        val key = "${server.id}::$chapterId"
+        kavitaRefsMutex.withLock { kavitaRefs[key] }?.let { return it }
+        val chapter = api.kavitaChapter(server.resolve("/api/Chapter?chapterId=$chapterId")).takeIf { it.isSuccessful }?.body()
+            ?: error("Kavita chapter $chapterId not found")
+        val series = api.kavitaSeriesForChapter(server.resolve("/api/Search/series-for-chapter?chapterId=$chapterId"))
+            .takeIf { it.isSuccessful }?.body() ?: error("no Kavita series for chapter $chapterId")
+        val ref = KavitaChapterRef(series.libraryId, series.id, chapter.volumeId, chapterId, chapter.pages)
+        kavitaRefsMutex.withLock { kavitaRefs[key] = ref }
+        return ref
+    }
+
+    /** Kavita's `lastModifiedUtc` is UTC but written without a zone. */
+    private fun kavitaMillis(iso: String?): Long? {
+        val value = iso?.takeUnless { it.startsWith("0001") } ?: return null
+        val zoned = if (value.endsWith("Z") || Regex("[+-]\\d\\d:\\d\\d$").containsMatchIn(value)) value else value + "Z"
+        return isoToMillis(zoned)
+    }
+
+    private data class KavitaChapterRef(val libraryId: Int, val seriesId: Int, val volumeId: Int, val chapterId: Int, val pages: Int)
 
     private fun JsonObject.totalProgression(): Double? =
         (this["locations"] as? JsonObject)?.get("totalProgression")?.jsonPrimitive?.doubleOrNull

@@ -1,5 +1,11 @@
 package net.dexxicon.reader.core.serverapi.auth
 
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.Json
+import kotlin.io.encoding.ExperimentalEncodingApi
+import kotlin.io.encoding.Base64
 import io.ktor.client.plugins.ResponseException
 import kotlinx.io.IOException
 import kotlin.time.Clock
@@ -26,8 +32,31 @@ class NativeAuthClient(
     private val api: NativeAuthApi,
 ) {
     suspend fun login(server: Server, username: String, password: String): Outcome<NativeSession> =
-        runCatching { api.login(server.resolve(LOGIN_PATH), LoginRequest(username, password)) }
-            .fold(::toSession, ::toError)
+        if (server.type == ServerType.KAVITA) {
+            kavitaLogin(server, username, password)
+        } else {
+            runCatching { api.login(server.resolve(LOGIN_PATH), LoginRequest(username, password)) }
+                .fold(::toSession, ::toError)
+        }
+
+    /**
+     * issue #328 — Kavita signs in at `/api/Account/login` and answers with a JWT that lives for
+     * days (its expiry is read from the token). Kavita's refresh needs the old access token as
+     * well, so the app simply signs in again with the stored password when this one runs out:
+     * [NativeSession.refreshToken] stays null and nothing else is kept.
+     */
+    suspend fun kavitaLogin(server: Server, username: String, password: String): Outcome<NativeSession> =
+        runCatching { api.kavitaLogin(server.resolve(KAVITA_LOGIN_PATH), LoginRequest(username, password)) }
+            .fold(
+                onSuccess = { response ->
+                    val token = response.token
+                        ?: return@fold Outcome.Failure(DexxiconError.Parse("No token in Kavita's login response"))
+                    val now = Clock.System.now().toEpochMilliseconds()
+                    val expires = jwtExpiryMillis(token) ?: (now + KAVITA_DEFAULT_TTL_MILLIS)
+                    Outcome.Success(NativeSession(token, refreshToken = null, expiresAtMillis = expires - EXPIRY_SKEW_MILLIS))
+                },
+                onFailure = ::toError,
+            )
 
     suspend fun refresh(server: Server, refreshToken: String): Outcome<NativeSession> =
         runCatching { api.refresh(server.resolve(REFRESH_PATH), RefreshRequest(refreshToken)) }
@@ -73,6 +102,16 @@ class NativeAuthClient(
     companion object {
         const val LOGIN_PATH = "/api/v1/auth/login"
         const val REFRESH_PATH = "/api/v1/auth/refresh"
+        const val KAVITA_LOGIN_PATH = "/api/Account/login"
+        private const val KAVITA_DEFAULT_TTL_MILLIS = 24 * 60 * 60 * 1000L
+
+        /** A JWT's `exp` claim in epoch millis; null for anything that isn't a readable JWT. */
+        @OptIn(ExperimentalEncodingApi::class)
+        fun jwtExpiryMillis(token: String): Long? = runCatching {
+            val payload = token.split('.').getOrNull(1) ?: return null
+            val json = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT_OPTIONAL).decode(payload).decodeToString()
+            Json.parseToJsonElement(json).jsonObject["exp"]?.jsonPrimitive?.longOrNull?.times(1000)
+        }.getOrNull()
         private const val DEFAULT_TTL_SECONDS = 840L
         private const val EXPIRY_SKEW_MILLIS = 30_000L
 

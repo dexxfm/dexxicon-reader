@@ -30,7 +30,23 @@ class NativeAuthApi(private val client: HttpClient) {
 
     /** BookOrbit: refresh token travels as an HttpOnly cookie, so no request body. */
     suspend fun refreshWithCookie(url: String): LoginResponse = client.post(url).body()
+
+    /** issue #328 — Kavita: `POST /api/Account/login` -> a JWT (`token`) and the account. */
+    suspend fun kavitaLogin(url: String, body: LoginRequest): KavitaLoginResponse =
+        client.post(url) {
+            contentType(ContentType.Application.Json)
+            setBody(body)
+        }.body()
 }
+
+/** issue #328 — Kavita's login answer (its `UserDto`); [kavitaVersion] marks it as Kavita. */
+@Serializable
+data class KavitaLoginResponse(
+    val token: String? = null,
+    val refreshToken: String? = null,
+    val username: String? = null,
+    val kavitaVersion: String? = null,
+)
 
 @Serializable
 data class LoginRequest(

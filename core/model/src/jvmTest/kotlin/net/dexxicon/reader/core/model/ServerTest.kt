@@ -78,6 +78,17 @@ class ServerTest {
         assertThat(ServerType.BOOKORBIT.supportsNativeApi).isTrue()
         assertThat(ServerType.GRIMMORY.supportsNativeApi).isTrue()
         assertThat(ServerType.KOMGA.supportsNativeApi).isTrue()
+        assertThat(ServerType.KAVITA.supportsNativeApi).isTrue()
         assertThat(ServerType.GENERIC.supportsNativeApi).isFalse()
+    }
+
+    /** issue #328 — Kavita keeps read/unread only, no rating, no synced annotations, no /book/ page. */
+    @Test
+    fun kavitaOffersOnlyWhatItStores() {
+        assertThat(ServerType.KAVITA.readingStatuses).containsExactly(ReadingStatus.UNREAD, ReadingStatus.READ).inOrder()
+        assertThat(ServerType.KAVITA.hasRatings).isFalse()
+        assertThat(ServerType.KAVITA.syncsAnnotations).isFalse()
+        val kavita = Server(id = "k", displayName = "Kavita", baseUrl = "https://kavita.test", type = ServerType.KAVITA)
+        assertThat(kavita.webBookUrl("826")).isNull()
     }
 }

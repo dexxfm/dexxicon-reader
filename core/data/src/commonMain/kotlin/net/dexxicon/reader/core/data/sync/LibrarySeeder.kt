@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.data.sync
 
+import net.dexxicon.reader.core.data.catalog.KavitaCatalogSource
 import kotlinx.serialization.json.buildJsonObject
 import net.dexxicon.reader.core.data.catalog.KomgaCatalogSource
 import net.dexxicon.reader.core.serverapi.browse.KomgaBrowseApi
@@ -34,6 +35,8 @@ class LibrarySeeder(
     private val grimmory: GrimmoryBrowseApi,
     private val bookOrbit: BookOrbitBrowseApi,
     private val komga: KomgaBrowseApi,
+    /** issue #328 — Kavita's in-progress chapters come from its catalog source (shared caches). */
+    private val kavita: KavitaCatalogSource,
     private val io: CoroutineDispatcher,
 ) {
     /** Every in-progress book the server knows about, as progress rows ready to persist. */
@@ -54,6 +57,7 @@ class LibrarySeeder(
                     ServerType.GRIMMORY -> grimmoryRows(server)
                     ServerType.BOOKORBIT -> bookOrbitRows(server)
                     ServerType.KOMGA -> komgaRows(server)
+                    ServerType.KAVITA -> kavitaRows(server)
                     else -> emptyList()
                 },
             )
@@ -106,6 +110,23 @@ class LibrarySeeder(
             )
         }
     }
+
+    /** issue #328 — Kavita's chapters part-way through, in the series read most recently first. */
+    private suspend fun kavitaRows(server: Server): List<ReadingProgress> =
+        kavita.inProgress(server).map { (book, percent) ->
+            ReadingProgress(
+                serverId = server.id,
+                bookId = book.id,
+                percent = percent,
+                title = book.title,
+                author = book.authorLine.takeIf { it.isNotBlank() },
+                coverUrl = book.coverUrl,
+                format = book.format,
+                digestUrl = server.resolve("/api/Download/chapter?chapterId=${book.id}"),
+                series = book.series,
+                seriesIndex = book.seriesIndex,
+            )
+        }
 
     private suspend fun grimmoryRows(server: Server): List<ReadingProgress> {
         val url = URLBuilder(server.resolve("/api/v1/books/page")).apply {

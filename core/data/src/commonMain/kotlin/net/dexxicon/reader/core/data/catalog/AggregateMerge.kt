@@ -23,7 +23,8 @@ internal fun mergeAggregated(
     val merged = LinkedHashMap<String, AggregatedBook>()
     for ((server, bookPage) in pages) {
         for (book in bookPage.books) {
-            val key = aggregateKey(book.title, book.authors.firstOrNull(), book.format)
+            // issue #328 — a card that opens a group (a Kavita series) never merges with a book.
+            val key = book.opensGroup?.let { "group:${it.key}" } ?: aggregateKey(book.title, book.authors.firstOrNull(), book.format)
             val copy = BookCopy(
                 server.id, server.displayName, book.id,
                 isCatalog = !server.type.supportsNativeApi,
@@ -40,6 +41,7 @@ internal fun mergeAggregated(
                     coverUrl = book.coverUrl,
                     format = book.format,
                     copies = listOf(copy),
+                    opensGroup = book.opensGroup,
                 )
             } else if (existing.copies.any { it.serverId == server.id }) {
                 existing // same server returned the book twice — keep one copy

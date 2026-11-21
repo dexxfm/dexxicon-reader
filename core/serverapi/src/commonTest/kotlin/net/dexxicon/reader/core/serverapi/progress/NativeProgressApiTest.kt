@@ -154,4 +154,42 @@ class NativeProgressApiTest {
         assertEquals(2, positions?.positions?.size)
         assertEquals("b.xhtml", positions?.positions?.get(1)?.get("href").toString().trim('"'))
     }
+
+    /**
+     * issue #328 — Kavita needs every id on a progress write, and a `pageNum` of 0 (back to the
+     * start) sent like any other: the app's JSON config drops values equal to their defaults.
+     */
+    @Test
+    fun kavitaWritesSendEveryFieldEvenAZeroPage() = runTest {
+        val seen = mutableListOf<Pair<String, String>>()
+        val engine = MockEngine { request ->
+            seen += request.url.encodedPath to request.body.toByteArray().decodeToString()
+            respond("", HttpStatusCode.OK)
+        }
+        val api = NativeProgressApi(
+            HttpClient(engine) { install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true; isLenient = true; explicitNulls = false }) } },
+        )
+
+        api.kavitaSaveProgress("https://kv.test/api/Reader/progress", KavitaProgressUpdate(4, 351, 485, 826, 0))
+        api.kavitaMarkChapters("https://kv.test/api/Reader/mark-multiple-read", KavitaMarkChapters(351, emptyList(), listOf(826)))
+
+        assertEquals(
+            "/api/Reader/progress" to """{"libraryId":4,"seriesId":351,"volumeId":485,"chapterId":826,"pageNum":0}""",
+            seen[0],
+        )
+        assertEquals(
+            "/api/Reader/mark-multiple-read" to """{"seriesId":351,"volumeIds":[],"chapterIds":[826]}""",
+            seen[1],
+        )
+    }
+
+    @Test
+    fun kavitaProgressReadsThePagesRead() = runTest {
+        val progress = mockApi(
+            """{"volumeId":485,"chapterId":826,"pageNum":5,"seriesId":351,"libraryId":4,"bookScrollId":null,"lastModifiedUtc":"2026-11-21T19:43:12.9067233"}""",
+        ).kavitaProgress("https://kv.test/api/Reader/get-progress?chapterId=826").body()
+
+        assertEquals(5, progress?.pageNum)
+        assertEquals("2026-11-21T19:43:12.9067233", progress?.lastModifiedUtc)
+    }
 }
