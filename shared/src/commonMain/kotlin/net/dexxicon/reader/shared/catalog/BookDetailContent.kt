@@ -608,8 +608,10 @@ private fun ActionButtons(
     ProgressRow(detail, progress)
 
     // issue #259 — audiobooks can span many files, so there's no single file to save a copy of.
-    val copyAction = saveCopy?.takeIf { format != ContentFormat.AUDIOBOOK && !catalogOnly }
-    val offline = supportsDownloads && !catalogOnly
+    // issue #349 — a book read page by page from the server has no file to save or keep.
+    val streamed = detail.pageStream != null
+    val copyAction = saveCopy?.takeIf { format != ContentFormat.AUDIOBOOK && !catalogOnly && !streamed }
+    val offline = supportsDownloads && !catalogOnly && !streamed
     if (offline || copyAction != null) {
         Spacer(Modifier.height(8.dp))
         Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

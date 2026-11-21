@@ -92,6 +92,8 @@ class IosDownloadRepository(
     }
 
     override suspend fun enqueue(detail: BookDetail): EnqueueResult = withContext(io) {
+        // issue #349 — read page by page from the server: there's no file to save.
+        if (detail.pageStream != null) return@withContext EnqueueResult.NoFile
         val prefs = appPreferences.preferences.first()
         val s = detail.summary
         val acquisition = detail.acquisitions.firstOrNull { it.format == s.format }

@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.data.catalog
 
+import net.dexxicon.reader.core.model.PageStreamInfo
 import io.ktor.client.plugins.ResponseException
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -58,6 +59,7 @@ class KavitaCatalogSource(
     private val volumesCache = mutableMapOf<String, Pair<Long, List<KavitaVolume>>>()
     private val seriesCache = mutableMapOf<String, KavitaSeries>()
     private val libraryTypes = mutableMapOf<String, Pair<Long, Map<Int, Int>>>()
+    private val imageKeys = mutableMapOf<String, String>()
 
     /** Caps the volume lookups a page of series sets off at once. */
     private val lookups = Semaphore(PARALLEL_LOOKUPS)
@@ -100,6 +102,21 @@ class KavitaCatalogSource(
         val volume = volumes.firstOrNull { v -> v.chapters.any { it.id == chapter.id } }
         val metadata = runCatching { api.seriesMetadata(server.resolve("/api/Series/metadata?seriesId=${series.id}")) }.getOrNull()
         val format = formatOf(chapter.format, chapter.extension())
+        // issue #349 — several files in one chapter have no single file to fetch (Kavita's own
+        // download is an empty ZIP for them), so they're read page by page, as Kavita's reader does.
+        val pageStream = if (chapter.files.size > 1 && format == ContentFormat.COMIC && chapter.pages > 0) {
+            imageKey(server)?.let { key ->
+                PageStreamInfo(
+                    hrefTemplate = server.resolve(
+                        "/api/Reader/image?chapterId=${chapter.id}&apiKey=$key&page=${PageStreamInfo.PAGE_NUMBER}",
+                    ),
+                    count = chapter.pages,
+                    mediaType = "image/jpeg",
+                )
+            }
+        } else {
+            null
+        }
         val summary = chapter.toSummary(server, series, volume, single = volumes.chapterCount() == 1, libraryType(server, series.libraryId))
         BookDetail(
             summary = summary.copy(
@@ -117,6 +134,7 @@ class KavitaCatalogSource(
             categories = (chapter.genres + chapter.tags + metadata?.genres.orEmpty())
                 .map { it.title }.filter { it.isNotBlank() }.distinct(),
             readingStatus = chapter.readingStatus(),
+            pageStream = pageStream,
             fileExtension = chapter.extension(),
             fileSizeBytes = chapter.files.sumOf { it.bytes }.takeIf { it > 0 },
             acquisitions = listOf(
@@ -397,6 +415,20 @@ class KavitaCatalogSource(
     }
 
     private suspend fun libraryType(server: Server, libraryId: Int): Int? = libraryTypes(server)[libraryId]
+
+    /**
+     * issue #349 — the key Kavita's page images take in their URL: the account's "image-only"
+     * key when it has one (it opens images and nothing else), else its own API key.
+     */
+    private suspend fun imageKey(server: Server): String? {
+        cacheLock.withLock { imageKeys[server.id] }?.let { return it }
+        val account = runCatching { api.account(server.resolve("/api/Account/refresh-account")) }.getOrNull() ?: return null
+        val key = account.authKeys.firstOrNull { it.name.equals("image-only", ignoreCase = true) }?.key?.takeIf { it.isNotBlank() }
+            ?: account.apiKey?.takeIf { it.isNotBlank() }
+            ?: return null
+        cacheLock.withLock { imageKeys[server.id] = key }
+        return key
+    }
 
     private suspend inline fun <T> call(block: () -> T): Outcome<T> = try {
         Outcome.Success(block())

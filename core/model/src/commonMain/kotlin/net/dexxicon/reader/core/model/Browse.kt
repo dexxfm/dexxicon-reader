@@ -148,6 +148,11 @@ data class BookDetail(
      *  both support this natively (issue #264) — null on any other server type, or when this
      *  user hasn't rated the book yet. */
     val rating: Int? = null,
+    /**
+     * issue #349 — set when the book is read page by page from the server (a Kavita chapter
+     * made of several files has no single file to fetch). Such a book can't be downloaded.
+     */
+    val pageStream: PageStreamInfo? = null,
 ) {
     val narratorLine: String get() = narrators.joinToString(", ")
 

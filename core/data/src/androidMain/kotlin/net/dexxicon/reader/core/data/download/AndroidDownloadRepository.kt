@@ -68,6 +68,8 @@ class AndroidDownloadRepository @Inject constructor(
     }
 
     override suspend fun enqueue(detail: BookDetail): EnqueueResult = withContext(io) {
+        // issue #349 — read page by page from the server: there's no file to save.
+        if (detail.pageStream != null) return@withContext EnqueueResult.NoFile
         val prefs = appPreferences.preferences.first()
         val wifiOnly = prefs.downloadsWifiOnly
         val s = detail.summary

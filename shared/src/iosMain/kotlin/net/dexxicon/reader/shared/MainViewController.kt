@@ -472,6 +472,18 @@ fun PdfReaderViewController(
  */
 fun comicProgressBridge(): ComicProgressBridge = appContainer.comicProgressBridge
 
+/**
+ * issue #349 — a comic read page by page from the server (a Kavita chapter made of several
+ * files): its image URL with `{pageNumber}` (0-based) to fill in, or null for a normal file.
+ * Plain values rather than the model class, so Swift needs no exported type for it.
+ */
+fun comicPageStreamTemplate(serverId: String, bookId: String): String? =
+    appContainer.pageStream(serverId, bookId)?.hrefTemplate
+
+/** issue #349 — how many pages [comicPageStreamTemplate]'s book has (0 when it isn't one). */
+fun comicPageStreamCount(serverId: String, bookId: String): Int =
+    appContainer.pageStream(serverId, bookId)?.count ?: 0
+
 /** Swift's pager calls this on every page change/on open, same shape as
  * [updatePdfReaderState]. */
 fun updateComicReaderState(state: ComicReaderNativeState?) {
