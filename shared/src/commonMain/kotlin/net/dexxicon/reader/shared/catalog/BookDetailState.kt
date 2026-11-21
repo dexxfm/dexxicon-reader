@@ -128,6 +128,8 @@ class BookDetailState(
                 bookId = bid,
                 webUrl = server?.webBookUrl(bid),
                 isCatalog = server?.type?.supportsNativeApi == false,
+                hasRating = server?.type?.hasRatings ?: true,
+                statuses = server?.type?.readingStatuses ?: ReadingStatus.entries,
             )
         }
 

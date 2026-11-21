@@ -1,5 +1,6 @@
 package net.dexxicon.reader.di
 
+import net.dexxicon.reader.core.serverapi.browse.KomgaBrowseApi
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -32,6 +33,11 @@ object ServerApiModule {
     @Provides
     @Singleton
     fun provideGrimmoryBrowseApi(client: HttpClient): GrimmoryBrowseApi = GrimmoryBrowseApi(client)
+
+    /** issue #327 */
+    @Provides
+    @Singleton
+    fun provideKomgaBrowseApi(client: HttpClient): KomgaBrowseApi = KomgaBrowseApi(client)
 
     @Provides
     @Singleton

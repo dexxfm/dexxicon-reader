@@ -82,7 +82,7 @@ class BookmarkRepository(
     suspend fun syncFromServer(serverId: String, bookId: String) = withContext(io) {
         val server = serverRepository.get(serverId) ?: return@withContext
         // issue #291 — an OPDS catalog has no bookmarks API; its bookmarks stay on the device.
-        if (!server.type.supportsNativeApi) return@withContext
+        if (!server.type.syncsAnnotations) return@withContext
         push(serverId)
 
         val remote = runCatching { api.list(server.listUrl(bookId)) }.getOrNull() ?: return@withContext
@@ -121,7 +121,7 @@ class BookmarkRepository(
 
     private suspend fun push(serverId: String) {
         val server = serverRepository.get(serverId) ?: return
-        if (!server.type.supportsNativeApi) return // issue #291 — OPDS: nowhere to push to
+        if (!server.type.syncsAnnotations) return // issue #291 — OPDS: nowhere to push to
         dao.pending().filter { it.serverId == serverId }.forEach { e ->
             val remoteId = e.remoteId
             runCatching {

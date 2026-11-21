@@ -108,7 +108,7 @@ class HighlightRepository(
     suspend fun syncFromServer(serverId: String, bookId: String) = withContext(io) {
         val server = serverRepository.get(serverId) ?: return@withContext
         // issue #291 — an OPDS catalog has no annotations API; its highlights stay on the device.
-        if (!server.type.supportsNativeApi) return@withContext
+        if (!server.type.syncsAnnotations) return@withContext
         push(serverId)
         val remote = runCatching {
             when (server.type) {
@@ -215,7 +215,7 @@ class HighlightRepository(
     private suspend fun push(serverId: String) {
         val server = serverRepository.get(serverId) ?: return
         if (server.type == ServerType.BOOKORBIT) return // read-only
-        if (!server.type.supportsNativeApi) return // issue #291 — OPDS: nowhere to push to
+        if (!server.type.syncsAnnotations) return // issue #291 — OPDS: nowhere to push to
         val bookIdNum = { s: String -> s.toLongOrNull() }
         dao.pending().filter { it.serverId == serverId }.forEach { e ->
             runCatching {

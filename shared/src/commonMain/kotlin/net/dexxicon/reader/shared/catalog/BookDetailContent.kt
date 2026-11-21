@@ -450,11 +450,15 @@ private fun HeroBlock(
             Spacer(Modifier.height(8.dp))
             // issue #298 — an OPDS catalog keeps no reading status or rating for its books.
             val catalogOnly = copies.isCatalogOnly()
+            // issue #327 — only what the book's server can store: Komga has no ratings and
+            // knows read and unread only. With copies on several servers, the richest wins.
+            val statuses = copies.maxByOrNull { it.statuses.size }?.statuses ?: ReadingStatus.entries
+            val rates = copies.isEmpty() || copies.any { it.hasRating }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 AssistChip(onClick = {}, shape = Pill, label = { Text(formatLabel(detail)) })
-                if (!catalogOnly) ReadingStatusChip(detail.readingStatus, onSetStatus)
+                if (!catalogOnly && statuses.isNotEmpty()) ReadingStatusChip(detail.readingStatus, statuses, onSetStatus)
             }
-            if (!catalogOnly) {
+            if (!catalogOnly && rates) {
                 Spacer(Modifier.height(6.dp))
                 RatingRow(detail.rating, onSetRating)
             }
@@ -506,7 +510,7 @@ private fun ServerChip(name: String) {
 }
 
 @Composable
-private fun ReadingStatusChip(current: ReadingStatus?, onSet: (ReadingStatus) -> Unit) {
+private fun ReadingStatusChip(current: ReadingStatus?, options: List<ReadingStatus>, onSet: (ReadingStatus) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Box {
         AssistChip(
@@ -515,7 +519,7 @@ private fun ReadingStatusChip(current: ReadingStatus?, onSet: (ReadingStatus) ->
             label = { Text(current?.label ?: "Set status") },
         )
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-            ReadingStatus.entries.forEach { status ->
+            options.forEach { status ->
                 DropdownMenuItem(
                     text = { Text(status.label) },
                     trailingIcon = {
