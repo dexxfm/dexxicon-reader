@@ -1,5 +1,6 @@
 package net.dexxicon.reader.core.designsystem.nav
 
+import androidx.compose.ui.graphics.painter.Painter
 import net.dexxicon.reader.core.designsystem.theme.LocalDarkTheme
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.BorderStroke
@@ -140,11 +141,20 @@ fun <T> FloatingPillNavBar(
     glassState: LiquidGlassState,
     glassIntensity: GlassIntensity,
     modifier: Modifier = Modifier,
+    /**
+     * Issue #343 — upright, for a screen whose system bars run down one side (the iPhone
+     * Duo's cover screen, where Apple stacks the status bar and tab bars in a column on the
+     * trailing edge). The caller places it in that column; this only stacks the items.
+     */
+    vertical: Boolean = false,
+    /** A platform icon to show instead of [icon] (issue #343: SF Symbols in the Duo's side column). */
+    iconPainter: (@Composable (destination: T, selected: Boolean) -> Painter?)? = null,
 ) {
     // fillMaxWidth() is what actually makes contentAlignment=Center center the pill — without
     // it this Box shrinks to wrap the pill's own width, and the pill ends up wherever its
     // parent Column (the host Scaffold's bottomBar slot) puts a Start-aligned child: flush
     // left, not centered (issue #115 PR feedback).
+    // Upright, the caller's width is the side column's, so this centres the pill in it.
     Box(modifier.fillMaxWidth().padding(bottom = PillExtraBottomMargin), contentAlignment = Alignment.Center) {
         val tier = LiquidGlassDefaults.forQuality(glassState.quality)
         val scale = glassIntensity.blurScale
@@ -162,7 +172,12 @@ fun <T> FloatingPillNavBar(
             val baseTint = LiquidGlassDefaults.tintFor(LocalDarkTheme.current)
             baseTint.copy(alpha = (baseTint.alpha * scale).coerceIn(0f, 1f))
         }
-        Box(
+        // Upright, each item is its own round button in the column of system bars, the way
+        // Apple's own apps lay out iPhone Duo's side controls: a soft fill, no capsule around
+        // the group and no shadow (the owner's call on #343). Nothing behind them to blur.
+        val surface = if (vertical) {
+            Modifier
+        } else {
             Modifier
                 .shadow(8.dp, Pill)
                 .liquidGlass(
@@ -175,9 +190,10 @@ fun <T> FloatingPillNavBar(
                         0f to outline.copy(alpha = 0.8f),
                         1f to outline.copy(alpha = 0.1f),
                     ),
-                ),
-        ) {
-            Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                )
+        }
+        Box(surface) {
+            PillItems(vertical) {
                 destinations.forEach { destination ->
                     val selected = destination == current
                     // The full 74x52dp box is the tap target (accessibility/touch-size), but
@@ -187,13 +203,18 @@ fun <T> FloatingPillNavBar(
                     // highlight (see this file's PR discussion, issue #115).
                     val interactionSource = remember { MutableInteractionSource() }
                     val pressed by interactionSource.collectIsPressedAsState()
+                    val idleFill = when {
+                        !vertical -> Color.Transparent
+                        selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
+                        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                    }
                     val overlay by animateColorAsState(
-                        if (pressed) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else Color.Transparent,
+                        if (pressed) MaterialTheme.colorScheme.primary.copy(alpha = 0.24f) else idleFill,
                         label = "navItemPress",
                     )
                     Box(
                         Modifier
-                            .size(width = 74.dp, height = 52.dp)
+                            .size(width = if (vertical) 52.dp else 74.dp, height = 52.dp)
                             .selectable(
                                 selected = selected,
                                 interactionSource = interactionSource,
@@ -203,19 +224,32 @@ fun <T> FloatingPillNavBar(
                         contentAlignment = Alignment.Center,
                     ) {
                         Box(
-                            Modifier.size(44.dp).clip(CircleShape).background(overlay),
+                            Modifier.size(if (vertical) 46.dp else 44.dp).clip(CircleShape).background(overlay),
                             contentAlignment = Alignment.Center,
                         ) {
-                            Icon(
-                                icon(destination),
-                                contentDescription = label(destination),
-                                tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            val iconModifier = if (vertical) Modifier.size(24.dp) else Modifier
+                            val painter = iconPainter?.invoke(destination, selected)
+                            if (painter != null) {
+                                Icon(painter, contentDescription = label(destination), tint = tint, modifier = iconModifier)
+                            } else {
+                                Icon(icon(destination), contentDescription = label(destination), tint = tint, modifier = iconModifier)
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/** The pill's items side by side, or stacked when [vertical]. */
+@Composable
+private fun PillItems(vertical: Boolean, content: @Composable () -> Unit) {
+    if (vertical) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
+    } else {
+        Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { content() }
     }
 }
 

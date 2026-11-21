@@ -1,5 +1,10 @@
 package net.dexxicon.reader.shared.player
 
+import net.dexxicon.reader.shared.SideColumnGap
+import net.dexxicon.reader.shared.SideColumnControls
+import net.dexxicon.reader.shared.SideColumnButton
+import net.dexxicon.reader.shared.sideBarColumn
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -106,10 +111,13 @@ fun PlayerScreen(
     var showChapters by remember { mutableStateOf(false) }
     var showSpeed by remember { mutableStateOf(false) }
     var showSleep by remember { mutableStateOf(false) }
+    // Issue #343 — on the iPhone Duo, everything but the transport moves into the side column.
+    val sideColumn = sideBarColumn()
 
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
-            TopAppBar(
+            if (sideColumn == null) TopAppBar(
                 // No title here — it's already on the cover art and repeated again in
                 // TrackInfo below it, so a third copy in the app bar is just noise (#116).
                 title = {},
@@ -144,8 +152,37 @@ fun PlayerScreen(
                 onSeek = actions.seekTo,
                 onSpeed = { showSpeed = true },
                 onSleep = { showSleep = true },
+                showSecondaryControls = sideColumn == null,
             )
         }
+    }
+    if (sideColumn != null) {
+        SideColumnControls(sideColumn) {
+            SideColumnButton("chevron.left", Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
+            if (state != null) {
+                SideColumnGap()
+                if (state.chapters.isNotEmpty()) {
+                    SideColumnButton("list.bullet", Icons.AutoMirrored.Filled.ListAlt, "Chapters", { showChapters = true })
+                }
+                val customSpeed = abs(state.speed - 1f) >= 0.01f
+                SideColumnButton(
+                    symbol = "gauge.with.dots.needle.67percent",
+                    fallback = Icons.Filled.Speed,
+                    contentDescription = "Playback speed, ${state.speed}×",
+                    onClick = { showSpeed = true },
+                    active = customSpeed,
+                )
+                val sleepOn = state.sleepTimerEndsAtEpochMs != null || state.sleepAtChapterEnd
+                SideColumnButton(
+                    symbol = if (sleepOn) "moon.zzz.fill" else "moon.zzz",
+                    fallback = Icons.Filled.Bedtime,
+                    contentDescription = if (sleepOn) "Sleep timer, on" else "Sleep timer",
+                    onClick = { showSleep = true },
+                    active = sleepOn,
+                )
+            }
+        }
+    }
     }
 
     if (showChapters && state != null) {
@@ -266,6 +303,8 @@ private fun NowPlayingContent(
     onSeek: (Long) -> Unit,
     onSpeed: () -> Unit,
     onSleep: () -> Unit,
+    /** False where speed and the sleep timer sit in the side column instead (issue #343). */
+    showSecondaryControls: Boolean = true,
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
         // Cover on the left, controls on the right — only for a genuinely wide area
@@ -296,7 +335,7 @@ private fun NowPlayingContent(
             }
             Scrubber(state, onSeek)
             TransportControls(state, onPlayPause, onSkipForward, onSkipBack, onNextChapter, onPrevChapter)
-            SecondaryControls(state, onSpeed, onSleep)
+            if (showSecondaryControls) SecondaryControls(state, onSpeed, onSleep)
         }
 
         if (sideBySide) {

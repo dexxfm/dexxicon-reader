@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -180,7 +181,9 @@ fun PlayerViewController(onBack: () -> Unit): UIViewController = ComposeUIViewCo
     val state by appContainer.playerState.collectAsState()
     val actions = appContainer.playerActions
     if (actions != null) {
-        PlayerScreen(state = state, actions = actions, onBack = onBack)
+        Box(Modifier.fillMaxSize().sideColumnFullHeight()) {
+            PlayerScreen(state = state, actions = actions, onBack = onBack)
+        }
     }
 }
 
@@ -310,7 +313,8 @@ fun EpubReaderViewController(
         actions?.applyHighlights?.invoke(highlights)
     }
 
-    if (actions != null) {
+    // Issue #343 — on the iPhone Duo the page runs the full height (see sideColumnFullHeight).
+    if (actions != null) Box(Modifier.fillMaxSize().sideColumnFullHeight()) {
         EpubReaderScreen(
             state = screenState,
             onBack = onBack,
@@ -420,7 +424,8 @@ fun PdfReaderViewController(
         actions?.submitPreferences?.invoke(preferences)
     }
 
-    if (actions != null) {
+    // Issue #343 — on the iPhone Duo the page runs the full height (see sideColumnFullHeight).
+    if (actions != null) Box(Modifier.fillMaxSize().sideColumnFullHeight()) {
         PdfReaderScreen(
             state = screenState,
             onBack = onBack,
@@ -529,7 +534,8 @@ fun ComicReaderViewController(
         actions?.submitPreferences?.invoke(preferences)
     }
 
-    if (actions != null) {
+    // Issue #343 — on the iPhone Duo the page runs the full height (see sideColumnFullHeight).
+    if (actions != null) Box(Modifier.fillMaxSize().sideColumnFullHeight()) {
         ComicReaderScreen(
             state = screenState,
             onBack = onBack,

@@ -1,5 +1,9 @@
 package net.dexxicon.reader.shared.reader.epub
 
+import net.dexxicon.reader.shared.SideColumnGap
+import net.dexxicon.reader.shared.SideColumnControls
+import net.dexxicon.reader.shared.SideColumnButton
+import net.dexxicon.reader.shared.sideBarColumn
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,6 +26,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -196,17 +201,21 @@ private fun ReaderContent(
     var showHighlights by remember { mutableStateOf(false) }
     var showBookmarks by remember { mutableStateOf(false) }
     var resumeDismissed by remember { mutableStateOf(false) }
+    // Issue #343 — on the iPhone Duo the toolbar stands in the side column instead.
+    val sideColumn = sideBarColumn()
+    val toggleBookmark = { currentBookmark?.let { onDeleteBookmark(it.id) } ?: onAddBookmark() }
 
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         topBar = {
-            if (chromeVisible) {
+            if (chromeVisible && sideColumn == null) {
                 TopAppBar(
                     // No title here — five action icons plus the BackPill already crowd this
                     // row with no room left for a title to render legibly (issue #117).
                     title = {},
                     navigationIcon = { BackPill(onBack) },
                     actions = {
-                        IconButton(onClick = { currentBookmark?.let { onDeleteBookmark(it.id) } ?: onAddBookmark() }) {
+                        IconButton(onClick = toggleBookmark) {
                             Icon(
                                 if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
                                 contentDescription = if (currentBookmark != null) "Remove bookmark" else "Add bookmark",
@@ -262,6 +271,25 @@ private fun ReaderContent(
                 }
             }
         }
+    }
+    // Issue #343 — the toolbar as round buttons in the side column: Back, then the actions.
+    if (chromeVisible && sideColumn != null) {
+        SideColumnControls(sideColumn) {
+            SideColumnButton("chevron.left", Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
+            SideColumnGap()
+            SideColumnButton(
+                symbol = if (currentBookmark != null) "bookmark.fill" else "bookmark",
+                fallback = if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                contentDescription = if (currentBookmark != null) "Remove bookmark" else "Add bookmark",
+                onClick = toggleBookmark,
+                active = currentBookmark != null,
+            )
+            SideColumnButton("bookmark.square", Icons.Filled.Bookmarks, "Bookmarks", { showBookmarks = true })
+            SideColumnButton("highlighter", Icons.Filled.BorderColor, "Highlights", { showHighlights = true })
+            SideColumnButton("list.bullet", Icons.AutoMirrored.Filled.ListAlt, "Contents", { showToc = true })
+            SideColumnButton("textformat.size", Icons.Filled.TextFields, "Display settings", { showSettings = true })
+        }
+    }
     }
 
     if (showToc) {

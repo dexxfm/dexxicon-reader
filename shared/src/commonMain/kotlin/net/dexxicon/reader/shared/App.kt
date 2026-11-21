@@ -1,6 +1,14 @@
 package net.dexxicon.reader.shared
 
 import net.dexxicon.reader.core.model.AggregatedBook
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.AbsoluteAlignment
+import androidx.compose.foundation.layout.absolutePadding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -171,6 +179,7 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 /** Same breakpoint as native's `DexxiconApp.kt` — Material's "medium" window-width class. */
 private val RAIL_BREAKPOINT = 600.dp
 
+
 /** Phase 5 (issue #115) — same breakpoint [BookDetailContent][net.dexxicon.reader.shared.catalog.BookDetailContent]
  * already uses for its own cover/text split, reused here so Library's two-pane switch lines
  * up with Book Detail's. */
@@ -271,10 +280,13 @@ fun App(
             reauthRequests.collect { serverId -> nav.navigate(EditServerRoute(serverId, reauth = true)) }
         }
 
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize().sideColumnFullHeight()) {
             val wide = maxWidth >= RAIL_BREAKPOINT
-            val showRail = wide && currentTopLevel != null
-            val showBottomBar = !wide && currentTopLevel != null
+            // issue #343 — where the system bars run down one side (the iPhone Duo, closed or open
+            // in landscape), the pill stands in that column instead of the bottom pill or the rail.
+            val sideColumn = sideBarColumn()
+            val showRail = wide && currentTopLevel != null && sideColumn == null
+            val showBottomBar = (!wide || sideColumn != null) && currentTopLevel != null
 
             // Phase 5 (issue #115) — Library + Book Detail side by side once the screen is
             // wide enough: only when Detail is what's actually on top of the back stack *and*
@@ -302,6 +314,15 @@ fun App(
                     // "behind the glass" too, not just the current screen's own content.
                     Row(
                         Modifier.fillMaxSize().padding(innerPadding).consumeWindowInsets(innerPadding)
+                            // Issue #343 — on the iPhone Duo content now reaches the display's
+                            // rounded corners; a few points on the far side keep text off them.
+                            .then(
+                                when {
+                                    sideColumn == null -> Modifier
+                                    sideColumn.onRight -> Modifier.absolutePadding(left = SIDE_COLUMN_EDGE_GAP)
+                                    else -> Modifier.absolutePadding(right = SIDE_COLUMN_EDGE_GAP)
+                                },
+                            )
                             .liquidGlassSource(glassState),
                     ) {
                         if (showRail) {
@@ -479,7 +500,15 @@ fun App(
                     // clearance so the floating group never permanently covers it — see
                     // FloatingNavClearance's own doc comment.
                     Column(
-                        Modifier.align(Alignment.BottomCenter).navigationBarsPadding(),
+                        Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
+                            // Beside the side column, not under it (issue #343).
+                            .then(
+                                when {
+                                    sideColumn == null -> Modifier
+                                    sideColumn.onRight -> Modifier.absolutePadding(right = sideColumn.width)
+                                    else -> Modifier.absolutePadding(left = sideColumn.width)
+                                },
+                            ),
                     ) {
                         nowPlaying?.let { playback ->
                             MiniPlayer(
@@ -489,7 +518,7 @@ fun App(
                                 onDismiss = container.onMiniPlayerDismiss,
                             )
                         }
-                        if (showBottomBar) {
+                        if (showBottomBar && sideColumn == null) {
                             FloatingPillNavBar(
                                 destinations = TopLevelDestination.entries,
                                 current = currentTopLevel,
@@ -500,6 +529,23 @@ fun App(
                                 glassIntensity = theme.glassIntensity,
                             )
                         }
+                    }
+                    if (showBottomBar && sideColumn != null) {
+                        // Round buttons, centred down the column, with the system's own symbols.
+                        FloatingPillNavBar(
+                            destinations = TopLevelDestination.entries,
+                            current = currentTopLevel,
+                            icon = { it.icon },
+                            label = { it.label },
+                            onSelect = { nav.switchTopLevel(it) },
+                            glassState = glassState,
+                            glassIntensity = theme.glassIntensity,
+                            vertical = true,
+                            iconPainter = { destination, selected ->
+                                systemSymbol(if (selected) "${destination.symbol}.fill" else destination.symbol)
+                            },
+                            modifier = Modifier.align(sideColumn.alignment).width(sideColumn.width),
+                        )
                     }
                 }
             }
