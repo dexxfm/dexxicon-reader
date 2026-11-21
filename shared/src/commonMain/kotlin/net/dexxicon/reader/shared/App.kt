@@ -285,8 +285,10 @@ fun App(
             // issue #343 — where the system bars run down one side (the iPhone Duo, closed or open
             // in landscape), the pill stands in that column instead of the bottom pill or the rail.
             val sideColumn = sideBarColumn()
-            val showRail = wide && currentTopLevel != null && sideColumn == null
-            val showBottomBar = (!wide || sideColumn != null) && currentTopLevel != null
+            // issue #355 — the Duo's inner screen held upright: the nav stands in the status band.
+            val statusBand = if (sideColumn == null) statusBand() else null
+            val showRail = wide && currentTopLevel != null && sideColumn == null && statusBand == null
+            val showBottomBar = (!wide || sideColumn != null) && currentTopLevel != null && statusBand == null
 
             // Phase 5 (issue #115) — Library + Book Detail side by side once the screen is
             // wide enough: only when Detail is what's actually on top of the back stack *and*
@@ -529,6 +531,25 @@ fun App(
                                 glassIntensity = theme.glassIntensity,
                             )
                         }
+                    }
+                    if (statusBand != null && currentTopLevel != null) {
+                        // The same round buttons, in a row centred across the band, level with the
+                        // status icons.
+                        FloatingPillNavBar(
+                            destinations = TopLevelDestination.entries,
+                            current = currentTopLevel,
+                            icon = { it.icon },
+                            label = { it.label },
+                            onSelect = { nav.switchTopLevel(it) },
+                            glassState = glassState,
+                            glassIntensity = theme.glassIntensity,
+                            roundButtons = true,
+                            iconPainter = { destination, selected ->
+                                systemSymbol(if (selected) "${destination.symbol}.fill" else destination.symbol)
+                            },
+                            modifier = Modifier.align(Alignment.TopCenter).height(statusBand.height)
+                                .padding(top = STATUS_BAND_ROW_OFFSET),
+                        )
                     }
                     if (showBottomBar && sideColumn != null) {
                         // Round buttons, centred down the column, with the system's own symbols.

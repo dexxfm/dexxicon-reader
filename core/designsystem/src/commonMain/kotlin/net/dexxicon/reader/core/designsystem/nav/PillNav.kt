@@ -147,6 +147,11 @@ fun <T> FloatingPillNavBar(
      * trailing edge). The caller places it in that column; this only stacks the items.
      */
     vertical: Boolean = false,
+    /**
+     * Issue #355 — each item its own round button, no capsule (the side column's look). On with
+     * [vertical]; on its own it lays them in a row (the Duo's status band, held upright).
+     */
+    roundButtons: Boolean = vertical,
     /** A platform icon to show instead of [icon] (issue #343: SF Symbols in the Duo's side column). */
     iconPainter: (@Composable (destination: T, selected: Boolean) -> Painter?)? = null,
 ) {
@@ -155,7 +160,10 @@ fun <T> FloatingPillNavBar(
     // parent Column (the host Scaffold's bottomBar slot) puts a Start-aligned child: flush
     // left, not centered (issue #115 PR feedback).
     // Upright, the caller's width is the side column's, so this centres the pill in it.
-    Box(modifier.fillMaxWidth().padding(bottom = PillExtraBottomMargin), contentAlignment = Alignment.Center) {
+    Box(
+        modifier.fillMaxWidth().padding(bottom = if (roundButtons) 0.dp else PillExtraBottomMargin),
+        contentAlignment = Alignment.Center,
+    ) {
         val tier = LiquidGlassDefaults.forQuality(glassState.quality)
         val scale = glassIntensity.blurScale
         val outline = MaterialTheme.colorScheme.outlineVariant
@@ -175,7 +183,7 @@ fun <T> FloatingPillNavBar(
         // Upright, each item is its own round button in the column of system bars, the way
         // Apple's own apps lay out iPhone Duo's side controls: a soft fill, no capsule around
         // the group and no shadow (the owner's call on #343). Nothing behind them to blur.
-        val surface = if (vertical) {
+        val surface = if (roundButtons) {
             Modifier
         } else {
             Modifier
@@ -193,7 +201,7 @@ fun <T> FloatingPillNavBar(
                 )
         }
         Box(surface) {
-            PillItems(vertical) {
+            PillItems(vertical, roundButtons) {
                 destinations.forEach { destination ->
                     val selected = destination == current
                     // The full 74x52dp box is the tap target (accessibility/touch-size), but
@@ -204,7 +212,7 @@ fun <T> FloatingPillNavBar(
                     val interactionSource = remember { MutableInteractionSource() }
                     val pressed by interactionSource.collectIsPressedAsState()
                     val idleFill = when {
-                        !vertical -> Color.Transparent
+                        !roundButtons -> Color.Transparent
                         selected -> MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)
                         else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
                     }
@@ -214,7 +222,7 @@ fun <T> FloatingPillNavBar(
                     )
                     Box(
                         Modifier
-                            .size(width = if (vertical) 52.dp else 74.dp, height = 52.dp)
+                            .size(width = if (roundButtons) 52.dp else 74.dp, height = 52.dp)
                             .selectable(
                                 selected = selected,
                                 interactionSource = interactionSource,
@@ -224,11 +232,11 @@ fun <T> FloatingPillNavBar(
                         contentAlignment = Alignment.Center,
                     ) {
                         Box(
-                            Modifier.size(if (vertical) 46.dp else 44.dp).clip(CircleShape).background(overlay),
+                            Modifier.size(if (roundButtons) 46.dp else 44.dp).clip(CircleShape).background(overlay),
                             contentAlignment = Alignment.Center,
                         ) {
                             val tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                            val iconModifier = if (vertical) Modifier.size(24.dp) else Modifier
+                            val iconModifier = if (roundButtons) Modifier.size(24.dp) else Modifier
                             val painter = iconPainter?.invoke(destination, selected)
                             if (painter != null) {
                                 Icon(painter, contentDescription = label(destination), tint = tint, modifier = iconModifier)
@@ -243,11 +251,13 @@ fun <T> FloatingPillNavBar(
     }
 }
 
-/** The pill's items side by side, or stacked when [vertical]. */
+/** The pill's items side by side, or stacked when [vertical]; round buttons sit closer, unpadded. */
 @Composable
-private fun PillItems(vertical: Boolean, content: @Composable () -> Unit) {
+private fun PillItems(vertical: Boolean, roundButtons: Boolean, content: @Composable () -> Unit) {
     if (vertical) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { content() }
+    } else if (roundButtons) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { content() }
     } else {
         Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { content() }
     }

@@ -1,5 +1,10 @@
 package net.dexxicon.reader.shared.reader.comic
 
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import net.dexxicon.reader.shared.sideControls
+import net.dexxicon.reader.shared.SideColumnGap
+import net.dexxicon.reader.shared.SideColumnControls
+import net.dexxicon.reader.shared.SideColumnButton
 import androidx.compose.ui.graphics.luminance
 import net.dexxicon.reader.core.designsystem.theme.LocalDarkTheme
 import androidx.compose.foundation.layout.WindowInsets
@@ -159,14 +164,17 @@ private fun ReaderContent(
     // issue #308 — the app's theme, not the phone's.
     val darkTheme = LocalDarkTheme.current
     val surface = preferences.theme.comicSurfaceColor(darkTheme)
+    // Issue #355 — on the iPhone Duo the toolbar stands in the side column or the status band.
+    val sideControls = sideControls()
 
+    Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = surface,
         // issue #308 — the page-count label sits straight on the reading background, which can be
         // dark even in a light app (Grey, Black), so pick its colour from the background itself.
         contentColor = if (surface.luminance() < 0.5f) Color(0xFFE6E7EA) else Color(0xFF1B1C1F),
         topBar = {
-            if (chromeVisible) {
+            if (chromeVisible && sideControls == null) {
                 TopAppBar(
                     title = { Text(state.title, maxLines = 1) },
                     navigationIcon = { BackPill(onBack) },
@@ -210,6 +218,14 @@ private fun ReaderContent(
         Box(Modifier.fillMaxSize().padding(padding)) {
             readerContent()
         }
+    }
+    if (chromeVisible && sideControls != null) {
+        SideColumnControls(sideControls) {
+            SideColumnButton("chevron.left", Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
+            SideColumnGap()
+            SideColumnButton("slider.horizontal.3", Icons.Filled.Tune, "Reading settings", { showSettings = true })
+        }
+    }
     }
 
     if (showSettings) {

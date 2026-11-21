@@ -3,7 +3,7 @@ package net.dexxicon.reader.shared.reader.epub
 import net.dexxicon.reader.shared.SideColumnGap
 import net.dexxicon.reader.shared.SideColumnControls
 import net.dexxicon.reader.shared.SideColumnButton
-import net.dexxicon.reader.shared.sideBarColumn
+import net.dexxicon.reader.shared.sideControls
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -202,7 +202,8 @@ private fun ReaderContent(
     var showBookmarks by remember { mutableStateOf(false) }
     var resumeDismissed by remember { mutableStateOf(false) }
     // Issue #343 — on the iPhone Duo the toolbar stands in the side column instead.
-    val sideColumn = sideBarColumn()
+    // Issue #355 — held upright, the Duo puts them in the status band across the top instead.
+    val sideColumn = sideControls()
     val toggleBookmark = { currentBookmark?.let { onDeleteBookmark(it.id) } ?: onAddBookmark() }
 
     Box(Modifier.fillMaxSize()) {
