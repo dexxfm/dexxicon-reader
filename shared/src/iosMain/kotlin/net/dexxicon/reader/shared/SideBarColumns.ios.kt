@@ -15,7 +15,6 @@ internal actual fun sideStatusBarBottom(): Double? {
         ?: return null
     val manager = scene.statusBarManager ?: return null
     return manager.statusBarFrame.useContents {
-        println("DEXXICON_DUO statusBarFrame x=${origin.x} y=${origin.y} w=${size.width} h=${size.height}")
         if (size.height > size.width) origin.y + size.height else null
     }
 }
