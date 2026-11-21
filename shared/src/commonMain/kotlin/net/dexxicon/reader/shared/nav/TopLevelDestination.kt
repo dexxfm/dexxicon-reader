@@ -15,8 +15,13 @@ import androidx.compose.ui.graphics.vector.ImageVector
  * Unlike native, there's no
  * `stringResource`/`R.string` in commonMain, so labels are plain strings here.
  */
-enum class TopLevelDestination(val label: String, val icon: ImageVector) {
-    HOME("Home", Icons.Filled.Home),
-    LIBRARY("Library", Icons.AutoMirrored.Filled.LibraryBooks),
-    SETTINGS("Settings", Icons.Filled.Settings),
+enum class TopLevelDestination(
+    val label: String,
+    val icon: ImageVector,
+    /** Issue #343 — the SF Symbol used where the nav sits among iOS's own controls; `.fill` when selected. */
+    val symbol: String,
+) {
+    HOME("Home", Icons.Filled.Home, "house"),
+    LIBRARY("Library", Icons.AutoMirrored.Filled.LibraryBooks, "books.vertical"),
+    SETTINGS("Settings", Icons.Filled.Settings, "gearshape"),
 }
