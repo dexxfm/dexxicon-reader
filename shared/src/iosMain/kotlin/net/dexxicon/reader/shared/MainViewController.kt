@@ -8,6 +8,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.UIKitViewController
+import androidx.compose.ui.window.ComposeUIViewController
 import coil3.SingletonImageLoader
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
@@ -80,7 +81,7 @@ private val appContainer: AppContainer by lazy {
  * only interops with Objective-C/C, not arbitrary Swift). Swift's implementation pushes a
  * fully native reader screen on its own `UINavigationController`, outside Compose entirely.
  */
-fun MainViewController(onOpenReader: OnOpenReader) = fullWidthComposeViewController {
+fun MainViewController(onOpenReader: OnOpenReader) = ComposeUIViewController {
     App(appContainer, onOpenReader = onOpenReader)
 }
 
@@ -175,7 +176,7 @@ fun setPlayerActions(
  * no separate load-on-appear step, since by the time this is presented `ContentView.swift` has
  * already called `AudiobookPlaybackController.shared.start(book:authHeader:)`.
  */
-fun PlayerViewController(onBack: () -> Unit): UIViewController = fullWidthComposeViewController {
+fun PlayerViewController(onBack: () -> Unit): UIViewController = ComposeUIViewController {
     val state by appContainer.playerState.collectAsState()
     val actions = appContainer.playerActions
     if (actions != null) {
@@ -267,7 +268,7 @@ fun EpubReaderViewController(
     navigatorViewController: UIViewController,
     serverId: String,
     bookId: String,
-): UIViewController = fullWidthComposeViewController {
+): UIViewController = ComposeUIViewController {
     val native by appContainer.epubReaderState.collectAsState()
     val chromeVisible by appContainer.epubChromeVisible.collectAsState()
     val activeHighlightId by appContainer.epubActiveHighlightId.collectAsState()
@@ -394,7 +395,7 @@ fun PdfReaderViewController(
     navigatorViewController: UIViewController,
     serverId: String,
     bookId: String,
-): UIViewController = fullWidthComposeViewController {
+): UIViewController = ComposeUIViewController {
     val native by appContainer.pdfReaderState.collectAsState()
     val bookmarks by appContainer.bookmarkRepository.observe(serverId, bookId).collectAsState(emptyList())
     val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
@@ -513,7 +514,7 @@ fun ComicReaderViewController(
     navigatorViewController: UIViewController,
     serverId: String,
     bookId: String,
-): UIViewController = fullWidthComposeViewController {
+): UIViewController = ComposeUIViewController {
     val native by appContainer.comicReaderState.collectAsState()
     val chromeVisible by appContainer.comicChromeVisible.collectAsState()
     val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
