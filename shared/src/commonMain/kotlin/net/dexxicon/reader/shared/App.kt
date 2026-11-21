@@ -900,7 +900,7 @@ fun AddServerScreen(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                val typesAddress = state.kind == ServerKind.NATIVE || state.kind == ServerKind.OPDS
+                val typesAddress = !state.kind.isOpds || state.kind == ServerKind.OPDS
                 state.kind.blurb?.let { blurb ->
                     Text(blurb, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
