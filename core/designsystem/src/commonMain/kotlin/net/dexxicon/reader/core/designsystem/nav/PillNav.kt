@@ -169,14 +169,11 @@ fun <T> FloatingPillNavBar(
             val baseTint = LiquidGlassDefaults.tintFor(LocalDarkTheme.current)
             baseTint.copy(alpha = (baseTint.alpha * scale).coerceIn(0f, 1f))
         }
-        // Upright, the pill stands in a column of system bars beside the content, with nothing
-        // behind it to blur, and its position falls outside the glass source's bounds, so
-        // sampling it picked up whatever wrapped around (a book cover's red). A solid fill there.
+        // Upright, the items stand in the column of system bars as bare icons, the same as the
+        // status icons above them: no capsule, no shadow (the owner's call on #343). There's
+        // nothing behind them to blur there anyway.
         val surface = if (vertical) {
             Modifier
-                .shadow(8.dp, Pill)
-                .background(MaterialTheme.colorScheme.surfaceVariant, Pill)
-                .border(1.dp, outline.copy(alpha = 0.5f), Pill)
         } else {
             Modifier
                 .shadow(8.dp, Pill)
@@ -209,7 +206,7 @@ fun <T> FloatingPillNavBar(
                     )
                     Box(
                         Modifier
-                            .size(width = if (vertical) 52.dp else 74.dp, height = if (vertical) 64.dp else 52.dp)
+                            .size(width = if (vertical) 52.dp else 74.dp, height = 52.dp)
                             .selectable(
                                 selected = selected,
                                 interactionSource = interactionSource,
@@ -226,6 +223,8 @@ fun <T> FloatingPillNavBar(
                                 icon(destination),
                                 contentDescription = label(destination),
                                 tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                // Matches the status icons' size beside them when upright.
+                                modifier = if (vertical) Modifier.size(28.dp) else Modifier,
                             )
                         }
                     }
@@ -239,7 +238,7 @@ fun <T> FloatingPillNavBar(
 @Composable
 private fun PillItems(vertical: Boolean, content: @Composable () -> Unit) {
     if (vertical) {
-        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) { content() }
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
     } else {
         Row(Modifier.padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) { content() }
     }
