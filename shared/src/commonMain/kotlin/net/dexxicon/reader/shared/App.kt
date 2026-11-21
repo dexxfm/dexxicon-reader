@@ -193,10 +193,13 @@ private class SideBarColumn(val alignment: Alignment, val width: Dp, val onRight
 private val SIDE_COLUMN_GAP = 8.dp
 
 /**
- * Where the side column's controls start when iOS doesn't report a side status bar: below the
- * outer screen's camera and clock, measured on the simulator (the clock ends near 150pt).
+ * Where the side column's status bar ends when iOS doesn't report it (on the iPhone Duo it
+ * reports a 2pt strip across the top). Measured on the simulator: the outer screen stacks the
+ * camera and then the clock (ending near 150pt); the inner screen, whose camera hides, only
+ * the clock and status icons (ending near 100pt).
  */
-private val SIDE_COLUMN_FALLBACK_TOP = 150.dp
+private val OUTER_STATUS_BOTTOM = 150.dp
+private val INNER_STATUS_BOTTOM = 100.dp
 
 /** A side inset below this counts as none (rounding, or a sliver of the display's corner). */
 private val NO_SIDE_INSET = 8.dp
@@ -214,8 +217,7 @@ private fun BoxWithConstraintsScope.sideBarColumn(): SideBarColumn? {
     val right = with(density) { insets.getRight(density, direction).toDp() }
     // Re-read when the screen changes size (folding or unfolding, rotating).
     val statusBottom = remember(maxWidth, maxHeight) { sideStatusBarBottom() }
-    val top = statusBottom?.dp ?: SIDE_COLUMN_FALLBACK_TOP
-    println("DEXXICON_DUO insets left=$left right=$right size=${maxWidth}x$maxHeight statusBottom=$statusBottom")
+    val top = statusBottom?.dp ?: if (maxHeight > maxWidth) OUTER_STATUS_BOTTOM else INNER_STATUS_BOTTOM
     return when {
         right >= MIN_SIDE_COLUMN && left < NO_SIDE_INSET -> SideBarColumn(AbsoluteAlignment.TopRight, right, onRight = true, top = top)
         left >= MIN_SIDE_COLUMN && right < NO_SIDE_INSET -> SideBarColumn(AbsoluteAlignment.TopLeft, left, onRight = false, top = top)

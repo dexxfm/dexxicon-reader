@@ -169,7 +169,15 @@ fun <T> FloatingPillNavBar(
             val baseTint = LiquidGlassDefaults.tintFor(LocalDarkTheme.current)
             baseTint.copy(alpha = (baseTint.alpha * scale).coerceIn(0f, 1f))
         }
-        Box(
+        // Upright, the pill stands in a column of system bars beside the content, with nothing
+        // behind it to blur, and its position falls outside the glass source's bounds, so
+        // sampling it picked up whatever wrapped around (a book cover's red). A solid fill there.
+        val surface = if (vertical) {
+            Modifier
+                .shadow(8.dp, Pill)
+                .background(MaterialTheme.colorScheme.surfaceVariant, Pill)
+                .border(1.dp, outline.copy(alpha = 0.5f), Pill)
+        } else {
             Modifier
                 .shadow(8.dp, Pill)
                 .liquidGlass(
@@ -182,8 +190,9 @@ fun <T> FloatingPillNavBar(
                         0f to outline.copy(alpha = 0.8f),
                         1f to outline.copy(alpha = 0.1f),
                     ),
-                ),
-        ) {
+                )
+        }
+        Box(surface) {
             PillItems(vertical) {
                 destinations.forEach { destination ->
                     val selected = destination == current
