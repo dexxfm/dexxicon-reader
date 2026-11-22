@@ -85,6 +85,20 @@ class EpubPreferencesMappingTest {
         assertThat(publisherDefault.publisherStyles).isNull()
     }
 
+    @Test fun `paragraph spacing maps to Readium rem value and disables publisher styles`() {
+        mapOf(0.0 to 0.0, 0.1 to 0.1, 1.0 to 1.0, 1.7 to 1.7, 2.0 to 2.0)
+            .forEach { (spacing, expected) ->
+                val preferences = ReaderDisplayPreferences(paragraphSpacing = spacing)
+                    .toEpubPreferences(systemInDark = false)
+                assertThat(preferences.paragraphSpacing).isEqualTo(expected)
+                assertThat(preferences.publisherStyles).isFalse()
+            }
+
+        val publisherDefault = ReaderDisplayPreferences().toEpubPreferences(systemInDark = false)
+        assertThat(publisherDefault.paragraphSpacing).isNull()
+        assertThat(publisherDefault.publisherStyles).isNull()
+    }
+
     @Test fun `grey background paints explicit colours over a light base`() {
         val grey = ReaderDisplayPreferences(theme = ReaderTheme.GREY).toEpubPreferences(systemInDark = true)
         assertThat(grey.theme).isEqualTo(Theme.LIGHT)

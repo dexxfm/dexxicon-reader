@@ -17,6 +17,7 @@ import okio.Path.Companion.toPath
 data class ReaderDisplayPreferences(
     val fontScale: Double = DEFAULT_FONT_SCALE,
     val lineSpacing: Double? = null,
+    val paragraphSpacing: Double? = null,
     /** EPUB typeface override. Null leaves the publication's own font in effect. */
     val fontFamily: ReaderFontFamily? = null,
     val theme: ReaderTheme = ReaderTheme.SYSTEM,
@@ -59,6 +60,9 @@ data class ReaderDisplayPreferences(
         const val MIN_LINE_SPACING = 1.0
         const val MAX_LINE_SPACING = 3.0
         const val DEFAULT_LINE_SPACING = 1.0
+        const val MIN_PARAGRAPH_SPACING = 0.0
+        const val MAX_PARAGRAPH_SPACING = 2.0
+        const val DEFAULT_PARAGRAPH_SPACING = 0.0
     }
 }
 
@@ -126,6 +130,7 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
         val FONT_SIZE_PX = intPreferencesKey("font_size_px")
         val FONT_SCALE = doublePreferencesKey("font_scale")
         val LINE_SPACING_OVERRIDE = doublePreferencesKey("line_height_override")
+        val PARAGRAPH_SPACING_OVERRIDE = doublePreferencesKey("paragraph_spacing_override")
         val FONT_FAMILY = stringPreferencesKey("font_family")
         val THEME = stringPreferencesKey("theme")
         val FIT_MODE = stringPreferencesKey("fit_mode")
@@ -147,6 +152,8 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
             prefs.remove(Keys.FONT_SIZE_PX)
             next.lineSpacing?.let { prefs[Keys.LINE_SPACING_OVERRIDE] = normalizeLineSpacing(it) }
                 ?: prefs.remove(Keys.LINE_SPACING_OVERRIDE)
+            next.paragraphSpacing?.let { prefs[Keys.PARAGRAPH_SPACING_OVERRIDE] = normalizeParagraphSpacing(it) }
+                ?: prefs.remove(Keys.PARAGRAPH_SPACING_OVERRIDE)
             next.fontFamily?.let { prefs[Keys.FONT_FAMILY] = it.name }
                 ?: prefs.remove(Keys.FONT_FAMILY)
             prefs[Keys.THEME] = next.theme.name
@@ -164,12 +171,13 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
     private fun Preferences.toPrefs() = ReaderDisplayPreferences(
         fontScale = (
             this[Keys.FONT_SCALE]
-                ?:                 this[Keys.FONT_SIZE_PX]?.let {
+                ?: this[Keys.FONT_SIZE_PX]?.let {
                     it.toDouble() / 16.0
                 }
                 ?: ReaderDisplayPreferences.DEFAULT_FONT_SCALE
             ).let(::normalizeFontScale),
         lineSpacing = this[Keys.LINE_SPACING_OVERRIDE]?.let(::normalizeLineSpacing),
+        paragraphSpacing = this[Keys.PARAGRAPH_SPACING_OVERRIDE]?.let(::normalizeParagraphSpacing),
         fontFamily = this[Keys.FONT_FAMILY]?.let { enumOrNull<ReaderFontFamily>(it) },
         theme = this[Keys.THEME]?.let { enumOrNull<ReaderTheme>(it) } ?: ReaderTheme.SYSTEM,
         fitMode = this[Keys.FIT_MODE]?.let { enumOrNull<ReaderFitMode>(it) } ?: ReaderFitMode.PAGE_FIT,
@@ -211,6 +219,13 @@ private fun normalizeLineSpacing(lineSpacing: Double): Double =
         lineSpacing,
         ReaderDisplayPreferences.MIN_LINE_SPACING,
         ReaderDisplayPreferences.MAX_LINE_SPACING,
+    )
+
+private fun normalizeParagraphSpacing(paragraphSpacing: Double): Double =
+    normalizeScale(
+        paragraphSpacing,
+        ReaderDisplayPreferences.MIN_PARAGRAPH_SPACING,
+        ReaderDisplayPreferences.MAX_PARAGRAPH_SPACING,
     )
 
 private fun normalizeScale(value: Double, min: Double, max: Double): Double =

@@ -54,8 +54,9 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         fontFamily = resolvedFontFamily,
         fontSize = fontScale,
         lineHeight = lineSpacing,
-        // Readium applies line height only when publisher styles are disabled.
-        publisherStyles = lineSpacing?.let { false },
+        paragraphSpacing = paragraphSpacing,
+        // Readium applies line height and paragraph spacing only when publisher styles are disabled.
+        publisherStyles = if (lineSpacing != null || paragraphSpacing != null) false else null,
         theme = resolvedTheme,
         // These palettes aren't Readium built-ins; paint them over a neutral light base.
         backgroundColor = customColors?.first,

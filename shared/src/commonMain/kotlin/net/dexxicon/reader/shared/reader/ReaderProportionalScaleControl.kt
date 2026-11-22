@@ -65,7 +65,7 @@ internal fun ReaderProportionalScaleControl(
                     .weight(1f)
                     .semantics {
                         contentDescription = title
-                        stateDescription = "${proportionalScaleLabel(scale)} times"
+                        stateDescription = valueLabel
                     },
             )
             IconButton(

@@ -334,7 +334,8 @@ final class EpubReaderViewController: UIViewController {
             fontFamily: fontFamily,
             fontSize: prefs.fontScale,
             lineHeight: prefs.lineSpacing,
-            publisherStyles: prefs.lineSpacing == nil ? nil : false,
+            paragraphSpacing: prefs.paragraphSpacing,
+            publisherStyles: prefs.lineSpacing == nil && prefs.paragraphSpacing == nil ? nil : false,
             scroll: prefs.scroll,
             theme: resolvedTheme
         )

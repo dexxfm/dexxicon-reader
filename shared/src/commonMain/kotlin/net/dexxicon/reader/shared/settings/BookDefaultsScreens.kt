@@ -205,6 +205,17 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
         ) { spacing ->
             update { it.copy(lineSpacing = spacing) }
         }
+        ReaderProportionalScaleControl(
+            title = "Paragraph spacing",
+            scale = prefs.paragraphSpacing ?: ReaderDisplayPreferences.DEFAULT_PARAGRAPH_SPACING,
+            min = ReaderDisplayPreferences.MIN_PARAGRAPH_SPACING,
+            max = ReaderDisplayPreferences.MAX_PARAGRAPH_SPACING,
+            onDecreaseDescription = "Decrease paragraph spacing",
+            onIncreaseDescription = "Increase paragraph spacing",
+            valueLabel = prefs.paragraphSpacing?.let { "${proportionalScaleLabel(it)} rem" } ?: "Default",
+        ) { spacing ->
+            update { it.copy(paragraphSpacing = spacing) }
+        }
         DefaultsChips("Page layout", ReaderPageLayout.entries, prefs.pageLayout, ::readerPageLayoutLabel) { layout ->
             update { it.copy(pageLayout = layout) }
         }

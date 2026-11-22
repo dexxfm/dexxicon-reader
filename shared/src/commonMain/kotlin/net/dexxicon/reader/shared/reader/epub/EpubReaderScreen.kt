@@ -620,6 +620,17 @@ private fun DisplaySettings(
                 valueLabel = preferences.lineSpacing?.let { "${proportionalScaleLabel(it)}×" } ?: "Default",
                 onScaleChange = { spacing -> onChange { it.copy(lineSpacing = spacing) } },
             )
+            ReaderProportionalScaleControl(
+                title = "Paragraph spacing",
+                scale = preferences.paragraphSpacing ?: ReaderDisplayPreferences.DEFAULT_PARAGRAPH_SPACING,
+                min = ReaderDisplayPreferences.MIN_PARAGRAPH_SPACING,
+                max = ReaderDisplayPreferences.MAX_PARAGRAPH_SPACING,
+                onDecreaseDescription = "Decrease paragraph spacing",
+                onIncreaseDescription = "Increase paragraph spacing",
+                valueLabel = preferences.paragraphSpacing?.let { "${proportionalScaleLabel(it)} rem" }
+                    ?: "Default",
+                onScaleChange = { spacing -> onChange { it.copy(paragraphSpacing = spacing) } },
+            )
         }
 
         SettingSection(
