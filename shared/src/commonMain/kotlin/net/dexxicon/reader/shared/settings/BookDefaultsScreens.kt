@@ -216,6 +216,33 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
         ) { spacing ->
             update { it.copy(paragraphSpacing = spacing) }
         }
+        SettingRow(
+            title = "Paragraph indent",
+            subtitle = if (prefs.paragraphIndent == null) "Readium default" else null,
+        ) {
+            Switch(
+                checked = prefs.paragraphIndent ?: false,
+                onCheckedChange = { enabled -> update { it.copy(paragraphIndent = enabled) } },
+            )
+        }
+        SettingRow(
+            title = "Justification",
+            subtitle = if (prefs.justification == null) "Readium default" else null,
+        ) {
+            Switch(
+                checked = prefs.justification ?: false,
+                onCheckedChange = { enabled -> update { it.copy(justification = enabled) } },
+            )
+        }
+        SettingRow(
+            title = "Hyphenation",
+            subtitle = if (prefs.hyphenation == null) "Readium default" else null,
+        ) {
+            Switch(
+                checked = prefs.hyphenation ?: false,
+                onCheckedChange = { enabled -> update { it.copy(hyphenation = enabled) } },
+            )
+        }
         DefaultsChips("Page layout", ReaderPageLayout.entries, prefs.pageLayout, ::readerPageLayoutLabel) { layout ->
             update { it.copy(pageLayout = layout) }
         }

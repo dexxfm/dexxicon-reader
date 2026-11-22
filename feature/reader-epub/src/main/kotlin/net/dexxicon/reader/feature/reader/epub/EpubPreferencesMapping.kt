@@ -10,6 +10,7 @@ import org.readium.r2.navigator.preferences.Color
 import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Theme
+import org.readium.r2.navigator.preferences.TextAlign
 
 // A soft neutral grey — sits between the white and black page options without going fully dark.
 // Not private: EpubReaderScreen's Background chip swatches reuse this exact value so the
@@ -54,9 +55,22 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         fontFamily = resolvedFontFamily,
         fontSize = fontScale,
         lineHeight = lineSpacing,
+        hyphens = hyphenation,
+        paragraphIndent = paragraphIndent?.let { if (it) 1.0 else 0.0 },
         paragraphSpacing = paragraphSpacing,
-        // Readium applies line height and paragraph spacing only when publisher styles are disabled.
-        publisherStyles = if (lineSpacing != null || paragraphSpacing != null) false else null,
+        textAlign = justification?.let { if (it) TextAlign.JUSTIFY else TextAlign.START },
+        // Readium applies these typography overrides only when publisher styles are disabled.
+        publisherStyles = if (
+            lineSpacing != null ||
+            paragraphSpacing != null ||
+            paragraphIndent != null ||
+            justification != null ||
+            hyphenation != null
+        ) {
+            false
+        } else {
+            null
+        },
         theme = resolvedTheme,
         // These palettes aren't Readium built-ins; paint them over a neutral light base.
         backgroundColor = customColors?.first,

@@ -334,8 +334,15 @@ final class EpubReaderViewController: UIViewController {
             fontFamily: fontFamily,
             fontSize: prefs.fontScale,
             lineHeight: prefs.lineSpacing,
+            hyphens: prefs.hyphenation,
+            paragraphIndent: prefs.paragraphIndent.map { $0 ? 1.0 : 0.0 },
             paragraphSpacing: prefs.paragraphSpacing,
-            publisherStyles: prefs.lineSpacing == nil && prefs.paragraphSpacing == nil ? nil : false,
+            textAlign: prefs.justification.map { $0 ? .justify : .start },
+            publisherStyles: prefs.lineSpacing == nil &&
+                prefs.paragraphSpacing == nil &&
+                prefs.paragraphIndent == nil &&
+                prefs.justification == nil &&
+                prefs.hyphenation == nil ? nil : false,
             scroll: prefs.scroll,
             theme: resolvedTheme
         )

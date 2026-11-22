@@ -9,6 +9,7 @@ import net.dexxicon.reader.core.datastore.ReaderScrollMode
 import net.dexxicon.reader.core.datastore.ReaderTheme
 import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.Theme
+import org.readium.r2.navigator.preferences.TextAlign
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -97,6 +98,34 @@ class EpubPreferencesMappingTest {
         val publisherDefault = ReaderDisplayPreferences().toEpubPreferences(systemInDark = false)
         assertThat(publisherDefault.paragraphSpacing).isNull()
         assertThat(publisherDefault.publisherStyles).isNull()
+    }
+
+    @Test fun `typography toggles map to Readium overrides and preserve defaults when unset`() {
+        val defaults = ReaderDisplayPreferences().toEpubPreferences(systemInDark = false)
+        assertThat(defaults.paragraphIndent).isNull()
+        assertThat(defaults.textAlign).isNull()
+        assertThat(defaults.hyphens).isNull()
+        assertThat(defaults.publisherStyles).isNull()
+
+        val enabled = ReaderDisplayPreferences(
+            paragraphIndent = true,
+            justification = true,
+            hyphenation = true,
+        ).toEpubPreferences(systemInDark = false)
+        assertThat(enabled.paragraphIndent).isEqualTo(1.0)
+        assertThat(enabled.textAlign).isEqualTo(TextAlign.JUSTIFY)
+        assertThat(enabled.hyphens).isTrue()
+        assertThat(enabled.publisherStyles).isFalse()
+
+        val disabled = ReaderDisplayPreferences(
+            paragraphIndent = false,
+            justification = false,
+            hyphenation = false,
+        ).toEpubPreferences(systemInDark = false)
+        assertThat(disabled.paragraphIndent).isEqualTo(0.0)
+        assertThat(disabled.textAlign).isEqualTo(TextAlign.START)
+        assertThat(disabled.hyphens).isFalse()
+        assertThat(disabled.publisherStyles).isFalse()
     }
 
     @Test fun `grey background paints explicit colours over a light base`() {

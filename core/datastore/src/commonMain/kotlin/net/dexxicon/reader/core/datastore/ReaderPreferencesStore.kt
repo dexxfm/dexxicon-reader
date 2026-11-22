@@ -18,6 +18,9 @@ data class ReaderDisplayPreferences(
     val fontScale: Double = DEFAULT_FONT_SCALE,
     val lineSpacing: Double? = null,
     val paragraphSpacing: Double? = null,
+    val paragraphIndent: Boolean? = null,
+    val justification: Boolean? = null,
+    val hyphenation: Boolean? = null,
     /** EPUB typeface override. Null leaves the publication's own font in effect. */
     val fontFamily: ReaderFontFamily? = null,
     val theme: ReaderTheme = ReaderTheme.SYSTEM,
@@ -131,6 +134,9 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
         val FONT_SCALE = doublePreferencesKey("font_scale")
         val LINE_SPACING_OVERRIDE = doublePreferencesKey("line_height_override")
         val PARAGRAPH_SPACING_OVERRIDE = doublePreferencesKey("paragraph_spacing_override")
+        val PARAGRAPH_INDENT = booleanPreferencesKey("paragraph_indent")
+        val JUSTIFICATION = booleanPreferencesKey("justification")
+        val HYPHENATION = booleanPreferencesKey("hyphenation")
         val FONT_FAMILY = stringPreferencesKey("font_family")
         val THEME = stringPreferencesKey("theme")
         val FIT_MODE = stringPreferencesKey("fit_mode")
@@ -154,6 +160,12 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
                 ?: prefs.remove(Keys.LINE_SPACING_OVERRIDE)
             next.paragraphSpacing?.let { prefs[Keys.PARAGRAPH_SPACING_OVERRIDE] = normalizeParagraphSpacing(it) }
                 ?: prefs.remove(Keys.PARAGRAPH_SPACING_OVERRIDE)
+            next.paragraphIndent?.let { prefs[Keys.PARAGRAPH_INDENT] = it }
+                ?: prefs.remove(Keys.PARAGRAPH_INDENT)
+            next.justification?.let { prefs[Keys.JUSTIFICATION] = it }
+                ?: prefs.remove(Keys.JUSTIFICATION)
+            next.hyphenation?.let { prefs[Keys.HYPHENATION] = it }
+                ?: prefs.remove(Keys.HYPHENATION)
             next.fontFamily?.let { prefs[Keys.FONT_FAMILY] = it.name }
                 ?: prefs.remove(Keys.FONT_FAMILY)
             prefs[Keys.THEME] = next.theme.name
@@ -178,6 +190,9 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
             ).let(::normalizeFontScale),
         lineSpacing = this[Keys.LINE_SPACING_OVERRIDE]?.let(::normalizeLineSpacing),
         paragraphSpacing = this[Keys.PARAGRAPH_SPACING_OVERRIDE]?.let(::normalizeParagraphSpacing),
+        paragraphIndent = this[Keys.PARAGRAPH_INDENT],
+        justification = this[Keys.JUSTIFICATION],
+        hyphenation = this[Keys.HYPHENATION],
         fontFamily = this[Keys.FONT_FAMILY]?.let { enumOrNull<ReaderFontFamily>(it) },
         theme = this[Keys.THEME]?.let { enumOrNull<ReaderTheme>(it) } ?: ReaderTheme.SYSTEM,
         fitMode = this[Keys.FIT_MODE]?.let { enumOrNull<ReaderFitMode>(it) } ?: ReaderFitMode.PAGE_FIT,

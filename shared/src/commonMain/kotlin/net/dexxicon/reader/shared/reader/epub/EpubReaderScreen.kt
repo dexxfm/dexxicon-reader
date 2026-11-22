@@ -93,6 +93,7 @@ import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.shared.reader.proportionalScaleLabel
 import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
+import net.dexxicon.reader.shared.settings.SettingRow
 
 /** issue #117: grey background, unchanged from Android's original standalone screen. */
 private const val SEPIA_BACKGROUND = 0xFFF4ECD8.toInt()
@@ -631,6 +632,33 @@ private fun DisplaySettings(
                     ?: "Default",
                 onScaleChange = { spacing -> onChange { it.copy(paragraphSpacing = spacing) } },
             )
+            SettingRow(
+                title = "Paragraph indent",
+                subtitle = if (preferences.paragraphIndent == null) "Readium default" else null,
+            ) {
+                Switch(
+                    checked = preferences.paragraphIndent ?: false,
+                    onCheckedChange = { enabled -> onChange { it.copy(paragraphIndent = enabled) } },
+                )
+            }
+            SettingRow(
+                title = "Justification",
+                subtitle = if (preferences.justification == null) "Readium default" else null,
+            ) {
+                Switch(
+                    checked = preferences.justification ?: false,
+                    onCheckedChange = { enabled -> onChange { it.copy(justification = enabled) } },
+                )
+            }
+            SettingRow(
+                title = "Hyphenation",
+                subtitle = if (preferences.hyphenation == null) "Readium default" else null,
+            ) {
+                Switch(
+                    checked = preferences.hyphenation ?: false,
+                    onCheckedChange = { enabled -> onChange { it.copy(hyphenation = enabled) } },
+                )
+            }
         }
 
         SettingSection(
