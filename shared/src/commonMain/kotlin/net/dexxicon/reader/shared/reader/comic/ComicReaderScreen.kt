@@ -163,7 +163,7 @@ private fun ReaderContent(
     var showSettings by remember { mutableStateOf(false) }
     // issue #308 — the app's theme, not the phone's.
     val darkTheme = LocalDarkTheme.current
-    val surface = preferences.theme.comicSurfaceColor(darkTheme)
+    val surface = preferences.theme.comicSurfaceColor(darkTheme, preferences)
     // Issue #355 — on the iPhone Duo the toolbar stands in the side column or the status band.
     val sideControls = sideControls()
 
@@ -418,12 +418,17 @@ private fun comicThemeLabel(theme: ReaderTheme): String = when (theme) {
     ReaderTheme.DARK -> "Black"
     ReaderTheme.MIDNIGHT -> "Midnight"
     ReaderTheme.NORD -> "Nord"
+    ReaderTheme.CUSTOM_1 -> "Custom 1"
+    ReaderTheme.CUSTOM_2 -> "Custom 2"
 }
 
 /** Same shape as [net.dexxicon.reader.shared.reader.pdf.PdfReaderScreen]'s own
  * `pdfSurfaceColor` — duplicated per that function's own doc comment (a pure Compose mapping
  * with no engine dependency belongs beside its own reader, not in a shared-utilities file). */
-private fun ReaderTheme.comicSurfaceColor(appInDark: Boolean): Color = when (this) {
+private fun ReaderTheme.comicSurfaceColor(
+    appInDark: Boolean,
+    preferences: ReaderDisplayPreferences,
+): Color = when (this) {
     ReaderTheme.SYSTEM -> if (appInDark) Color(0xFF101114) else Color(0xFFF6F6F6)
     ReaderTheme.LIGHT -> Color(0xFFF6F6F6)
     ReaderTheme.SEPIA -> Color(0xFFEFE6D3)
@@ -432,6 +437,8 @@ private fun ReaderTheme.comicSurfaceColor(appInDark: Boolean): Color = when (thi
     ReaderTheme.DARK -> Color(0xFF101114)
     ReaderTheme.MIDNIGHT -> Color(0xFF0F172A.toInt())
     ReaderTheme.NORD -> Color(0xFF2E3440.toInt())
+    ReaderTheme.CUSTOM_1 -> Color(preferences.custom1Background)
+    ReaderTheme.CUSTOM_2 -> Color(preferences.custom2Background)
 }
 
 @Composable

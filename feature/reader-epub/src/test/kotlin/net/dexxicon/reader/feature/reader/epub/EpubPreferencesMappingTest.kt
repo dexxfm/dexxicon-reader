@@ -144,6 +144,14 @@ class EpubPreferencesMappingTest {
             ReaderTheme.SEPIA_DARK to (0xFFC4B090.toInt() to 0xFF2E2014.toInt()),
             ReaderTheme.MIDNIGHT to (0xFF0F172A.toInt() to 0xFFEDF4FC.toInt()),
             ReaderTheme.NORD to (0xFF2E3440.toInt() to 0xFFE3E9F5.toInt()),
+            ReaderTheme.CUSTOM_1 to (
+                ReaderDisplayPreferences.DEFAULT_CUSTOM_1_BACKGROUND to
+                    ReaderDisplayPreferences.DEFAULT_CUSTOM_1_FOREGROUND
+                ),
+            ReaderTheme.CUSTOM_2 to (
+                ReaderDisplayPreferences.DEFAULT_CUSTOM_2_BACKGROUND to
+                    ReaderDisplayPreferences.DEFAULT_CUSTOM_2_FOREGROUND
+                ),
         )
 
         palettes.forEach { (theme, colors) ->
@@ -153,6 +161,14 @@ class EpubPreferencesMappingTest {
             assertThat(preferences.backgroundColor?.int).isEqualTo(colors.first)
             assertThat(preferences.textColor?.int).isEqualTo(colors.second)
         }
+
+        val edited = ReaderDisplayPreferences(
+            theme = ReaderTheme.CUSTOM_1,
+            custom1Background = 0xFF123456.toInt(),
+            custom1Foreground = 0xFFABCDEF.toInt(),
+        ).toEpubPreferences(systemInDark = false)
+        assertThat(edited.backgroundColor?.int).isEqualTo(0xFF123456.toInt())
+        assertThat(edited.textColor?.int).isEqualTo(0xFFABCDEF.toInt())
     }
 
     @Test fun `auto page layout switches to two columns on a wide viewport`() {

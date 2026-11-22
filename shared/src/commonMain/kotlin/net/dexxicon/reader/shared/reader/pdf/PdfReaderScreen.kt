@@ -152,7 +152,7 @@ private fun ReaderContent(
     var showSettings by remember { mutableStateOf(false) }
     // issue #308 — the app's theme, not the phone's.
     val darkTheme = LocalDarkTheme.current
-    val surface = preferences.theme.pdfSurfaceColor(darkTheme)
+    val surface = preferences.theme.pdfSurfaceColor(darkTheme, preferences)
     // Issue #355 — on the iPhone Duo the toolbar stands in the side column or the status band.
     val sideControls = sideControls()
     val toggleBookmark = { currentBookmark?.let { onDeleteBookmark(it.id) } ?: onAddBookmark() }
@@ -409,6 +409,8 @@ private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
     ReaderTheme.DARK -> "Black"
     ReaderTheme.MIDNIGHT -> "Midnight"
     ReaderTheme.NORD -> "Nord"
+    ReaderTheme.CUSTOM_1 -> "Custom 1"
+    ReaderTheme.CUSTOM_2 -> "Custom 2"
 }
 
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {
@@ -433,7 +435,7 @@ private fun Bookmark.pageNumber(): Int? = pageFromLocatorJson(locatorJson)
  * PDFKit both render page content as opaque bitmaps, so this only shows in the page spacing,
  * the margins and when zoomed out — not on the page itself.
  */
-private fun ReaderTheme.pdfSurfaceColor(appInDark: Boolean): Color = when (this) {
+private fun ReaderTheme.pdfSurfaceColor(appInDark: Boolean, preferences: ReaderDisplayPreferences): Color = when (this) {
     ReaderTheme.SYSTEM -> if (appInDark) Color(0xFF101114) else Color(0xFFF6F6F6)
     ReaderTheme.LIGHT -> Color(0xFFF6F6F6)
     ReaderTheme.SEPIA -> Color(0xFFEFE6D3)
@@ -442,6 +444,8 @@ private fun ReaderTheme.pdfSurfaceColor(appInDark: Boolean): Color = when (this)
     ReaderTheme.DARK -> Color(0xFF101114)
     ReaderTheme.MIDNIGHT -> Color(0xFF0F172A.toInt())
     ReaderTheme.NORD -> Color(0xFF2E3440.toInt())
+    ReaderTheme.CUSTOM_1 -> Color(preferences.custom1Background)
+    ReaderTheme.CUSTOM_2 -> Color(preferences.custom2Background)
 }
 
 @Composable

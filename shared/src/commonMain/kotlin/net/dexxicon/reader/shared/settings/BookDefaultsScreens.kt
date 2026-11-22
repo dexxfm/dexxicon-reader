@@ -40,6 +40,7 @@ import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.reader.proportionalScaleLabel
 import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
+import net.dexxicon.reader.shared.reader.ReaderCustomThemeRow
 
 /**
  * Phase 4 Stage H (issue #145) — Book Defaults, ported from native's
@@ -128,9 +129,32 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
         )
-        DefaultsChips("Background", ReaderTheme.entries, prefs.theme, ::readerThemeLabel) { theme ->
+        DefaultsChips(
+            "Background",
+            ReaderTheme.entries.filter { it != ReaderTheme.CUSTOM_1 && it != ReaderTheme.CUSTOM_2 },
+            prefs.theme,
+            ::readerThemeLabel,
+        ) { theme ->
             update { it.copy(theme = theme) }
         }
+        ReaderCustomThemeRow(
+            title = "Custom 1",
+            selected = prefs.theme == ReaderTheme.CUSTOM_1,
+            background = prefs.custom1Background,
+            foreground = prefs.custom1Foreground,
+            onSelect = { update { it.copy(theme = ReaderTheme.CUSTOM_1) } },
+            onBackgroundChange = { color -> update { it.copy(custom1Background = color) } },
+            onForegroundChange = { color -> update { it.copy(custom1Foreground = color) } },
+        )
+        ReaderCustomThemeRow(
+            title = "Custom 2",
+            selected = prefs.theme == ReaderTheme.CUSTOM_2,
+            background = prefs.custom2Background,
+            foreground = prefs.custom2Foreground,
+            onSelect = { update { it.copy(theme = ReaderTheme.CUSTOM_2) } },
+            onBackgroundChange = { color -> update { it.copy(custom2Background = color) } },
+            onForegroundChange = { color -> update { it.copy(custom2Foreground = color) } },
+        )
         Text(
             "EPUB and PDF.",
             style = MaterialTheme.typography.bodySmall,
@@ -358,6 +382,8 @@ private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
     ReaderTheme.DARK -> "Black"
     ReaderTheme.MIDNIGHT -> "Midnight"
     ReaderTheme.NORD -> "Nord"
+    ReaderTheme.CUSTOM_1 -> "Custom 1"
+    ReaderTheme.CUSTOM_2 -> "Custom 2"
 }
 
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {

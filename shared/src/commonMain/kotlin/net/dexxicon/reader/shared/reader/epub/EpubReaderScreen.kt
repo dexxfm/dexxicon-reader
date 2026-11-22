@@ -93,6 +93,7 @@ import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.shared.reader.proportionalScaleLabel
 import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
+import net.dexxicon.reader.shared.reader.ReaderCustomThemeRow
 import net.dexxicon.reader.shared.settings.SettingRow
 
 /** issue #117: grey background, unchanged from Android's original standalone screen. */
@@ -585,11 +586,29 @@ private fun DisplaySettings(
         ) {
             SettingChips(
                 title = "Background",
-                entries = ReaderTheme.entries,
+                entries = ReaderTheme.entries.filter { it != ReaderTheme.CUSTOM_1 && it != ReaderTheme.CUSTOM_2 },
                 selected = preferences.theme,
                 label = ::readerThemeLabel,
                 onSelect = { theme -> onChange { it.copy(theme = theme) } },
-                leadingIcon = { theme -> ThemeSwatch(theme) },
+                leadingIcon = { theme -> ThemeSwatch(theme, preferences) },
+            )
+            ReaderCustomThemeRow(
+                title = "Custom 1",
+                selected = preferences.theme == ReaderTheme.CUSTOM_1,
+                background = preferences.custom1Background,
+                foreground = preferences.custom1Foreground,
+                onSelect = { onChange { it.copy(theme = ReaderTheme.CUSTOM_1) } },
+                onBackgroundChange = { color -> onChange { it.copy(custom1Background = color) } },
+                onForegroundChange = { color -> onChange { it.copy(custom1Foreground = color) } },
+            )
+            ReaderCustomThemeRow(
+                title = "Custom 2",
+                selected = preferences.theme == ReaderTheme.CUSTOM_2,
+                background = preferences.custom2Background,
+                foreground = preferences.custom2Foreground,
+                onSelect = { onChange { it.copy(theme = ReaderTheme.CUSTOM_2) } },
+                onBackgroundChange = { color -> onChange { it.copy(custom2Background = color) } },
+                onForegroundChange = { color -> onChange { it.copy(custom2Foreground = color) } },
             )
         }
 
@@ -828,7 +847,7 @@ private fun <T> SettingChips(
  * instead of guessing the current system theme.
  */
 @Composable
-private fun ThemeSwatch(theme: ReaderTheme) {
+private fun ThemeSwatch(theme: ReaderTheme, preferences: ReaderDisplayPreferences) {
     val borderColor = MaterialTheme.colorScheme.outlineVariant
     Canvas(Modifier.size(18.dp)) {
         when (theme) {
@@ -843,6 +862,8 @@ private fun ThemeSwatch(theme: ReaderTheme) {
             ReaderTheme.DARK -> drawCircle(Color(DARK_BACKGROUND))
             ReaderTheme.MIDNIGHT -> drawCircle(Color(0xFF0F172A.toInt()))
             ReaderTheme.NORD -> drawCircle(Color(0xFF2E3440.toInt()))
+            ReaderTheme.CUSTOM_1 -> drawCircle(Color(preferences.custom1Background))
+            ReaderTheme.CUSTOM_2 -> drawCircle(Color(preferences.custom2Background))
         }
         drawCircle(borderColor, style = Stroke(width = 1.dp.toPx()))
     }
@@ -857,6 +878,8 @@ private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
     ReaderTheme.DARK -> "Black"
     ReaderTheme.MIDNIGHT -> "Midnight"
     ReaderTheme.NORD -> "Nord"
+    ReaderTheme.CUSTOM_1 -> "Custom 1"
+    ReaderTheme.CUSTOM_2 -> "Custom 2"
 }
 
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {

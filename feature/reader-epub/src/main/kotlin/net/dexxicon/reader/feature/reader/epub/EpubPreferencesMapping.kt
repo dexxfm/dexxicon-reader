@@ -30,7 +30,8 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         ReaderTheme.SEPIA -> Theme.SEPIA
         ReaderTheme.GREY -> Theme.LIGHT
         ReaderTheme.DARK -> Theme.DARK
-        ReaderTheme.SEPIA_DARK, ReaderTheme.MIDNIGHT, ReaderTheme.NORD -> Theme.LIGHT
+        ReaderTheme.SEPIA_DARK, ReaderTheme.MIDNIGHT, ReaderTheme.NORD, ReaderTheme.CUSTOM_1,
+        ReaderTheme.CUSTOM_2 -> Theme.LIGHT
         ReaderTheme.SYSTEM -> if (systemInDark) Theme.DARK else Theme.LIGHT
     }
     val resolvedFontFamily = when (fontFamily) {
@@ -49,6 +50,8 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         ReaderTheme.SEPIA_DARK -> Color(0xFFC4B090.toInt()) to Color(0xFF2E2014.toInt())
         ReaderTheme.MIDNIGHT -> Color(0xFF0F172A.toInt()) to Color(0xFFEDF4FC.toInt())
         ReaderTheme.NORD -> Color(0xFF2E3440.toInt()) to Color(0xFFE3E9F5.toInt())
+        ReaderTheme.CUSTOM_1 -> Color(custom1Background) to Color(custom1Foreground)
+        ReaderTheme.CUSTOM_2 -> Color(custom2Background) to Color(custom2Foreground)
         else -> null
     }
     return EpubPreferences(

@@ -21,6 +21,10 @@ data class ReaderDisplayPreferences(
     val paragraphIndent: Boolean? = null,
     val justification: Boolean? = null,
     val hyphenation: Boolean? = null,
+    val custom1Background: Int = DEFAULT_CUSTOM_1_BACKGROUND,
+    val custom1Foreground: Int = DEFAULT_CUSTOM_1_FOREGROUND,
+    val custom2Background: Int = DEFAULT_CUSTOM_2_BACKGROUND,
+    val custom2Foreground: Int = DEFAULT_CUSTOM_2_FOREGROUND,
     /** EPUB typeface override. Null leaves the publication's own font in effect. */
     val fontFamily: ReaderFontFamily? = null,
     val theme: ReaderTheme = ReaderTheme.SYSTEM,
@@ -66,6 +70,10 @@ data class ReaderDisplayPreferences(
         const val MIN_PARAGRAPH_SPACING = 0.0
         const val MAX_PARAGRAPH_SPACING = 2.0
         const val DEFAULT_PARAGRAPH_SPACING = 0.0
+        const val DEFAULT_CUSTOM_1_BACKGROUND = 0xFFFFFFFF.toInt()
+        const val DEFAULT_CUSTOM_1_FOREGROUND = 0xFF000000.toInt()
+        const val DEFAULT_CUSTOM_2_BACKGROUND = 0xFF000000.toInt()
+        const val DEFAULT_CUSTOM_2_FOREGROUND = 0xFFFFFFFF.toInt()
     }
 }
 
@@ -93,7 +101,7 @@ enum class ReaderFontFamily(val label: String) {
 }
 
 /** Reader page colours. Doubles as the EPUB reading theme. */
-enum class ReaderTheme { SYSTEM, LIGHT, SEPIA, SEPIA_DARK, GREY, DARK, MIDNIGHT, NORD }
+enum class ReaderTheme { SYSTEM, LIGHT, SEPIA, SEPIA_DARK, GREY, DARK, MIDNIGHT, NORD, CUSTOM_1, CUSTOM_2 }
 
 /**
  * Page-fit modes, borrowed from image/PDF viewers. Reflowable EPUB has no true "fit", so
@@ -137,6 +145,10 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
         val PARAGRAPH_INDENT = booleanPreferencesKey("paragraph_indent")
         val JUSTIFICATION = booleanPreferencesKey("justification")
         val HYPHENATION = booleanPreferencesKey("hyphenation")
+        val CUSTOM_1_BACKGROUND = intPreferencesKey("custom_1_background")
+        val CUSTOM_1_FOREGROUND = intPreferencesKey("custom_1_foreground")
+        val CUSTOM_2_BACKGROUND = intPreferencesKey("custom_2_background")
+        val CUSTOM_2_FOREGROUND = intPreferencesKey("custom_2_foreground")
         val FONT_FAMILY = stringPreferencesKey("font_family")
         val THEME = stringPreferencesKey("theme")
         val FIT_MODE = stringPreferencesKey("fit_mode")
@@ -166,6 +178,10 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
                 ?: prefs.remove(Keys.JUSTIFICATION)
             next.hyphenation?.let { prefs[Keys.HYPHENATION] = it }
                 ?: prefs.remove(Keys.HYPHENATION)
+            prefs[Keys.CUSTOM_1_BACKGROUND] = next.custom1Background
+            prefs[Keys.CUSTOM_1_FOREGROUND] = next.custom1Foreground
+            prefs[Keys.CUSTOM_2_BACKGROUND] = next.custom2Background
+            prefs[Keys.CUSTOM_2_FOREGROUND] = next.custom2Foreground
             next.fontFamily?.let { prefs[Keys.FONT_FAMILY] = it.name }
                 ?: prefs.remove(Keys.FONT_FAMILY)
             prefs[Keys.THEME] = next.theme.name
@@ -193,6 +209,10 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
         paragraphIndent = this[Keys.PARAGRAPH_INDENT],
         justification = this[Keys.JUSTIFICATION],
         hyphenation = this[Keys.HYPHENATION],
+        custom1Background = this[Keys.CUSTOM_1_BACKGROUND] ?: ReaderDisplayPreferences.DEFAULT_CUSTOM_1_BACKGROUND,
+        custom1Foreground = this[Keys.CUSTOM_1_FOREGROUND] ?: ReaderDisplayPreferences.DEFAULT_CUSTOM_1_FOREGROUND,
+        custom2Background = this[Keys.CUSTOM_2_BACKGROUND] ?: ReaderDisplayPreferences.DEFAULT_CUSTOM_2_BACKGROUND,
+        custom2Foreground = this[Keys.CUSTOM_2_FOREGROUND] ?: ReaderDisplayPreferences.DEFAULT_CUSTOM_2_FOREGROUND,
         fontFamily = this[Keys.FONT_FAMILY]?.let { enumOrNull<ReaderFontFamily>(it) },
         theme = this[Keys.THEME]?.let { enumOrNull<ReaderTheme>(it) } ?: ReaderTheme.SYSTEM,
         fitMode = this[Keys.FIT_MODE]?.let { enumOrNull<ReaderFitMode>(it) } ?: ReaderFitMode.PAGE_FIT,

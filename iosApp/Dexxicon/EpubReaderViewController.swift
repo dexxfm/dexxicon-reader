@@ -302,6 +302,8 @@ final class EpubReaderViewController: UIViewController {
             resolvedTheme = Theme.light
         } else if prefs.theme == DatastoreReaderTheme.dark {
             resolvedTheme = Theme.dark
+        } else if prefs.theme == DatastoreReaderTheme.custom1 || prefs.theme == DatastoreReaderTheme.custom2 {
+            resolvedTheme = Theme.light
         } else {
             resolvedTheme = traitCollection.userInterfaceStyle == .dark ? Theme.dark : Theme.light
         }
@@ -352,6 +354,20 @@ final class EpubReaderViewController: UIViewController {
         if prefs.theme == DatastoreReaderTheme.grey {
             epubPrefs.backgroundColor = ReadiumNavigator.Color(rawValue: 0xFFC8CBCF)
             epubPrefs.textColor = ReadiumNavigator.Color(rawValue: 0xFF17181A)
+        } else if prefs.theme == DatastoreReaderTheme.custom1 {
+            epubPrefs.backgroundColor = ReadiumNavigator.Color(
+                rawValue: UInt32(bitPattern: prefs.custom1Background)
+            )
+            epubPrefs.textColor = ReadiumNavigator.Color(
+                rawValue: UInt32(bitPattern: prefs.custom1Foreground)
+            )
+        } else if prefs.theme == DatastoreReaderTheme.custom2 {
+            epubPrefs.backgroundColor = ReadiumNavigator.Color(
+                rawValue: UInt32(bitPattern: prefs.custom2Background)
+            )
+            epubPrefs.textColor = ReadiumNavigator.Color(
+                rawValue: UInt32(bitPattern: prefs.custom2Foreground)
+            )
         }
         // issue #183: Kotlin's `auto`/`double` enum cases are exported as `auto_`/`double_` —
         // both are Objective-C/C keywords, confirmed via a real ios-ci compile error.
