@@ -299,8 +299,11 @@ private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
     ReaderTheme.SYSTEM -> "System"
     ReaderTheme.LIGHT -> "White"
     ReaderTheme.SEPIA -> "Sepia"
+    ReaderTheme.SEPIA_DARK -> "Sepia Dark"
     ReaderTheme.GREY -> "Grey"
     ReaderTheme.DARK -> "Black"
+    ReaderTheme.MIDNIGHT -> "Midnight"
+    ReaderTheme.NORD -> "Nord"
 }
 
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {

@@ -53,4 +53,7 @@ internal fun highlightStyle(@ColorInt tint: Int, darkPage: Boolean): Decoration.
 
 /** Whether the reader page is dark — same resolution as [toEpubPreferences]'s theme. */
 internal fun ReaderDisplayPreferences.hasDarkPage(systemInDark: Boolean): Boolean =
-    theme == ReaderTheme.DARK || (theme == ReaderTheme.SYSTEM && systemInDark)
+    theme == ReaderTheme.DARK ||
+        theme == ReaderTheme.MIDNIGHT ||
+        theme == ReaderTheme.NORD ||
+        (theme == ReaderTheme.SYSTEM && systemInDark)

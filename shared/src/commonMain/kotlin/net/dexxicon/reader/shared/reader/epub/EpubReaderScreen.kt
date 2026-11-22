@@ -35,6 +35,8 @@ import androidx.compose.material.icons.filled.BorderColor
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -558,6 +560,10 @@ private fun DisplaySettings(
     preferences: ReaderDisplayPreferences,
     onChange: ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
 ) {
+    var themeExpanded by remember { mutableStateOf(true) }
+    var textExpanded by remember { mutableStateOf(true) }
+    var pageExpanded by remember { mutableStateOf(true) }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -565,66 +571,120 @@ private fun DisplaySettings(
             .padding(24.dp)
             .navigationBarsPadding(),
     ) {
-        Text("Text size", style = MaterialTheme.typography.titleSmall)
-        Slider(
-            value = preferences.fontScale.toFloat(),
-            onValueChange = { v -> onChange { it.copy(fontScale = v.toDouble()) } },
-            valueRange = 0.6f..2.4f,
-            steps = 8,
-            modifier = Modifier.semantics {
-                contentDescription = "Text size"
-                stateDescription = "${(preferences.fontScale * 100).toInt()} percent"
-            },
-        )
-
-        SettingChips(
-            title = "Background",
-            entries = ReaderTheme.entries,
-            selected = preferences.theme,
-            label = ::readerThemeLabel,
-            onSelect = { theme -> onChange { it.copy(theme = theme) } },
-            leadingIcon = { theme -> ThemeSwatch(theme) },
-        )
-
-        SettingChips(
-            title = "Page fit",
-            entries = ReaderFitMode.entries,
-            selected = preferences.fitMode,
-            label = ::readerFitLabel,
-            onSelect = { fit -> onChange { it.copy(fitMode = fit) } },
-        )
-
-        SettingChips(
-            title = "Page layout",
-            entries = ReaderPageLayout.entries,
-            selected = preferences.pageLayout,
-            label = ::readerPageLayoutLabel,
-            onSelect = { layout -> onChange { it.copy(pageLayout = layout) } },
-        )
-
-        SettingChips(
-            title = "Reading mode",
-            // CONTINUOUS is scaffolding — kept out of the picker until a navigator honours it.
-            entries = listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
-            selected = if (preferences.scrollMode == ReaderScrollMode.PAGED) {
-                ReaderScrollMode.PAGED
-            } else {
-                ReaderScrollMode.SCROLL
-            },
-            label = ::readerScrollModeLabel,
-            onSelect = { mode -> onChange { it.copy(scrollMode = mode) } },
-        )
-
-        Row(
-            Modifier.fillMaxWidth().padding(top = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        SettingSection(
+            title = "Theme",
+            expanded = themeExpanded,
+            onToggle = { themeExpanded = !themeExpanded },
         ) {
-            Text("Tap edges to turn pages", Modifier.weight(1f))
-            Switch(
-                checked = preferences.tapNavigation,
-                onCheckedChange = { on -> onChange { it.copy(tapNavigation = on) } },
+            SettingChips(
+                title = "Background",
+                entries = ReaderTheme.entries,
+                selected = preferences.theme,
+                label = ::readerThemeLabel,
+                onSelect = { theme -> onChange { it.copy(theme = theme) } },
+                leadingIcon = { theme -> ThemeSwatch(theme) },
             )
         }
+
+        SettingSection(
+            title = "Text",
+            expanded = textExpanded,
+            onToggle = { textExpanded = !textExpanded },
+        ) {
+            Text("Text size", style = MaterialTheme.typography.titleSmall)
+            Slider(
+                value = preferences.fontScale.toFloat(),
+                onValueChange = { v -> onChange { it.copy(fontScale = v.toDouble()) } },
+                valueRange = 0.6f..2.4f,
+                steps = 8,
+                modifier = Modifier.semantics {
+                    contentDescription = "Text size"
+                    stateDescription = "${(preferences.fontScale * 100).toInt()} percent"
+                },
+            )
+        }
+
+        SettingSection(
+            title = "Page",
+            expanded = pageExpanded,
+            onToggle = { pageExpanded = !pageExpanded },
+        ) {
+            SettingChips(
+                title = "Page fit",
+                entries = ReaderFitMode.entries,
+                selected = preferences.fitMode,
+                label = ::readerFitLabel,
+                onSelect = { fit -> onChange { it.copy(fitMode = fit) } },
+            )
+
+            SettingChips(
+                title = "Page layout",
+                entries = ReaderPageLayout.entries,
+                selected = preferences.pageLayout,
+                label = ::readerPageLayoutLabel,
+                onSelect = { layout -> onChange { it.copy(pageLayout = layout) } },
+            )
+
+            SettingChips(
+                title = "Reading mode",
+                // CONTINUOUS is scaffolding — kept out of the picker until a navigator honours it.
+                entries = listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
+                selected = if (preferences.scrollMode == ReaderScrollMode.PAGED) {
+                    ReaderScrollMode.PAGED
+                } else {
+                    ReaderScrollMode.SCROLL
+                },
+                label = ::readerScrollModeLabel,
+                onSelect = { mode -> onChange { it.copy(scrollMode = mode) } },
+            )
+
+            Row(
+                Modifier.fillMaxWidth().padding(top = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Tap edges to turn pages", Modifier.weight(1f))
+                Switch(
+                    checked = preferences.tapNavigation,
+                    onCheckedChange = { on -> onChange { it.copy(tapNavigation = on) } },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingSection(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Column {
+        TextButton(
+            onClick = onToggle,
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics {
+                    stateDescription = if (expanded) "Expanded" else "Collapsed"
+                },
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Start,
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                )
+            }
+        }
+        if (expanded) content()
     }
 }
 
@@ -672,8 +732,11 @@ private fun ThemeSwatch(theme: ReaderTheme) {
             }
             ReaderTheme.LIGHT -> drawCircle(Color(0xFFFFFFFF.toInt()))
             ReaderTheme.SEPIA -> drawCircle(Color(SEPIA_BACKGROUND))
+            ReaderTheme.SEPIA_DARK -> drawCircle(Color(0xFFC4B090.toInt()))
             ReaderTheme.GREY -> drawCircle(Color(GREY_BACKGROUND))
             ReaderTheme.DARK -> drawCircle(Color(DARK_BACKGROUND))
+            ReaderTheme.MIDNIGHT -> drawCircle(Color(0xFF0F172A.toInt()))
+            ReaderTheme.NORD -> drawCircle(Color(0xFF2E3440.toInt()))
         }
         drawCircle(borderColor, style = Stroke(width = 1.dp.toPx()))
     }
@@ -683,8 +746,11 @@ private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
     ReaderTheme.SYSTEM -> "System"
     ReaderTheme.LIGHT -> "White"
     ReaderTheme.SEPIA -> "Sepia"
+    ReaderTheme.SEPIA_DARK -> "Sepia Dark"
     ReaderTheme.GREY -> "Grey"
     ReaderTheme.DARK -> "Black"
+    ReaderTheme.MIDNIGHT -> "Midnight"
+    ReaderTheme.NORD -> "Nord"
 }
 
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {

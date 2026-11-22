@@ -46,6 +46,22 @@ class EpubPreferencesMappingTest {
         assertThat(dark.backgroundColor).isNull()
     }
 
+    @Test fun `custom themes apply their exact background and foreground colours`() {
+        val palettes = mapOf(
+            ReaderTheme.SEPIA_DARK to (0xFFC4B090.toInt() to 0xFF2E2014.toInt()),
+            ReaderTheme.MIDNIGHT to (0xFF0F172A.toInt() to 0xFFEDF4FC.toInt()),
+            ReaderTheme.NORD to (0xFF2E3440.toInt() to 0xFFE3E9F5.toInt()),
+        )
+
+        palettes.forEach { (theme, colors) ->
+            val preferences = ReaderDisplayPreferences(theme = theme)
+                .toEpubPreferences(systemInDark = false)
+            assertThat(preferences.theme).isEqualTo(Theme.LIGHT)
+            assertThat(preferences.backgroundColor?.int).isEqualTo(colors.first)
+            assertThat(preferences.textColor?.int).isEqualTo(colors.second)
+        }
+    }
+
     @Test fun `auto page layout switches to two columns on a wide viewport`() {
         val narrow = ReaderDisplayPreferences(pageLayout = ReaderPageLayout.AUTO)
             .toEpubPreferences(systemInDark = false, wideViewport = false)

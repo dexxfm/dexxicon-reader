@@ -404,8 +404,11 @@ private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
     ReaderTheme.SYSTEM -> "System"
     ReaderTheme.LIGHT -> "White"
     ReaderTheme.SEPIA -> "Sepia"
+    ReaderTheme.SEPIA_DARK -> "Sepia Dark"
     ReaderTheme.GREY -> "Grey"
     ReaderTheme.DARK -> "Black"
+    ReaderTheme.MIDNIGHT -> "Midnight"
+    ReaderTheme.NORD -> "Nord"
 }
 
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {
@@ -434,8 +437,11 @@ private fun ReaderTheme.pdfSurfaceColor(appInDark: Boolean): Color = when (this)
     ReaderTheme.SYSTEM -> if (appInDark) Color(0xFF101114) else Color(0xFFF6F6F6)
     ReaderTheme.LIGHT -> Color(0xFFF6F6F6)
     ReaderTheme.SEPIA -> Color(0xFFEFE6D3)
+    ReaderTheme.SEPIA_DARK -> Color(0xFFC4B090.toInt())
     ReaderTheme.GREY -> Color(0xFF3A3D42)
     ReaderTheme.DARK -> Color(0xFF101114)
+    ReaderTheme.MIDNIGHT -> Color(0xFF0F172A.toInt())
+    ReaderTheme.NORD -> Color(0xFF2E3440.toInt())
 }
 
 @Composable

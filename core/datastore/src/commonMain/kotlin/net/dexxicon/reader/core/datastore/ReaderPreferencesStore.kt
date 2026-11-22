@@ -59,7 +59,7 @@ enum class ReaderSwipeSensitivity(val label: String, val commitFraction: Float) 
 }
 
 /** Reader page colours. Doubles as the EPUB reading theme. */
-enum class ReaderTheme { SYSTEM, LIGHT, SEPIA, GREY, DARK }
+enum class ReaderTheme { SYSTEM, LIGHT, SEPIA, SEPIA_DARK, GREY, DARK, MIDNIGHT, NORD }
 
 /**
  * Page-fit modes, borrowed from image/PDF viewers. Reflowable EPUB has no true "fit", so

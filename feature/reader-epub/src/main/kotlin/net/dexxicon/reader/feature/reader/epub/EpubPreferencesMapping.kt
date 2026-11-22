@@ -27,14 +27,22 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         ReaderTheme.SEPIA -> Theme.SEPIA
         ReaderTheme.GREY -> Theme.LIGHT
         ReaderTheme.DARK -> Theme.DARK
+        ReaderTheme.SEPIA_DARK, ReaderTheme.MIDNIGHT, ReaderTheme.NORD -> Theme.LIGHT
         ReaderTheme.SYSTEM -> if (systemInDark) Theme.DARK else Theme.LIGHT
+    }
+    val customColors = when (theme) {
+        ReaderTheme.GREY -> Color(GREY_BACKGROUND) to Color(GREY_TEXT)
+        ReaderTheme.SEPIA_DARK -> Color(0xFFC4B090.toInt()) to Color(0xFF2E2014.toInt())
+        ReaderTheme.MIDNIGHT -> Color(0xFF0F172A.toInt()) to Color(0xFFEDF4FC.toInt())
+        ReaderTheme.NORD -> Color(0xFF2E3440.toInt()) to Color(0xFFE3E9F5.toInt())
+        else -> null
     }
     return EpubPreferences(
         fontSize = fontScale,
         theme = resolvedTheme,
-        // Grey isn't one of Readium's built-in themes; paint it on with explicit colours.
-        backgroundColor = if (theme == ReaderTheme.GREY) Color(GREY_BACKGROUND) else null,
-        textColor = if (theme == ReaderTheme.GREY) Color(GREY_TEXT) else null,
+        // These palettes aren't Readium built-ins; paint them over a neutral light base.
+        backgroundColor = customColors?.first,
+        textColor = customColors?.second,
         scroll = scroll,
         // issue #117: AUTO defers to Readium's own column logic, which doesn't split into two
         // columns on a wide viewport by itself — force TWO past the breakpoint instead. A
