@@ -3,6 +3,7 @@ package net.dexxicon.reader.feature.reader.epub
 import com.google.common.truth.Truth.assertThat
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.datastore.ReaderFitMode
+import net.dexxicon.reader.core.datastore.ReaderFontFamily
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderScrollMode
 import net.dexxicon.reader.core.datastore.ReaderTheme
@@ -33,6 +34,28 @@ class EpubPreferencesMappingTest {
         assertThat(margins(ReaderFitMode.PAGE_WIDTH)).isLessThan(margins(ReaderFitMode.PAGE_FIT))
         assertThat(margins(ReaderFitMode.ACTUAL_SIZE)).isGreaterThan(margins(ReaderFitMode.PAGE_FIT))
         assertThat(margins(ReaderFitMode.PAGE_HEIGHT)).isEqualTo(margins(ReaderFitMode.PAGE_FIT))
+    }
+
+    @Test fun `font family maps to Readium font family and null preserves publisher default`() {
+        val mappings = mapOf(
+            ReaderFontFamily.SERIF to "serif",
+            ReaderFontFamily.SANS_SERIF to "sans-serif",
+            ReaderFontFamily.CURSIVE to "cursive",
+            ReaderFontFamily.FANTASY to "fantasy",
+            ReaderFontFamily.MONOSPACE to "monospace",
+            ReaderFontFamily.ACCESSIBLE_DFA to "AccessibleDfA",
+            ReaderFontFamily.IA_WRITER_DUOSPACE to "IA Writer Duospace",
+            ReaderFontFamily.OPEN_DYSLEXIC to "OpenDyslexic",
+        )
+
+        mappings.forEach { (family, expectedName) ->
+            val preference = ReaderDisplayPreferences(fontFamily = family)
+                .toEpubPreferences(systemInDark = false)
+            assertThat(preference.fontFamily?.name).isEqualTo(expectedName)
+        }
+        assertThat(
+            ReaderDisplayPreferences().toEpubPreferences(systemInDark = false).fontFamily,
+        ).isNull()
     }
 
     @Test fun `grey background paints explicit colours over a light base`() {

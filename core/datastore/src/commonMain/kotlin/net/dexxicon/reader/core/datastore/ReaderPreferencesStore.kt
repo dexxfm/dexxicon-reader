@@ -14,6 +14,8 @@ import okio.Path.Companion.toPath
 /** Reader look & feel, shared by every in-app reader. */
 data class ReaderDisplayPreferences(
     val fontScale: Double = 1.0,
+    /** EPUB typeface override. Null leaves the publication's own font in effect. */
+    val fontFamily: ReaderFontFamily? = null,
     val theme: ReaderTheme = ReaderTheme.SYSTEM,
     /**
      * How a page is sized within the viewport. Honoured directly by fixed-layout books,
@@ -58,6 +60,18 @@ enum class ReaderSwipeSensitivity(val label: String, val commitFraction: Float) 
     HIGH("High", 0.20f),
 }
 
+/** Font families supported by Readium's EPUB navigator. */
+enum class ReaderFontFamily(val label: String) {
+    SERIF("Serif"),
+    SANS_SERIF("Sans serif"),
+    CURSIVE("Cursive"),
+    FANTASY("Fantasy"),
+    MONOSPACE("Monospace"),
+    ACCESSIBLE_DFA("AccessibleDfA"),
+    IA_WRITER_DUOSPACE("IA Writer Duospace"),
+    OPEN_DYSLEXIC("OpenDyslexic"),
+}
+
 /** Reader page colours. Doubles as the EPUB reading theme. */
 enum class ReaderTheme { SYSTEM, LIGHT, SEPIA, SEPIA_DARK, GREY, DARK, MIDNIGHT, NORD }
 
@@ -97,6 +111,7 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
 
     private object Keys {
         val FONT_SCALE = doublePreferencesKey("font_scale")
+        val FONT_FAMILY = stringPreferencesKey("font_family")
         val THEME = stringPreferencesKey("theme")
         val FIT_MODE = stringPreferencesKey("fit_mode")
         val PAGE_LAYOUT = stringPreferencesKey("page_layout")
@@ -114,6 +129,8 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
         dataStore.edit { prefs ->
             val next = transform(prefs.toPrefs())
             prefs[Keys.FONT_SCALE] = next.fontScale
+            next.fontFamily?.let { prefs[Keys.FONT_FAMILY] = it.name }
+                ?: prefs.remove(Keys.FONT_FAMILY)
             prefs[Keys.THEME] = next.theme.name
             prefs[Keys.FIT_MODE] = next.fitMode.name
             prefs[Keys.PAGE_LAYOUT] = next.pageLayout.name
@@ -128,6 +145,7 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
 
     private fun Preferences.toPrefs() = ReaderDisplayPreferences(
         fontScale = this[Keys.FONT_SCALE] ?: 1.0,
+        fontFamily = this[Keys.FONT_FAMILY]?.let { enumOrNull<ReaderFontFamily>(it) },
         theme = this[Keys.THEME]?.let { enumOrNull<ReaderTheme>(it) } ?: ReaderTheme.SYSTEM,
         fitMode = this[Keys.FIT_MODE]?.let { enumOrNull<ReaderFitMode>(it) } ?: ReaderFitMode.PAGE_FIT,
         pageLayout = this[Keys.PAGE_LAYOUT]?.let { enumOrNull<ReaderPageLayout>(it) }

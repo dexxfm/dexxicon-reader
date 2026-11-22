@@ -2,11 +2,13 @@ package net.dexxicon.reader.feature.reader.epub
 
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.datastore.ReaderFitMode
+import net.dexxicon.reader.core.datastore.ReaderFontFamily
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderTheme
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Color
 import org.readium.r2.navigator.preferences.ColumnCount
+import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Theme
 
 // A soft neutral grey — sits between the white and black page options without going fully dark.
@@ -30,6 +32,17 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         ReaderTheme.SEPIA_DARK, ReaderTheme.MIDNIGHT, ReaderTheme.NORD -> Theme.LIGHT
         ReaderTheme.SYSTEM -> if (systemInDark) Theme.DARK else Theme.LIGHT
     }
+    val resolvedFontFamily = when (fontFamily) {
+        ReaderFontFamily.SERIF -> FontFamily.SERIF
+        ReaderFontFamily.SANS_SERIF -> FontFamily.SANS_SERIF
+        ReaderFontFamily.CURSIVE -> FontFamily.CURSIVE
+        ReaderFontFamily.FANTASY -> FontFamily.FANTASY
+        ReaderFontFamily.MONOSPACE -> FontFamily.MONOSPACE
+        ReaderFontFamily.ACCESSIBLE_DFA -> FontFamily.ACCESSIBLE_DFA
+        ReaderFontFamily.IA_WRITER_DUOSPACE -> FontFamily.IA_WRITER_DUOSPACE
+        ReaderFontFamily.OPEN_DYSLEXIC -> FontFamily.OPEN_DYSLEXIC
+        null -> null
+    }
     val customColors = when (theme) {
         ReaderTheme.GREY -> Color(GREY_BACKGROUND) to Color(GREY_TEXT)
         ReaderTheme.SEPIA_DARK -> Color(0xFFC4B090.toInt()) to Color(0xFF2E2014.toInt())
@@ -38,6 +51,7 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         else -> null
     }
     return EpubPreferences(
+        fontFamily = resolvedFontFamily,
         fontSize = fontScale,
         theme = resolvedTheme,
         // These palettes aren't Readium built-ins; paint them over a neutral light base.

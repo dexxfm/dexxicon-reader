@@ -39,7 +39,11 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -80,6 +84,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.core.designsystem.theme.Pill
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.datastore.ReaderFontFamily
 import net.dexxicon.reader.core.datastore.ReaderFitMode
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderScrollMode
@@ -591,6 +596,10 @@ private fun DisplaySettings(
             expanded = textExpanded,
             onToggle = { textExpanded = !textExpanded },
         ) {
+            FontFamilySelector(
+                selected = preferences.fontFamily,
+                onSelect = { family -> onChange { it.copy(fontFamily = family) } },
+            )
             Text("Text size", style = MaterialTheme.typography.titleSmall)
             Slider(
                 value = preferences.fontScale.toFloat(),
@@ -646,6 +655,55 @@ private fun DisplaySettings(
                 Switch(
                     checked = preferences.tapNavigation,
                     onCheckedChange = { on -> onChange { it.copy(tapNavigation = on) } },
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FontFamilySelector(
+    selected: ReaderFontFamily?,
+    onSelect: (ReaderFontFamily?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+    ) {
+        OutlinedTextField(
+            value = selected?.label ?: "Publisher default",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Font family") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("Publisher default") },
+                onClick = {
+                    expanded = false
+                    onSelect(null)
+                },
+                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+            )
+            ReaderFontFamily.entries.forEach { family ->
+                DropdownMenuItem(
+                    text = { Text(family.label) },
+                    onClick = {
+                        expanded = false
+                        onSelect(family)
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
                 )
             }
         }

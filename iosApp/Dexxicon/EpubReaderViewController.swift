@@ -305,12 +305,33 @@ final class EpubReaderViewController: UIViewController {
         } else {
             resolvedTheme = traitCollection.userInterfaceStyle == .dark ? Theme.dark : Theme.light
         }
+        let fontFamily: ReadiumNavigator.FontFamily?
+        if prefs.fontFamily == DatastoreReaderFontFamily.serif {
+            fontFamily = .serif
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.sansSerif {
+            fontFamily = .sansSerif
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.cursive {
+            fontFamily = .cursive
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.fantasy {
+            fontFamily = .fantasy
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.monospace {
+            fontFamily = .monospace
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.accessibleDfa {
+            fontFamily = .accessibleDfA
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.iaWriterDuospace {
+            fontFamily = .iaWriterDuospace
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.openDyslexic {
+            fontFamily = .openDyslexic
+        } else {
+            fontFamily = nil
+        }
         // issue #279: a stronger highlight tint on a dark page — re-applied when that changes.
         if (resolvedTheme == Theme.dark) != darkPage {
             darkPage = resolvedTheme == Theme.dark
             applyDecorations(for: lastHighlights)
         }
         var epubPrefs = EPUBPreferences(
+            fontFamily: fontFamily,
             fontSize: prefs.fontScale,
             scroll: prefs.scroll,
             theme: resolvedTheme
