@@ -51,7 +51,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -92,6 +91,7 @@ import net.dexxicon.reader.core.datastore.ReaderTheme
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
+import net.dexxicon.reader.shared.reader.ReaderFontScaleControl
 
 /** issue #117: grey background, unchanged from Android's original standalone screen. */
 private const val SEPIA_BACKGROUND = 0xFFF4ECD8.toInt()
@@ -600,16 +600,9 @@ private fun DisplaySettings(
                 selected = preferences.fontFamily,
                 onSelect = { family -> onChange { it.copy(fontFamily = family) } },
             )
-            Text("Text size", style = MaterialTheme.typography.titleSmall)
-            Slider(
-                value = preferences.fontScale.toFloat(),
-                onValueChange = { v -> onChange { it.copy(fontScale = v.toDouble()) } },
-                valueRange = 0.6f..2.4f,
-                steps = 8,
-                modifier = Modifier.semantics {
-                    contentDescription = "Text size"
-                    stateDescription = "${(preferences.fontScale * 100).toInt()} percent"
-                },
+            ReaderFontScaleControl(
+                fontScale = preferences.fontScale,
+                onFontScaleChange = { scale -> onChange { it.copy(fontScale = scale) } },
             )
         }
 

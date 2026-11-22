@@ -6,14 +6,16 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlin.math.roundToInt
 import okio.Path.Companion.toPath
 
 /** Reader look & feel, shared by every in-app reader. */
 data class ReaderDisplayPreferences(
-    val fontScale: Double = 1.0,
+    val fontScale: Double = DEFAULT_FONT_SCALE,
     /** EPUB typeface override. Null leaves the publication's own font in effect. */
     val fontFamily: ReaderFontFamily? = null,
     val theme: ReaderTheme = ReaderTheme.SYSTEM,
@@ -47,6 +49,13 @@ data class ReaderDisplayPreferences(
 ) {
     /** Legacy shorthand: the EPUB/PDF navigators still take a plain scroll flag. */
     val scroll: Boolean get() = scrollMode.scrolling
+
+    companion object {
+        const val MIN_FONT_SCALE = 0.5
+        const val MAX_FONT_SCALE = 3.0
+        const val FONT_SCALE_STEP = 0.1
+        const val DEFAULT_FONT_SCALE = 1.0
+    }
 }
 
 /**
@@ -110,6 +119,7 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
     private val dataStore: DataStore<Preferences> = dataStoreFor(readerPreferencesFilePath(context))
 
     private object Keys {
+        val FONT_SIZE_PX = intPreferencesKey("font_size_px")
         val FONT_SCALE = doublePreferencesKey("font_scale")
         val FONT_FAMILY = stringPreferencesKey("font_family")
         val THEME = stringPreferencesKey("theme")
@@ -128,7 +138,8 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
     suspend fun update(transform: (ReaderDisplayPreferences) -> ReaderDisplayPreferences) {
         dataStore.edit { prefs ->
             val next = transform(prefs.toPrefs())
-            prefs[Keys.FONT_SCALE] = next.fontScale
+            prefs[Keys.FONT_SCALE] = normalizeFontScale(next.fontScale)
+            prefs.remove(Keys.FONT_SIZE_PX)
             next.fontFamily?.let { prefs[Keys.FONT_FAMILY] = it.name }
                 ?: prefs.remove(Keys.FONT_FAMILY)
             prefs[Keys.THEME] = next.theme.name
@@ -144,7 +155,13 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
     }
 
     private fun Preferences.toPrefs() = ReaderDisplayPreferences(
-        fontScale = this[Keys.FONT_SCALE] ?: 1.0,
+        fontScale = (
+            this[Keys.FONT_SCALE]
+                ?:                 this[Keys.FONT_SIZE_PX]?.let {
+                    it.toDouble() / 16.0
+                }
+                ?: ReaderDisplayPreferences.DEFAULT_FONT_SCALE
+            ).let(::normalizeFontScale),
         fontFamily = this[Keys.FONT_FAMILY]?.let { enumOrNull<ReaderFontFamily>(it) },
         theme = this[Keys.THEME]?.let { enumOrNull<ReaderTheme>(it) } ?: ReaderTheme.SYSTEM,
         fitMode = this[Keys.FIT_MODE]?.let { enumOrNull<ReaderFitMode>(it) } ?: ReaderFitMode.PAGE_FIT,
@@ -173,6 +190,12 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
 
 private inline fun <reified T : Enum<T>> enumOrNull(name: String): T? =
     runCatching { enumValueOf<T>(name) }.getOrNull()
+
+private fun normalizeFontScale(fontScale: Double): Double =
+    (fontScale.coerceIn(
+        ReaderDisplayPreferences.MIN_FONT_SCALE,
+        ReaderDisplayPreferences.MAX_FONT_SCALE,
+    ) * 10).roundToInt() / 10.0
 
 /** Opaque per-platform handle [readerPreferencesFilePath] needs to locate the preferences
  * file — see [PlatformStorageContext] (shared with [SyncStateStore]/[AppPreferencesStore]). */

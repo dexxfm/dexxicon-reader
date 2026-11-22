@@ -58,6 +58,20 @@ class EpubPreferencesMappingTest {
         ).isNull()
     }
 
+    @Test fun `font scale maps directly to Readium proportional font size`() {
+        mapOf(
+            0.5 to 0.5,
+            0.6 to 0.6,
+            1.0 to 1.0,
+            1.7 to 1.7,
+            3.0 to 3.0,
+        ).forEach { (scale, expectedScale) ->
+            val fontSize = ReaderDisplayPreferences(fontScale = scale)
+                .toEpubPreferences(systemInDark = false).fontSize
+            assertThat(fontSize).isEqualTo(expectedScale)
+        }
+    }
+
     @Test fun `grey background paints explicit colours over a light base`() {
         val grey = ReaderDisplayPreferences(theme = ReaderTheme.GREY).toEpubPreferences(systemInDark = true)
         assertThat(grey.theme).isEqualTo(Theme.LIGHT)

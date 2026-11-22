@@ -19,7 +19,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -38,6 +37,7 @@ import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
 import net.dexxicon.reader.core.datastore.ReaderTheme
 import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.reader.ReaderFontScaleControl
 
 /**
  * Phase 4 Stage H (issue #145) — Book Defaults, ported from native's
@@ -182,13 +182,9 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
 
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SettingsSubsectionTitle("EPUB")
-        Text("Text size", style = MaterialTheme.typography.bodyMedium)
-        Slider(
-            value = prefs.fontScale.toFloat(),
-            onValueChange = { v -> update { it.copy(fontScale = v.toDouble()) } },
-            valueRange = 0.6f..2.4f,
-            steps = 8,
-        )
+        ReaderFontScaleControl(fontScale = prefs.fontScale) { scale ->
+            update { it.copy(fontScale = scale) }
+        }
         DefaultsChips("Page layout", ReaderPageLayout.entries, prefs.pageLayout, ::readerPageLayoutLabel) { layout ->
             update { it.copy(pageLayout = layout) }
         }
