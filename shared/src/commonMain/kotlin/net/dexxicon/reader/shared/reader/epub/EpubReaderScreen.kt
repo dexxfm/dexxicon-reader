@@ -91,7 +91,8 @@ import net.dexxicon.reader.core.datastore.ReaderTheme
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
-import net.dexxicon.reader.shared.reader.ReaderFontScaleControl
+import net.dexxicon.reader.shared.reader.proportionalScaleLabel
+import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
 
 /** issue #117: grey background, unchanged from Android's original standalone screen. */
 private const val SEPIA_BACKGROUND = 0xFFF4ECD8.toInt()
@@ -600,9 +601,24 @@ private fun DisplaySettings(
                 selected = preferences.fontFamily,
                 onSelect = { family -> onChange { it.copy(fontFamily = family) } },
             )
-            ReaderFontScaleControl(
-                fontScale = preferences.fontScale,
-                onFontScaleChange = { scale -> onChange { it.copy(fontScale = scale) } },
+            ReaderProportionalScaleControl(
+                title = "Font size",
+                scale = preferences.fontScale,
+                min = ReaderDisplayPreferences.MIN_FONT_SCALE,
+                max = ReaderDisplayPreferences.MAX_FONT_SCALE,
+                onDecreaseDescription = "Decrease font size",
+                onIncreaseDescription = "Increase font size",
+                onScaleChange = { scale -> onChange { it.copy(fontScale = scale) } },
+            )
+            ReaderProportionalScaleControl(
+                title = "Line spacing",
+                scale = preferences.lineSpacing ?: ReaderDisplayPreferences.DEFAULT_LINE_SPACING,
+                min = ReaderDisplayPreferences.MIN_LINE_SPACING,
+                max = ReaderDisplayPreferences.MAX_LINE_SPACING,
+                onDecreaseDescription = "Decrease line spacing",
+                onIncreaseDescription = "Increase line spacing",
+                valueLabel = preferences.lineSpacing?.let { "${proportionalScaleLabel(it)}×" } ?: "Default",
+                onScaleChange = { spacing -> onChange { it.copy(lineSpacing = spacing) } },
             )
         }
 

@@ -22,9 +22,15 @@ import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import kotlin.math.roundToInt
 
 @Composable
-internal fun ReaderFontScaleControl(
-    fontScale: Double,
-    onFontScaleChange: (Double) -> Unit,
+internal fun ReaderProportionalScaleControl(
+    title: String,
+    scale: Double,
+    min: Double,
+    max: Double,
+    onDecreaseDescription: String,
+    onIncreaseDescription: String,
+    valueLabel: String = "${proportionalScaleLabel(scale)}×",
+    onScaleChange: (Double) -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
         Row(
@@ -32,54 +38,50 @@ internal fun ReaderFontScaleControl(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Font size", style = MaterialTheme.typography.titleSmall)
-            Text("${fontScaleLabel(fontScale)}×", style = MaterialTheme.typography.bodyMedium)
+            Text(title, style = MaterialTheme.typography.titleSmall)
+            Text(valueLabel, style = MaterialTheme.typography.bodyMedium)
         }
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(
-                enabled = fontScale > ReaderDisplayPreferences.MIN_FONT_SCALE,
+                enabled = scale > min,
                 onClick = {
-                    onFontScaleChange(adjustFontScale(fontScale, -ReaderDisplayPreferences.FONT_SCALE_STEP))
+                    onScaleChange(adjustScale(scale, -ReaderDisplayPreferences.SCALE_STEP, min, max))
                 },
             ) {
-                Icon(Icons.Filled.Remove, contentDescription = "Decrease font size")
+                Icon(Icons.Filled.Remove, contentDescription = onDecreaseDescription)
             }
             Slider(
-                value = fontScale.toFloat(),
+                value = scale.toFloat(),
                 onValueChange = {
-                    onFontScaleChange(adjustFontScale(it.toDouble()))
+                    onScaleChange(adjustScale(it.toDouble(), min = min, max = max))
                 },
-                valueRange = ReaderDisplayPreferences.MIN_FONT_SCALE.toFloat()..
-                    ReaderDisplayPreferences.MAX_FONT_SCALE.toFloat(),
-                steps = 24,
+                valueRange = min.toFloat()..max.toFloat(),
+                steps = (((max - min) / ReaderDisplayPreferences.SCALE_STEP).roundToInt() - 1)
+                    .coerceAtLeast(0),
                 modifier = Modifier
                     .weight(1f)
                     .semantics {
-                        contentDescription = "Font size"
-                        stateDescription = "${(fontScale * 100).roundToInt()} percent"
+                        contentDescription = title
+                        stateDescription = "${proportionalScaleLabel(scale)} times"
                     },
             )
             IconButton(
-                enabled = fontScale < ReaderDisplayPreferences.MAX_FONT_SCALE,
+                enabled = scale < max,
                 onClick = {
-                    onFontScaleChange(adjustFontScale(fontScale, ReaderDisplayPreferences.FONT_SCALE_STEP))
+                    onScaleChange(adjustScale(scale, ReaderDisplayPreferences.SCALE_STEP, min, max))
                 },
             ) {
-                Icon(Icons.Filled.Add, contentDescription = "Increase font size")
+                Icon(Icons.Filled.Add, contentDescription = onIncreaseDescription)
             }
         }
-
     }
 }
 
-private fun adjustFontScale(fontScale: Double, change: Double = 0.0): Double =
-    (((fontScale + change).coerceIn(
-        ReaderDisplayPreferences.MIN_FONT_SCALE,
-        ReaderDisplayPreferences.MAX_FONT_SCALE,
-    ) * 10).roundToInt() / 10.0)
+private fun adjustScale(scale: Double, change: Double = 0.0, min: Double, max: Double): Double =
+    (((scale + change).coerceIn(min, max) * 10).roundToInt() / 10.0)
 
-private fun fontScaleLabel(fontScale: Double): String =
-    ((fontScale * 10).roundToInt() / 10.0).toString()
+internal fun proportionalScaleLabel(scale: Double): String =
+    ((scale * 10).roundToInt() / 10.0).toString()

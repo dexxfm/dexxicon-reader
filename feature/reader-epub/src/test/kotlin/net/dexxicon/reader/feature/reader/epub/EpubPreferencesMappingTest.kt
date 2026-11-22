@@ -72,6 +72,19 @@ class EpubPreferencesMappingTest {
         }
     }
 
+    @Test fun `selected line spacing disables publisher styles and maps to Readium line height`() {
+        mapOf(1.0 to 1.0, 1.5 to 1.5, 2.4 to 2.4, 3.0 to 3.0).forEach { (spacing, expected) ->
+            val preferences = ReaderDisplayPreferences(lineSpacing = spacing)
+                .toEpubPreferences(systemInDark = false)
+            assertThat(preferences.lineHeight).isEqualTo(expected)
+            assertThat(preferences.publisherStyles).isFalse()
+        }
+
+        val publisherDefault = ReaderDisplayPreferences().toEpubPreferences(systemInDark = false)
+        assertThat(publisherDefault.lineHeight).isNull()
+        assertThat(publisherDefault.publisherStyles).isNull()
+    }
+
     @Test fun `grey background paints explicit colours over a light base`() {
         val grey = ReaderDisplayPreferences(theme = ReaderTheme.GREY).toEpubPreferences(systemInDark = true)
         assertThat(grey.theme).isEqualTo(Theme.LIGHT)

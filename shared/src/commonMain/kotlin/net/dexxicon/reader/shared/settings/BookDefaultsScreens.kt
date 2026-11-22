@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import net.dexxicon.reader.core.datastore.PLAYBACK_SPEEDS
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.datastore.ReaderFitMode
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderScrollMode
@@ -37,7 +38,8 @@ import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
 import net.dexxicon.reader.core.datastore.ReaderTheme
 import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.shared.di.AppContainer
-import net.dexxicon.reader.shared.reader.ReaderFontScaleControl
+import net.dexxicon.reader.shared.reader.proportionalScaleLabel
+import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
 
 /**
  * Phase 4 Stage H (issue #145) — Book Defaults, ported from native's
@@ -182,8 +184,26 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
 
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SettingsSubsectionTitle("EPUB")
-        ReaderFontScaleControl(fontScale = prefs.fontScale) { scale ->
+        ReaderProportionalScaleControl(
+            title = "Font size",
+            scale = prefs.fontScale,
+            min = ReaderDisplayPreferences.MIN_FONT_SCALE,
+            max = ReaderDisplayPreferences.MAX_FONT_SCALE,
+            onDecreaseDescription = "Decrease font size",
+            onIncreaseDescription = "Increase font size",
+        ) { scale ->
             update { it.copy(fontScale = scale) }
+        }
+        ReaderProportionalScaleControl(
+            title = "Line spacing",
+            scale = prefs.lineSpacing ?: ReaderDisplayPreferences.DEFAULT_LINE_SPACING,
+            min = ReaderDisplayPreferences.MIN_LINE_SPACING,
+            max = ReaderDisplayPreferences.MAX_LINE_SPACING,
+            onDecreaseDescription = "Decrease line spacing",
+            onIncreaseDescription = "Increase line spacing",
+            valueLabel = prefs.lineSpacing?.let { "${proportionalScaleLabel(it)}×" } ?: "Default",
+        ) { spacing ->
+            update { it.copy(lineSpacing = spacing) }
         }
         DefaultsChips("Page layout", ReaderPageLayout.entries, prefs.pageLayout, ::readerPageLayoutLabel) { layout ->
             update { it.copy(pageLayout = layout) }
