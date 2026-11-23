@@ -302,7 +302,9 @@ final class EpubReaderViewController: UIViewController {
             resolvedTheme = Theme.light
         } else if prefs.theme == DatastoreReaderTheme.dark {
             resolvedTheme = Theme.dark
-        } else if prefs.theme == DatastoreReaderTheme.custom1 || prefs.theme == DatastoreReaderTheme.custom2 {
+        } else if prefs.paintedColors != nil {
+            // issue #261 — Sepia Dark, Midnight, Nord and the custom themes paint their own
+            // colours (below) over a light base, as on Android.
             resolvedTheme = Theme.light
         } else {
             resolvedTheme = traitCollection.userInterfaceStyle == .dark ? Theme.dark : Theme.light
@@ -328,24 +330,25 @@ final class EpubReaderViewController: UIViewController {
             fontFamily = nil
         }
         // issue #279: a stronger highlight tint on a dark page — re-applied when that changes.
-        if (resolvedTheme == Theme.dark) != darkPage {
-            darkPage = resolvedTheme == Theme.dark
+        // issue #261: a painted palette is dark by its own background.
+        let isDarkPage = resolvedTheme == Theme.dark || (prefs.paintedColors?.isDark ?? false)
+        if isDarkPage != darkPage {
+            darkPage = isDarkPage
             applyDecorations(for: lastHighlights)
         }
+        // Kotlin's optional numbers and flags arrive as KotlinDouble / KotlinBoolean.
+        let typographySet = prefs.lineSpacing != nil || prefs.paragraphSpacing != nil ||
+            prefs.paragraphIndent != nil || prefs.justification != nil || prefs.hyphenation != nil
         var epubPrefs = EPUBPreferences(
             fontFamily: fontFamily,
             fontSize: prefs.fontScale,
-            lineHeight: prefs.lineSpacing,
-            hyphens: prefs.hyphenation,
-            paragraphIndent: prefs.paragraphIndent.map { $0 ? 1.0 : 0.0 },
-            paragraphSpacing: prefs.paragraphSpacing,
-            textAlign: prefs.justification.map { $0 ? .justify : .start },
-            publisherStyles: prefs.lineSpacing == nil &&
-                prefs.paragraphSpacing == nil &&
-                prefs.paragraphIndent == nil &&
-                prefs.justification == nil &&
-                prefs.hyphenation == nil ? nil : false,
+            hyphens: prefs.hyphenation?.boolValue,
+            lineHeight: prefs.lineSpacing?.doubleValue,
+            paragraphIndent: prefs.paragraphIndent.map { $0.boolValue ? 1.0 : 0.0 },
+            paragraphSpacing: prefs.paragraphSpacing?.doubleValue,
+            publisherStyles: typographySet ? false : nil,
             scroll: prefs.scroll,
+            textAlign: prefs.justification.map { $0.boolValue ? .justify : .start },
             theme: resolvedTheme
         )
         // Grey isn't one of Readium's built-in themes; paint it on with explicit colours —
@@ -354,20 +357,10 @@ final class EpubReaderViewController: UIViewController {
         if prefs.theme == DatastoreReaderTheme.grey {
             epubPrefs.backgroundColor = ReadiumNavigator.Color(rawValue: 0xFFC8CBCF)
             epubPrefs.textColor = ReadiumNavigator.Color(rawValue: 0xFF17181A)
-        } else if prefs.theme == DatastoreReaderTheme.custom1 {
-            epubPrefs.backgroundColor = ReadiumNavigator.Color(
-                rawValue: UInt32(bitPattern: prefs.custom1Background)
-            )
-            epubPrefs.textColor = ReadiumNavigator.Color(
-                rawValue: UInt32(bitPattern: prefs.custom1Foreground)
-            )
-        } else if prefs.theme == DatastoreReaderTheme.custom2 {
-            epubPrefs.backgroundColor = ReadiumNavigator.Color(
-                rawValue: UInt32(bitPattern: prefs.custom2Background)
-            )
-            epubPrefs.textColor = ReadiumNavigator.Color(
-                rawValue: UInt32(bitPattern: prefs.custom2Foreground)
-            )
+        } else if let painted = prefs.paintedColors {
+            // ARGB as Kotlin's Int (Int32 here): read the bits unsigned.
+            epubPrefs.backgroundColor = ReadiumNavigator.Color(rawValue: Int(UInt32(bitPattern: painted.background)))
+            epubPrefs.textColor = ReadiumNavigator.Color(rawValue: Int(UInt32(bitPattern: painted.text)))
         }
         // issue #183: Kotlin's `auto`/`double` enum cases are exported as `auto_`/`double_` —
         // both are Objective-C/C keywords, confirmed via a real ios-ci compile error.

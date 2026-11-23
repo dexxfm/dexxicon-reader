@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared.reader.comic
 
+import net.dexxicon.reader.shared.reader.ReaderThemeSetting
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import net.dexxicon.reader.shared.sideControls
 import net.dexxicon.reader.shared.SideColumnGap
@@ -261,19 +262,8 @@ private fun ComicSettings(
             .padding(24.dp)
             .navigationBarsPadding(),
     ) {
-        Text("Background", style = MaterialTheme.typography.titleSmall)
-        FlowRow(
-            Modifier.fillMaxWidth().padding(top = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ReaderTheme.entries.forEach { theme ->
-                FilterChip(
-                    selected = preferences.theme == theme,
-                    onClick = { onChange { it.copy(theme = theme) } },
-                    label = { Text(comicThemeLabel(theme)) },
-                )
-            }
-        }
+        // issue #261 — the theme picker shared by every reader (and Book defaults).
+        ReaderThemeSetting(preferences, onChange)
         Text(
             "Only shows around the page — comic art can't be recoloured.",
             style = MaterialTheme.typography.bodySmall,
@@ -409,19 +399,6 @@ private fun comicPageLayoutLabel(layout: ReaderPageLayout): String = when (layou
     ReaderPageLayout.DOUBLE -> "Two-page"
 }
 
-private fun comicThemeLabel(theme: ReaderTheme): String = when (theme) {
-    ReaderTheme.SYSTEM -> "System"
-    ReaderTheme.LIGHT -> "White"
-    ReaderTheme.SEPIA -> "Sepia"
-    ReaderTheme.SEPIA_DARK -> "Sepia Dark"
-    ReaderTheme.GREY -> "Grey"
-    ReaderTheme.DARK -> "Black"
-    ReaderTheme.MIDNIGHT -> "Midnight"
-    ReaderTheme.NORD -> "Nord"
-    ReaderTheme.CUSTOM_1 -> "Custom 1"
-    ReaderTheme.CUSTOM_2 -> "Custom 2"
-}
-
 /** Same shape as [net.dexxicon.reader.shared.reader.pdf.PdfReaderScreen]'s own
  * `pdfSurfaceColor` — duplicated per that function's own doc comment (a pure Compose mapping
  * with no engine dependency belongs beside its own reader, not in a shared-utilities file). */
@@ -432,13 +409,11 @@ private fun ReaderTheme.comicSurfaceColor(
     ReaderTheme.SYSTEM -> if (appInDark) Color(0xFF101114) else Color(0xFFF6F6F6)
     ReaderTheme.LIGHT -> Color(0xFFF6F6F6)
     ReaderTheme.SEPIA -> Color(0xFFEFE6D3)
-    ReaderTheme.SEPIA_DARK -> Color(0xFFC4B090.toInt())
     ReaderTheme.GREY -> Color(0xFF3A3D42)
     ReaderTheme.DARK -> Color(0xFF101114)
-    ReaderTheme.MIDNIGHT -> Color(0xFF0F172A.toInt())
-    ReaderTheme.NORD -> Color(0xFF2E3440.toInt())
-    ReaderTheme.CUSTOM_1 -> Color(preferences.custom1Background)
-    ReaderTheme.CUSTOM_2 -> Color(preferences.custom2Background)
+    // issue #261 — the painted palettes, from the one place they're defined.
+    ReaderTheme.SEPIA_DARK, ReaderTheme.MIDNIGHT, ReaderTheme.NORD, ReaderTheme.CUSTOM_1, ReaderTheme.CUSTOM_2 ->
+        Color(preferences.copy(theme = this).paintedColors!!.background)
 }
 
 @Composable

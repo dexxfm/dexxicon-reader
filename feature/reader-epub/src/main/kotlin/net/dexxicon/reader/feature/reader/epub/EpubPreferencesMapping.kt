@@ -45,14 +45,10 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         ReaderFontFamily.OPEN_DYSLEXIC -> FontFamily.OPEN_DYSLEXIC
         null -> null
     }
-    val customColors = when (theme) {
-        ReaderTheme.GREY -> Color(GREY_BACKGROUND) to Color(GREY_TEXT)
-        ReaderTheme.SEPIA_DARK -> Color(0xFFC4B090.toInt()) to Color(0xFF2E2014.toInt())
-        ReaderTheme.MIDNIGHT -> Color(0xFF0F172A.toInt()) to Color(0xFFEDF4FC.toInt())
-        ReaderTheme.NORD -> Color(0xFF2E3440.toInt()) to Color(0xFFE3E9F5.toInt())
-        ReaderTheme.CUSTOM_1 -> Color(custom1Background) to Color(custom1Foreground)
-        ReaderTheme.CUSTOM_2 -> Color(custom2Background) to Color(custom2Foreground)
-        else -> null
+    val customColors = if (theme == ReaderTheme.GREY) {
+        Color(GREY_BACKGROUND) to Color(GREY_TEXT)
+    } else {
+        paintedColors?.let { Color(it.background) to Color(it.text) }
     }
     return EpubPreferences(
         fontFamily = resolvedFontFamily,

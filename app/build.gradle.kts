@@ -1,24 +1,4 @@
-import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 import java.util.Properties
-import org.gradle.api.DefaultTask
-import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.tasks.InputFile
-import org.gradle.api.tasks.TaskAction
-
-abstract class CopyTimestampedDebugApk : DefaultTask() {
-    @get:InputFile
-    abstract val sourceApk: RegularFileProperty
-
-    @TaskAction
-    fun copyApk() {
-        val source = sourceApk.get().asFile
-        val timestamp = DateTimeFormatter.ofPattern("yyyyMMddHHmm").format(LocalDateTime.now())
-        val destination = source.resolveSibling("Dexxicon-debug-$timestamp.apk")
-        source.copyTo(destination, overwrite = true)
-        logger.lifecycle("Copied debug APK to ${destination.absolutePath}")
-    }
-}
 
 plugins {
     alias(libs.plugins.android.application)
@@ -213,15 +193,4 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.truth)
     testImplementation(libs.kotlinx.coroutines.test)
-}
-
-val copyTimestampedDebugApk = tasks.register<CopyTimestampedDebugApk>("copyTimestampedDebugApk") {
-    group = "build"
-    description = "Copies the debug APK to a timestamped filename."
-    dependsOn("assembleDebug")
-    sourceApk.set(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
-}
-
-tasks.matching { it.name == "assembleDebug" }.configureEach {
-    finalizedBy(copyTimestampedDebugApk)
 }

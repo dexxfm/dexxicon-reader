@@ -59,6 +59,21 @@ data class ReaderDisplayPreferences(
     /** Legacy shorthand: the EPUB/PDF navigators still take a plain scroll flag. */
     val scroll: Boolean get() = scrollMode.scrolling
 
+    /**
+     * issue #261 — the page and text colours of a theme the readers paint on themselves (Sepia
+     * Dark, Midnight, Nord and the two custom ones), so Android, iOS and the PDF/comic surfaces
+     * all use the same palette. Null for the themes each reader draws its own way.
+     */
+    val paintedColors: ReaderPageColors?
+        get() = when (theme) {
+            ReaderTheme.SEPIA_DARK -> ReaderPageColors(SEPIA_DARK_BACKGROUND, SEPIA_DARK_TEXT)
+            ReaderTheme.MIDNIGHT -> ReaderPageColors(MIDNIGHT_BACKGROUND, MIDNIGHT_TEXT)
+            ReaderTheme.NORD -> ReaderPageColors(NORD_BACKGROUND, NORD_TEXT)
+            ReaderTheme.CUSTOM_1 -> ReaderPageColors(custom1Background, custom1Foreground)
+            ReaderTheme.CUSTOM_2 -> ReaderPageColors(custom2Background, custom2Foreground)
+            ReaderTheme.SYSTEM, ReaderTheme.LIGHT, ReaderTheme.SEPIA, ReaderTheme.GREY, ReaderTheme.DARK -> null
+        }
+
     companion object {
         const val MIN_FONT_SCALE = 0.5
         const val MAX_FONT_SCALE = 3.0
@@ -74,7 +89,25 @@ data class ReaderDisplayPreferences(
         const val DEFAULT_CUSTOM_1_FOREGROUND = 0xFF000000.toInt()
         const val DEFAULT_CUSTOM_2_BACKGROUND = 0xFF000000.toInt()
         const val DEFAULT_CUSTOM_2_FOREGROUND = 0xFFFFFFFF.toInt()
+        const val SEPIA_DARK_BACKGROUND = 0xFFC4B090.toInt()
+        const val SEPIA_DARK_TEXT = 0xFF2E2014.toInt()
+        const val MIDNIGHT_BACKGROUND = 0xFF0F172A.toInt()
+        const val MIDNIGHT_TEXT = 0xFFEDF4FC.toInt()
+        const val NORD_BACKGROUND = 0xFF2E3440.toInt()
+        const val NORD_TEXT = 0xFFE3E9F5.toInt()
     }
+}
+
+/** issue #261 — a page colour and its text colour, as ARGB. */
+data class ReaderPageColors(val background: Int, val text: Int) {
+    /** A dark page (highlights need a stronger tint on it): by the background's luminance. */
+    val isDark: Boolean
+        get() {
+            val r = (background shr 16) and 0xFF
+            val g = (background shr 8) and 0xFF
+            val b = background and 0xFF
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128
+        }
 }
 
 /**
@@ -138,7 +171,6 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
     private val dataStore: DataStore<Preferences> = dataStoreFor(readerPreferencesFilePath(context))
 
     private object Keys {
-        val FONT_SIZE_PX = intPreferencesKey("font_size_px")
         val FONT_SCALE = doublePreferencesKey("font_scale")
         val LINE_SPACING_OVERRIDE = doublePreferencesKey("line_height_override")
         val PARAGRAPH_SPACING_OVERRIDE = doublePreferencesKey("paragraph_spacing_override")
@@ -167,7 +199,6 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
         dataStore.edit { prefs ->
             val next = transform(prefs.toPrefs())
             prefs[Keys.FONT_SCALE] = normalizeFontScale(next.fontScale)
-            prefs.remove(Keys.FONT_SIZE_PX)
             next.lineSpacing?.let { prefs[Keys.LINE_SPACING_OVERRIDE] = normalizeLineSpacing(it) }
                 ?: prefs.remove(Keys.LINE_SPACING_OVERRIDE)
             next.paragraphSpacing?.let { prefs[Keys.PARAGRAPH_SPACING_OVERRIDE] = normalizeParagraphSpacing(it) }
@@ -197,13 +228,7 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
     }
 
     private fun Preferences.toPrefs() = ReaderDisplayPreferences(
-        fontScale = (
-            this[Keys.FONT_SCALE]
-                ?: this[Keys.FONT_SIZE_PX]?.let {
-                    it.toDouble() / 16.0
-                }
-                ?: ReaderDisplayPreferences.DEFAULT_FONT_SCALE
-            ).let(::normalizeFontScale),
+        fontScale = (this[Keys.FONT_SCALE] ?: ReaderDisplayPreferences.DEFAULT_FONT_SCALE).let(::normalizeFontScale),
         lineSpacing = this[Keys.LINE_SPACING_OVERRIDE]?.let(::normalizeLineSpacing),
         paragraphSpacing = this[Keys.PARAGRAPH_SPACING_OVERRIDE]?.let(::normalizeParagraphSpacing),
         paragraphIndent = this[Keys.PARAGRAPH_INDENT],

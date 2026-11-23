@@ -1,5 +1,7 @@
 package net.dexxicon.reader.shared.reader.epub
 
+import net.dexxicon.reader.shared.reader.ResetTextButton
+import net.dexxicon.reader.shared.reader.ReaderThemeSetting
 import net.dexxicon.reader.shared.SideColumnGap
 import net.dexxicon.reader.shared.SideColumnControls
 import net.dexxicon.reader.shared.SideColumnButton
@@ -93,7 +95,6 @@ import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.shared.reader.proportionalScaleLabel
 import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
-import net.dexxicon.reader.shared.reader.ReaderCustomThemeRow
 import net.dexxicon.reader.shared.settings.SettingRow
 
 /** issue #117: grey background, unchanged from Android's original standalone screen. */
@@ -568,7 +569,6 @@ private fun DisplaySettings(
     preferences: ReaderDisplayPreferences,
     onChange: ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
 ) {
-    var themeExpanded by remember { mutableStateOf(true) }
     var textExpanded by remember { mutableStateOf(true) }
     var pageExpanded by remember { mutableStateOf(true) }
 
@@ -579,37 +579,53 @@ private fun DisplaySettings(
             .padding(24.dp)
             .navigationBarsPadding(),
     ) {
+        // issue #261 — hierarchical: the theme, then the page, then the text on it.
+        ReaderThemeSetting(preferences, onChange)
+
         SettingSection(
-            title = "Theme",
-            expanded = themeExpanded,
-            onToggle = { themeExpanded = !themeExpanded },
+            title = "Page",
+            expanded = pageExpanded,
+            onToggle = { pageExpanded = !pageExpanded },
         ) {
             SettingChips(
-                title = "Background",
-                entries = ReaderTheme.entries.filter { it != ReaderTheme.CUSTOM_1 && it != ReaderTheme.CUSTOM_2 },
-                selected = preferences.theme,
-                label = ::readerThemeLabel,
-                onSelect = { theme -> onChange { it.copy(theme = theme) } },
-                leadingIcon = { theme -> ThemeSwatch(theme, preferences) },
+                title = "Page fit",
+                entries = ReaderFitMode.entries,
+                selected = preferences.fitMode,
+                label = ::readerFitLabel,
+                onSelect = { fit -> onChange { it.copy(fitMode = fit) } },
             )
-            ReaderCustomThemeRow(
-                title = "Custom 1",
-                selected = preferences.theme == ReaderTheme.CUSTOM_1,
-                background = preferences.custom1Background,
-                foreground = preferences.custom1Foreground,
-                onSelect = { onChange { it.copy(theme = ReaderTheme.CUSTOM_1) } },
-                onBackgroundChange = { color -> onChange { it.copy(custom1Background = color) } },
-                onForegroundChange = { color -> onChange { it.copy(custom1Foreground = color) } },
+
+            SettingChips(
+                title = "Page layout",
+                entries = ReaderPageLayout.entries,
+                selected = preferences.pageLayout,
+                label = ::readerPageLayoutLabel,
+                onSelect = { layout -> onChange { it.copy(pageLayout = layout) } },
             )
-            ReaderCustomThemeRow(
-                title = "Custom 2",
-                selected = preferences.theme == ReaderTheme.CUSTOM_2,
-                background = preferences.custom2Background,
-                foreground = preferences.custom2Foreground,
-                onSelect = { onChange { it.copy(theme = ReaderTheme.CUSTOM_2) } },
-                onBackgroundChange = { color -> onChange { it.copy(custom2Background = color) } },
-                onForegroundChange = { color -> onChange { it.copy(custom2Foreground = color) } },
+
+            SettingChips(
+                title = "Reading mode",
+                // CONTINUOUS is scaffolding — kept out of the picker until a navigator honours it.
+                entries = listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
+                selected = if (preferences.scrollMode == ReaderScrollMode.PAGED) {
+                    ReaderScrollMode.PAGED
+                } else {
+                    ReaderScrollMode.SCROLL
+                },
+                label = ::readerScrollModeLabel,
+                onSelect = { mode -> onChange { it.copy(scrollMode = mode) } },
             )
+
+            Row(
+                Modifier.fillMaxWidth().padding(top = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Tap edges to turn pages", Modifier.weight(1f))
+                Switch(
+                    checked = preferences.tapNavigation,
+                    onCheckedChange = { on -> onChange { it.copy(tapNavigation = on) } },
+                )
+            }
         }
 
         SettingSection(
@@ -678,52 +694,7 @@ private fun DisplaySettings(
                     onCheckedChange = { enabled -> onChange { it.copy(hyphenation = enabled) } },
                 )
             }
-        }
-
-        SettingSection(
-            title = "Page",
-            expanded = pageExpanded,
-            onToggle = { pageExpanded = !pageExpanded },
-        ) {
-            SettingChips(
-                title = "Page fit",
-                entries = ReaderFitMode.entries,
-                selected = preferences.fitMode,
-                label = ::readerFitLabel,
-                onSelect = { fit -> onChange { it.copy(fitMode = fit) } },
-            )
-
-            SettingChips(
-                title = "Page layout",
-                entries = ReaderPageLayout.entries,
-                selected = preferences.pageLayout,
-                label = ::readerPageLayoutLabel,
-                onSelect = { layout -> onChange { it.copy(pageLayout = layout) } },
-            )
-
-            SettingChips(
-                title = "Reading mode",
-                // CONTINUOUS is scaffolding — kept out of the picker until a navigator honours it.
-                entries = listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
-                selected = if (preferences.scrollMode == ReaderScrollMode.PAGED) {
-                    ReaderScrollMode.PAGED
-                } else {
-                    ReaderScrollMode.SCROLL
-                },
-                label = ::readerScrollModeLabel,
-                onSelect = { mode -> onChange { it.copy(scrollMode = mode) } },
-            )
-
-            Row(
-                Modifier.fillMaxWidth().padding(top = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Tap edges to turn pages", Modifier.weight(1f))
-                Switch(
-                    checked = preferences.tapNavigation,
-                    onCheckedChange = { on -> onChange { it.copy(tapNavigation = on) } },
-                )
-            }
+            ResetTextButton(preferences) { onChange(it) }
         }
     }
 }
@@ -838,48 +809,6 @@ private fun <T> SettingChips(
             )
         }
     }
-}
-
-/**
- * issue #117 (from the Claude Design mockup): a small preview dot on each Background chip
- * showing the actual page colour that choice renders, rather than a bare text label. System
- * has no single colour to show — a half-white/half-black dot signals "follows the device"
- * instead of guessing the current system theme.
- */
-@Composable
-private fun ThemeSwatch(theme: ReaderTheme, preferences: ReaderDisplayPreferences) {
-    val borderColor = MaterialTheme.colorScheme.outlineVariant
-    Canvas(Modifier.size(18.dp)) {
-        when (theme) {
-            ReaderTheme.SYSTEM -> {
-                drawArc(Color.White, -90f, 180f, useCenter = true)
-                drawArc(Color.Black, 90f, 180f, useCenter = true)
-            }
-            ReaderTheme.LIGHT -> drawCircle(Color(0xFFFFFFFF.toInt()))
-            ReaderTheme.SEPIA -> drawCircle(Color(SEPIA_BACKGROUND))
-            ReaderTheme.SEPIA_DARK -> drawCircle(Color(0xFFC4B090.toInt()))
-            ReaderTheme.GREY -> drawCircle(Color(GREY_BACKGROUND))
-            ReaderTheme.DARK -> drawCircle(Color(DARK_BACKGROUND))
-            ReaderTheme.MIDNIGHT -> drawCircle(Color(0xFF0F172A.toInt()))
-            ReaderTheme.NORD -> drawCircle(Color(0xFF2E3440.toInt()))
-            ReaderTheme.CUSTOM_1 -> drawCircle(Color(preferences.custom1Background))
-            ReaderTheme.CUSTOM_2 -> drawCircle(Color(preferences.custom2Background))
-        }
-        drawCircle(borderColor, style = Stroke(width = 1.dp.toPx()))
-    }
-}
-
-private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
-    ReaderTheme.SYSTEM -> "System"
-    ReaderTheme.LIGHT -> "White"
-    ReaderTheme.SEPIA -> "Sepia"
-    ReaderTheme.SEPIA_DARK -> "Sepia Dark"
-    ReaderTheme.GREY -> "Grey"
-    ReaderTheme.DARK -> "Black"
-    ReaderTheme.MIDNIGHT -> "Midnight"
-    ReaderTheme.NORD -> "Nord"
-    ReaderTheme.CUSTOM_1 -> "Custom 1"
-    ReaderTheme.CUSTOM_2 -> "Custom 2"
 }
 
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {

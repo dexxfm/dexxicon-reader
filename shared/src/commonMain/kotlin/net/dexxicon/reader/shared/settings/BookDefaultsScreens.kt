@@ -1,5 +1,7 @@
 package net.dexxicon.reader.shared.settings
 
+import net.dexxicon.reader.shared.reader.ResetTextButton
+import net.dexxicon.reader.shared.reader.ReaderThemeSetting
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -40,7 +42,6 @@ import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.reader.proportionalScaleLabel
 import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
-import net.dexxicon.reader.shared.reader.ReaderCustomThemeRow
 
 /**
  * Phase 4 Stage H (issue #145) — Book Defaults, ported from native's
@@ -129,32 +130,8 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
         )
-        DefaultsChips(
-            "Background",
-            ReaderTheme.entries.filter { it != ReaderTheme.CUSTOM_1 && it != ReaderTheme.CUSTOM_2 },
-            prefs.theme,
-            ::readerThemeLabel,
-        ) { theme ->
-            update { it.copy(theme = theme) }
-        }
-        ReaderCustomThemeRow(
-            title = "Custom 1",
-            selected = prefs.theme == ReaderTheme.CUSTOM_1,
-            background = prefs.custom1Background,
-            foreground = prefs.custom1Foreground,
-            onSelect = { update { it.copy(theme = ReaderTheme.CUSTOM_1) } },
-            onBackgroundChange = { color -> update { it.copy(custom1Background = color) } },
-            onForegroundChange = { color -> update { it.copy(custom1Foreground = color) } },
-        )
-        ReaderCustomThemeRow(
-            title = "Custom 2",
-            selected = prefs.theme == ReaderTheme.CUSTOM_2,
-            background = prefs.custom2Background,
-            foreground = prefs.custom2Foreground,
-            onSelect = { update { it.copy(theme = ReaderTheme.CUSTOM_2) } },
-            onBackgroundChange = { color -> update { it.copy(custom2Background = color) } },
-            onForegroundChange = { color -> update { it.copy(custom2Foreground = color) } },
-        )
+        // issue #261 — the theme picker shared with every reader.
+        ReaderThemeSetting(prefs, update)
         Text(
             "EPUB and PDF.",
             style = MaterialTheme.typography.bodySmall,
@@ -208,6 +185,10 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
 
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SettingsSubsectionTitle("EPUB")
+        // issue #261 — hierarchical: the page first, then the text on it.
+        DefaultsChips("Page layout", ReaderPageLayout.entries, prefs.pageLayout, ::readerPageLayoutLabel) { layout ->
+            update { it.copy(pageLayout = layout) }
+        }
         ReaderProportionalScaleControl(
             title = "Font size",
             scale = prefs.fontScale,
@@ -267,9 +248,7 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
                 onCheckedChange = { enabled -> update { it.copy(hyphenation = enabled) } },
             )
         }
-        DefaultsChips("Page layout", ReaderPageLayout.entries, prefs.pageLayout, ::readerPageLayoutLabel) { layout ->
-            update { it.copy(pageLayout = layout) }
-        }
+        ResetTextButton(prefs, update)
 
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SettingsSubsectionTitle("Comics")
@@ -371,19 +350,6 @@ private fun <T> DefaultsChips(
             )
         }
     }
-}
-
-private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
-    ReaderTheme.SYSTEM -> "System"
-    ReaderTheme.LIGHT -> "White"
-    ReaderTheme.SEPIA -> "Sepia"
-    ReaderTheme.SEPIA_DARK -> "Sepia Dark"
-    ReaderTheme.GREY -> "Grey"
-    ReaderTheme.DARK -> "Black"
-    ReaderTheme.MIDNIGHT -> "Midnight"
-    ReaderTheme.NORD -> "Nord"
-    ReaderTheme.CUSTOM_1 -> "Custom 1"
-    ReaderTheme.CUSTOM_2 -> "Custom 2"
 }
 
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {

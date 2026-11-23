@@ -1,5 +1,6 @@
 package net.dexxicon.reader.shared.reader.pdf
 
+import net.dexxicon.reader.shared.reader.ReaderThemeSetting
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import net.dexxicon.reader.shared.sideControls
 import net.dexxicon.reader.shared.SideColumnGap
@@ -327,13 +328,8 @@ private fun PdfDisplaySettings(
             .padding(24.dp)
             .navigationBarsPadding(),
     ) {
-        SettingChips(
-            title = "Background",
-            entries = ReaderTheme.entries,
-            selected = preferences.theme,
-            label = ::readerThemeLabel,
-            onSelect = { theme -> onChange { it.copy(theme = theme) } },
-        )
+        // issue #261 — the theme picker shared by every reader (and Book defaults).
+        ReaderThemeSetting(preferences, onChange)
         SettingChips(
             title = "Page fit",
             // The engine only distinguishes fit-page from fit-width.
@@ -400,19 +396,6 @@ private fun <T> SettingChips(
     }
 }
 
-private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
-    ReaderTheme.SYSTEM -> "System"
-    ReaderTheme.LIGHT -> "White"
-    ReaderTheme.SEPIA -> "Sepia"
-    ReaderTheme.SEPIA_DARK -> "Sepia Dark"
-    ReaderTheme.GREY -> "Grey"
-    ReaderTheme.DARK -> "Black"
-    ReaderTheme.MIDNIGHT -> "Midnight"
-    ReaderTheme.NORD -> "Nord"
-    ReaderTheme.CUSTOM_1 -> "Custom 1"
-    ReaderTheme.CUSTOM_2 -> "Custom 2"
-}
-
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {
     ReaderFitMode.PAGE_FIT -> "Fit"
     ReaderFitMode.PAGE_WIDTH -> "Width"
@@ -439,13 +422,11 @@ private fun ReaderTheme.pdfSurfaceColor(appInDark: Boolean, preferences: ReaderD
     ReaderTheme.SYSTEM -> if (appInDark) Color(0xFF101114) else Color(0xFFF6F6F6)
     ReaderTheme.LIGHT -> Color(0xFFF6F6F6)
     ReaderTheme.SEPIA -> Color(0xFFEFE6D3)
-    ReaderTheme.SEPIA_DARK -> Color(0xFFC4B090.toInt())
     ReaderTheme.GREY -> Color(0xFF3A3D42)
     ReaderTheme.DARK -> Color(0xFF101114)
-    ReaderTheme.MIDNIGHT -> Color(0xFF0F172A.toInt())
-    ReaderTheme.NORD -> Color(0xFF2E3440.toInt())
-    ReaderTheme.CUSTOM_1 -> Color(preferences.custom1Background)
-    ReaderTheme.CUSTOM_2 -> Color(preferences.custom2Background)
+    // issue #261 — the painted palettes, from the one place they're defined.
+    ReaderTheme.SEPIA_DARK, ReaderTheme.MIDNIGHT, ReaderTheme.NORD, ReaderTheme.CUSTOM_1, ReaderTheme.CUSTOM_2 ->
+        Color(preferences.copy(theme = this).paintedColors!!.background)
 }
 
 @Composable
