@@ -1,5 +1,7 @@
 package net.dexxicon.reader.shared.reader.epub
 
+import net.dexxicon.reader.shared.reader.ResetTextButton
+import net.dexxicon.reader.shared.reader.ReaderThemeSetting
 import net.dexxicon.reader.shared.SideColumnGap
 import net.dexxicon.reader.shared.SideColumnControls
 import net.dexxicon.reader.shared.SideColumnButton
@@ -35,9 +37,15 @@ import androidx.compose.material.icons.filled.BorderColor
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -45,7 +53,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -78,6 +85,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.core.designsystem.theme.Pill
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.datastore.ReaderFontFamily
 import net.dexxicon.reader.core.datastore.ReaderFitMode
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderScrollMode
@@ -85,6 +93,9 @@ import net.dexxicon.reader.core.datastore.ReaderTheme
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
+import net.dexxicon.reader.shared.reader.proportionalScaleLabel
+import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
+import net.dexxicon.reader.shared.settings.SettingRow
 
 /** issue #117: grey background, unchanged from Android's original standalone screen. */
 private const val SEPIA_BACKGROUND = 0xFFF4ECD8.toInt()
@@ -558,6 +569,9 @@ private fun DisplaySettings(
     preferences: ReaderDisplayPreferences,
     onChange: ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
 ) {
+    var textExpanded by remember { mutableStateOf(true) }
+    var pageExpanded by remember { mutableStateOf(true) }
+
     Column(
         Modifier
             .fillMaxWidth()
@@ -565,66 +579,208 @@ private fun DisplaySettings(
             .padding(24.dp)
             .navigationBarsPadding(),
     ) {
-        Text("Text size", style = MaterialTheme.typography.titleSmall)
-        Slider(
-            value = preferences.fontScale.toFloat(),
-            onValueChange = { v -> onChange { it.copy(fontScale = v.toDouble()) } },
-            valueRange = 0.6f..2.4f,
-            steps = 8,
-            modifier = Modifier.semantics {
-                contentDescription = "Text size"
-                stateDescription = "${(preferences.fontScale * 100).toInt()} percent"
-            },
-        )
+        // issue #261 — hierarchical: the theme, then the page, then the text on it.
+        ReaderThemeSetting(preferences, onChange)
 
-        SettingChips(
-            title = "Background",
-            entries = ReaderTheme.entries,
-            selected = preferences.theme,
-            label = ::readerThemeLabel,
-            onSelect = { theme -> onChange { it.copy(theme = theme) } },
-            leadingIcon = { theme -> ThemeSwatch(theme) },
-        )
-
-        SettingChips(
-            title = "Page fit",
-            entries = ReaderFitMode.entries,
-            selected = preferences.fitMode,
-            label = ::readerFitLabel,
-            onSelect = { fit -> onChange { it.copy(fitMode = fit) } },
-        )
-
-        SettingChips(
-            title = "Page layout",
-            entries = ReaderPageLayout.entries,
-            selected = preferences.pageLayout,
-            label = ::readerPageLayoutLabel,
-            onSelect = { layout -> onChange { it.copy(pageLayout = layout) } },
-        )
-
-        SettingChips(
-            title = "Reading mode",
-            // CONTINUOUS is scaffolding — kept out of the picker until a navigator honours it.
-            entries = listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
-            selected = if (preferences.scrollMode == ReaderScrollMode.PAGED) {
-                ReaderScrollMode.PAGED
-            } else {
-                ReaderScrollMode.SCROLL
-            },
-            label = ::readerScrollModeLabel,
-            onSelect = { mode -> onChange { it.copy(scrollMode = mode) } },
-        )
-
-        Row(
-            Modifier.fillMaxWidth().padding(top = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        SettingSection(
+            title = "Page",
+            expanded = pageExpanded,
+            onToggle = { pageExpanded = !pageExpanded },
         ) {
-            Text("Tap edges to turn pages", Modifier.weight(1f))
-            Switch(
-                checked = preferences.tapNavigation,
-                onCheckedChange = { on -> onChange { it.copy(tapNavigation = on) } },
+            SettingChips(
+                title = "Page fit",
+                entries = ReaderFitMode.entries,
+                selected = preferences.fitMode,
+                label = ::readerFitLabel,
+                onSelect = { fit -> onChange { it.copy(fitMode = fit) } },
             )
+
+            SettingChips(
+                title = "Page layout",
+                entries = ReaderPageLayout.entries,
+                selected = preferences.pageLayout,
+                label = ::readerPageLayoutLabel,
+                onSelect = { layout -> onChange { it.copy(pageLayout = layout) } },
+            )
+
+            SettingChips(
+                title = "Reading mode",
+                // CONTINUOUS is scaffolding — kept out of the picker until a navigator honours it.
+                entries = listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
+                selected = if (preferences.scrollMode == ReaderScrollMode.PAGED) {
+                    ReaderScrollMode.PAGED
+                } else {
+                    ReaderScrollMode.SCROLL
+                },
+                label = ::readerScrollModeLabel,
+                onSelect = { mode -> onChange { it.copy(scrollMode = mode) } },
+            )
+
+            Row(
+                Modifier.fillMaxWidth().padding(top = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Tap edges to turn pages", Modifier.weight(1f))
+                Switch(
+                    checked = preferences.tapNavigation,
+                    onCheckedChange = { on -> onChange { it.copy(tapNavigation = on) } },
+                )
+            }
         }
+
+        SettingSection(
+            title = "Text",
+            expanded = textExpanded,
+            onToggle = { textExpanded = !textExpanded },
+        ) {
+            FontFamilySelector(
+                selected = preferences.fontFamily,
+                onSelect = { family -> onChange { it.copy(fontFamily = family) } },
+            )
+            ReaderProportionalScaleControl(
+                title = "Font size",
+                scale = preferences.fontScale,
+                min = ReaderDisplayPreferences.MIN_FONT_SCALE,
+                max = ReaderDisplayPreferences.MAX_FONT_SCALE,
+                onDecreaseDescription = "Decrease font size",
+                onIncreaseDescription = "Increase font size",
+                onScaleChange = { scale -> onChange { it.copy(fontScale = scale) } },
+            )
+            ReaderProportionalScaleControl(
+                title = "Line spacing",
+                scale = preferences.lineSpacing ?: ReaderDisplayPreferences.DEFAULT_LINE_SPACING,
+                min = ReaderDisplayPreferences.MIN_LINE_SPACING,
+                max = ReaderDisplayPreferences.MAX_LINE_SPACING,
+                onDecreaseDescription = "Decrease line spacing",
+                onIncreaseDescription = "Increase line spacing",
+                valueLabel = preferences.lineSpacing?.let { "${proportionalScaleLabel(it)}×" } ?: "Default",
+                onScaleChange = { spacing -> onChange { it.copy(lineSpacing = spacing) } },
+            )
+            ReaderProportionalScaleControl(
+                title = "Paragraph spacing",
+                scale = preferences.paragraphSpacing ?: ReaderDisplayPreferences.DEFAULT_PARAGRAPH_SPACING,
+                min = ReaderDisplayPreferences.MIN_PARAGRAPH_SPACING,
+                max = ReaderDisplayPreferences.MAX_PARAGRAPH_SPACING,
+                onDecreaseDescription = "Decrease paragraph spacing",
+                onIncreaseDescription = "Increase paragraph spacing",
+                valueLabel = preferences.paragraphSpacing?.let { "${proportionalScaleLabel(it)} rem" }
+                    ?: "Default",
+                onScaleChange = { spacing -> onChange { it.copy(paragraphSpacing = spacing) } },
+            )
+            SettingRow(
+                title = "Paragraph indent",
+                subtitle = if (preferences.paragraphIndent == null) "Readium default" else null,
+            ) {
+                Switch(
+                    checked = preferences.paragraphIndent ?: false,
+                    onCheckedChange = { enabled -> onChange { it.copy(paragraphIndent = enabled) } },
+                )
+            }
+            SettingRow(
+                title = "Justification",
+                subtitle = if (preferences.justification == null) "Readium default" else null,
+            ) {
+                Switch(
+                    checked = preferences.justification ?: false,
+                    onCheckedChange = { enabled -> onChange { it.copy(justification = enabled) } },
+                )
+            }
+            SettingRow(
+                title = "Hyphenation",
+                subtitle = if (preferences.hyphenation == null) "Readium default" else null,
+            ) {
+                Switch(
+                    checked = preferences.hyphenation ?: false,
+                    onCheckedChange = { enabled -> onChange { it.copy(hyphenation = enabled) } },
+                )
+            }
+            ResetTextButton(preferences) { onChange(it) }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FontFamilySelector(
+    selected: ReaderFontFamily?,
+    onSelect: (ReaderFontFamily?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = it },
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+    ) {
+        OutlinedTextField(
+            value = selected?.label ?: "Publisher default",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("Font family") },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            singleLine = true,
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(
+                text = { Text("Publisher default") },
+                onClick = {
+                    expanded = false
+                    onSelect(null)
+                },
+                contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+            )
+            ReaderFontFamily.entries.forEach { family ->
+                DropdownMenuItem(
+                    text = { Text(family.label) },
+                    onClick = {
+                        expanded = false
+                        onSelect(family)
+                    },
+                    contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingSection(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Column {
+        TextButton(
+            onClick = onToggle,
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics {
+                    stateDescription = if (expanded) "Expanded" else "Collapsed"
+                },
+        ) {
+            Row(
+                Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleMedium,
+                    textAlign = TextAlign.Start,
+                )
+                Icon(
+                    imageVector = if (expanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                    contentDescription = null,
+                )
+            }
+        }
+        if (expanded) content()
     }
 }
 
@@ -653,38 +809,6 @@ private fun <T> SettingChips(
             )
         }
     }
-}
-
-/**
- * issue #117 (from the Claude Design mockup): a small preview dot on each Background chip
- * showing the actual page colour that choice renders, rather than a bare text label. System
- * has no single colour to show — a half-white/half-black dot signals "follows the device"
- * instead of guessing the current system theme.
- */
-@Composable
-private fun ThemeSwatch(theme: ReaderTheme) {
-    val borderColor = MaterialTheme.colorScheme.outlineVariant
-    Canvas(Modifier.size(18.dp)) {
-        when (theme) {
-            ReaderTheme.SYSTEM -> {
-                drawArc(Color.White, -90f, 180f, useCenter = true)
-                drawArc(Color.Black, 90f, 180f, useCenter = true)
-            }
-            ReaderTheme.LIGHT -> drawCircle(Color(0xFFFFFFFF.toInt()))
-            ReaderTheme.SEPIA -> drawCircle(Color(SEPIA_BACKGROUND))
-            ReaderTheme.GREY -> drawCircle(Color(GREY_BACKGROUND))
-            ReaderTheme.DARK -> drawCircle(Color(DARK_BACKGROUND))
-        }
-        drawCircle(borderColor, style = Stroke(width = 1.dp.toPx()))
-    }
-}
-
-private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
-    ReaderTheme.SYSTEM -> "System"
-    ReaderTheme.LIGHT -> "White"
-    ReaderTheme.SEPIA -> "Sepia"
-    ReaderTheme.GREY -> "Grey"
-    ReaderTheme.DARK -> "Black"
 }
 
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {

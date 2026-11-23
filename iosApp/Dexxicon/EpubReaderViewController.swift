@@ -302,17 +302,53 @@ final class EpubReaderViewController: UIViewController {
             resolvedTheme = Theme.light
         } else if prefs.theme == DatastoreReaderTheme.dark {
             resolvedTheme = Theme.dark
+        } else if prefs.paintedColors != nil {
+            // issue #261 — Sepia Dark, Midnight, Nord and the custom themes paint their own
+            // colours (below) over a light base, as on Android.
+            resolvedTheme = Theme.light
         } else {
             resolvedTheme = traitCollection.userInterfaceStyle == .dark ? Theme.dark : Theme.light
         }
+        let fontFamily: ReadiumNavigator.FontFamily?
+        if prefs.fontFamily == DatastoreReaderFontFamily.serif {
+            fontFamily = .serif
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.sansSerif {
+            fontFamily = .sansSerif
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.cursive {
+            fontFamily = .cursive
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.fantasy {
+            fontFamily = .fantasy
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.monospace {
+            fontFamily = .monospace
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.accessibleDfa {
+            fontFamily = .accessibleDfA
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.iaWriterDuospace {
+            fontFamily = .iaWriterDuospace
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.openDyslexic {
+            fontFamily = .openDyslexic
+        } else {
+            fontFamily = nil
+        }
         // issue #279: a stronger highlight tint on a dark page — re-applied when that changes.
-        if (resolvedTheme == Theme.dark) != darkPage {
-            darkPage = resolvedTheme == Theme.dark
+        // issue #261: a painted palette is dark by its own background.
+        let isDarkPage = resolvedTheme == Theme.dark || (prefs.paintedColors?.isDark ?? false)
+        if isDarkPage != darkPage {
+            darkPage = isDarkPage
             applyDecorations(for: lastHighlights)
         }
+        // Kotlin's optional numbers and flags arrive as KotlinDouble / KotlinBoolean.
+        let typographySet = prefs.lineSpacing != nil || prefs.paragraphSpacing != nil ||
+            prefs.paragraphIndent != nil || prefs.justification != nil || prefs.hyphenation != nil
         var epubPrefs = EPUBPreferences(
+            fontFamily: fontFamily,
             fontSize: prefs.fontScale,
+            hyphens: prefs.hyphenation?.boolValue,
+            lineHeight: prefs.lineSpacing?.doubleValue,
+            paragraphIndent: prefs.paragraphIndent.map { $0.boolValue ? 1.0 : 0.0 },
+            paragraphSpacing: prefs.paragraphSpacing?.doubleValue,
+            publisherStyles: typographySet ? false : nil,
             scroll: prefs.scroll,
+            textAlign: prefs.justification.map { $0.boolValue ? .justify : .start },
             theme: resolvedTheme
         )
         // Grey isn't one of Readium's built-in themes; paint it on with explicit colours —
@@ -321,6 +357,10 @@ final class EpubReaderViewController: UIViewController {
         if prefs.theme == DatastoreReaderTheme.grey {
             epubPrefs.backgroundColor = ReadiumNavigator.Color(rawValue: 0xFFC8CBCF)
             epubPrefs.textColor = ReadiumNavigator.Color(rawValue: 0xFF17181A)
+        } else if let painted = prefs.paintedColors {
+            // ARGB as Kotlin's Int (Int32 here): read the bits unsigned.
+            epubPrefs.backgroundColor = ReadiumNavigator.Color(rawValue: Int(UInt32(bitPattern: painted.background)))
+            epubPrefs.textColor = ReadiumNavigator.Color(rawValue: Int(UInt32(bitPattern: painted.text)))
         }
         // issue #183: Kotlin's `auto`/`double` enum cases are exported as `auto_`/`double_` —
         // both are Objective-C/C keywords, confirmed via a real ios-ci compile error.

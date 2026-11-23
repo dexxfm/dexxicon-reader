@@ -2,12 +2,15 @@ package net.dexxicon.reader.feature.reader.epub
 
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.datastore.ReaderFitMode
+import net.dexxicon.reader.core.datastore.ReaderFontFamily
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderTheme
 import org.readium.r2.navigator.epub.EpubPreferences
 import org.readium.r2.navigator.preferences.Color
 import org.readium.r2.navigator.preferences.ColumnCount
+import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.Theme
+import org.readium.r2.navigator.preferences.TextAlign
 
 // A soft neutral grey — sits between the white and black page options without going fully dark.
 // Not private: EpubReaderScreen's Background chip swatches reuse this exact value so the
@@ -27,14 +30,50 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         ReaderTheme.SEPIA -> Theme.SEPIA
         ReaderTheme.GREY -> Theme.LIGHT
         ReaderTheme.DARK -> Theme.DARK
+        ReaderTheme.SEPIA_DARK, ReaderTheme.MIDNIGHT, ReaderTheme.NORD, ReaderTheme.CUSTOM_1,
+        ReaderTheme.CUSTOM_2 -> Theme.LIGHT
         ReaderTheme.SYSTEM -> if (systemInDark) Theme.DARK else Theme.LIGHT
     }
+    val resolvedFontFamily = when (fontFamily) {
+        ReaderFontFamily.SERIF -> FontFamily.SERIF
+        ReaderFontFamily.SANS_SERIF -> FontFamily.SANS_SERIF
+        ReaderFontFamily.CURSIVE -> FontFamily.CURSIVE
+        ReaderFontFamily.FANTASY -> FontFamily.FANTASY
+        ReaderFontFamily.MONOSPACE -> FontFamily.MONOSPACE
+        ReaderFontFamily.ACCESSIBLE_DFA -> FontFamily.ACCESSIBLE_DFA
+        ReaderFontFamily.IA_WRITER_DUOSPACE -> FontFamily.IA_WRITER_DUOSPACE
+        ReaderFontFamily.OPEN_DYSLEXIC -> FontFamily.OPEN_DYSLEXIC
+        null -> null
+    }
+    val customColors = if (theme == ReaderTheme.GREY) {
+        Color(GREY_BACKGROUND) to Color(GREY_TEXT)
+    } else {
+        paintedColors?.let { Color(it.background) to Color(it.text) }
+    }
     return EpubPreferences(
+        fontFamily = resolvedFontFamily,
         fontSize = fontScale,
+        lineHeight = lineSpacing,
+        hyphens = hyphenation,
+        paragraphIndent = paragraphIndent?.let { if (it) 1.0 else 0.0 },
+        paragraphSpacing = paragraphSpacing,
+        textAlign = justification?.let { if (it) TextAlign.JUSTIFY else TextAlign.START },
+        // Readium applies these typography overrides only when publisher styles are disabled.
+        publisherStyles = if (
+            lineSpacing != null ||
+            paragraphSpacing != null ||
+            paragraphIndent != null ||
+            justification != null ||
+            hyphenation != null
+        ) {
+            false
+        } else {
+            null
+        },
         theme = resolvedTheme,
-        // Grey isn't one of Readium's built-in themes; paint it on with explicit colours.
-        backgroundColor = if (theme == ReaderTheme.GREY) Color(GREY_BACKGROUND) else null,
-        textColor = if (theme == ReaderTheme.GREY) Color(GREY_TEXT) else null,
+        // These palettes aren't Readium built-ins; paint them over a neutral light base.
+        backgroundColor = customColors?.first,
+        textColor = customColors?.second,
         scroll = scroll,
         // issue #117: AUTO defers to Readium's own column logic, which doesn't split into two
         // columns on a wide viewport by itself — force TWO past the breakpoint instead. A

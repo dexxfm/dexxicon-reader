@@ -6,14 +6,27 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlin.math.roundToInt
 import okio.Path.Companion.toPath
 
 /** Reader look & feel, shared by every in-app reader. */
 data class ReaderDisplayPreferences(
-    val fontScale: Double = 1.0,
+    val fontScale: Double = DEFAULT_FONT_SCALE,
+    val lineSpacing: Double? = null,
+    val paragraphSpacing: Double? = null,
+    val paragraphIndent: Boolean? = null,
+    val justification: Boolean? = null,
+    val hyphenation: Boolean? = null,
+    val custom1Background: Int = DEFAULT_CUSTOM_1_BACKGROUND,
+    val custom1Foreground: Int = DEFAULT_CUSTOM_1_FOREGROUND,
+    val custom2Background: Int = DEFAULT_CUSTOM_2_BACKGROUND,
+    val custom2Foreground: Int = DEFAULT_CUSTOM_2_FOREGROUND,
+    /** EPUB typeface override. Null leaves the publication's own font in effect. */
+    val fontFamily: ReaderFontFamily? = null,
     val theme: ReaderTheme = ReaderTheme.SYSTEM,
     /**
      * How a page is sized within the viewport. Honoured directly by fixed-layout books,
@@ -45,6 +58,56 @@ data class ReaderDisplayPreferences(
 ) {
     /** Legacy shorthand: the EPUB/PDF navigators still take a plain scroll flag. */
     val scroll: Boolean get() = scrollMode.scrolling
+
+    /**
+     * issue #261 — the page and text colours of a theme the readers paint on themselves (Sepia
+     * Dark, Midnight, Nord and the two custom ones), so Android, iOS and the PDF/comic surfaces
+     * all use the same palette. Null for the themes each reader draws its own way.
+     */
+    val paintedColors: ReaderPageColors?
+        get() = when (theme) {
+            ReaderTheme.SEPIA_DARK -> ReaderPageColors(SEPIA_DARK_BACKGROUND, SEPIA_DARK_TEXT)
+            ReaderTheme.MIDNIGHT -> ReaderPageColors(MIDNIGHT_BACKGROUND, MIDNIGHT_TEXT)
+            ReaderTheme.NORD -> ReaderPageColors(NORD_BACKGROUND, NORD_TEXT)
+            ReaderTheme.CUSTOM_1 -> ReaderPageColors(custom1Background, custom1Foreground)
+            ReaderTheme.CUSTOM_2 -> ReaderPageColors(custom2Background, custom2Foreground)
+            ReaderTheme.SYSTEM, ReaderTheme.LIGHT, ReaderTheme.SEPIA, ReaderTheme.GREY, ReaderTheme.DARK -> null
+        }
+
+    companion object {
+        const val MIN_FONT_SCALE = 0.5
+        const val MAX_FONT_SCALE = 3.0
+        const val SCALE_STEP = 0.1
+        const val DEFAULT_FONT_SCALE = 1.0
+        const val MIN_LINE_SPACING = 1.0
+        const val MAX_LINE_SPACING = 3.0
+        const val DEFAULT_LINE_SPACING = 1.0
+        const val MIN_PARAGRAPH_SPACING = 0.0
+        const val MAX_PARAGRAPH_SPACING = 2.0
+        const val DEFAULT_PARAGRAPH_SPACING = 0.0
+        const val DEFAULT_CUSTOM_1_BACKGROUND = 0xFFFFFFFF.toInt()
+        const val DEFAULT_CUSTOM_1_FOREGROUND = 0xFF000000.toInt()
+        const val DEFAULT_CUSTOM_2_BACKGROUND = 0xFF000000.toInt()
+        const val DEFAULT_CUSTOM_2_FOREGROUND = 0xFFFFFFFF.toInt()
+        const val SEPIA_DARK_BACKGROUND = 0xFFC4B090.toInt()
+        const val SEPIA_DARK_TEXT = 0xFF2E2014.toInt()
+        const val MIDNIGHT_BACKGROUND = 0xFF0F172A.toInt()
+        const val MIDNIGHT_TEXT = 0xFFEDF4FC.toInt()
+        const val NORD_BACKGROUND = 0xFF2E3440.toInt()
+        const val NORD_TEXT = 0xFFE3E9F5.toInt()
+    }
+}
+
+/** issue #261 — a page colour and its text colour, as ARGB. */
+data class ReaderPageColors(val background: Int, val text: Int) {
+    /** A dark page (highlights need a stronger tint on it): by the background's luminance. */
+    val isDark: Boolean
+        get() {
+            val r = (background shr 16) and 0xFF
+            val g = (background shr 8) and 0xFF
+            val b = background and 0xFF
+            return 0.2126 * r + 0.7152 * g + 0.0722 * b < 128
+        }
 }
 
 /**
@@ -58,8 +121,20 @@ enum class ReaderSwipeSensitivity(val label: String, val commitFraction: Float) 
     HIGH("High", 0.20f),
 }
 
+/** Font families supported by Readium's EPUB navigator. */
+enum class ReaderFontFamily(val label: String) {
+    SERIF("Serif"),
+    SANS_SERIF("Sans serif"),
+    CURSIVE("Cursive"),
+    FANTASY("Fantasy"),
+    MONOSPACE("Monospace"),
+    ACCESSIBLE_DFA("AccessibleDfA"),
+    IA_WRITER_DUOSPACE("IA Writer Duospace"),
+    OPEN_DYSLEXIC("OpenDyslexic"),
+}
+
 /** Reader page colours. Doubles as the EPUB reading theme. */
-enum class ReaderTheme { SYSTEM, LIGHT, SEPIA, GREY, DARK }
+enum class ReaderTheme { SYSTEM, LIGHT, SEPIA, SEPIA_DARK, GREY, DARK, MIDNIGHT, NORD, CUSTOM_1, CUSTOM_2 }
 
 /**
  * Page-fit modes, borrowed from image/PDF viewers. Reflowable EPUB has no true "fit", so
@@ -97,6 +172,16 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
 
     private object Keys {
         val FONT_SCALE = doublePreferencesKey("font_scale")
+        val LINE_SPACING_OVERRIDE = doublePreferencesKey("line_height_override")
+        val PARAGRAPH_SPACING_OVERRIDE = doublePreferencesKey("paragraph_spacing_override")
+        val PARAGRAPH_INDENT = booleanPreferencesKey("paragraph_indent")
+        val JUSTIFICATION = booleanPreferencesKey("justification")
+        val HYPHENATION = booleanPreferencesKey("hyphenation")
+        val CUSTOM_1_BACKGROUND = intPreferencesKey("custom_1_background")
+        val CUSTOM_1_FOREGROUND = intPreferencesKey("custom_1_foreground")
+        val CUSTOM_2_BACKGROUND = intPreferencesKey("custom_2_background")
+        val CUSTOM_2_FOREGROUND = intPreferencesKey("custom_2_foreground")
+        val FONT_FAMILY = stringPreferencesKey("font_family")
         val THEME = stringPreferencesKey("theme")
         val FIT_MODE = stringPreferencesKey("fit_mode")
         val PAGE_LAYOUT = stringPreferencesKey("page_layout")
@@ -113,7 +198,23 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
     suspend fun update(transform: (ReaderDisplayPreferences) -> ReaderDisplayPreferences) {
         dataStore.edit { prefs ->
             val next = transform(prefs.toPrefs())
-            prefs[Keys.FONT_SCALE] = next.fontScale
+            prefs[Keys.FONT_SCALE] = normalizeFontScale(next.fontScale)
+            next.lineSpacing?.let { prefs[Keys.LINE_SPACING_OVERRIDE] = normalizeLineSpacing(it) }
+                ?: prefs.remove(Keys.LINE_SPACING_OVERRIDE)
+            next.paragraphSpacing?.let { prefs[Keys.PARAGRAPH_SPACING_OVERRIDE] = normalizeParagraphSpacing(it) }
+                ?: prefs.remove(Keys.PARAGRAPH_SPACING_OVERRIDE)
+            next.paragraphIndent?.let { prefs[Keys.PARAGRAPH_INDENT] = it }
+                ?: prefs.remove(Keys.PARAGRAPH_INDENT)
+            next.justification?.let { prefs[Keys.JUSTIFICATION] = it }
+                ?: prefs.remove(Keys.JUSTIFICATION)
+            next.hyphenation?.let { prefs[Keys.HYPHENATION] = it }
+                ?: prefs.remove(Keys.HYPHENATION)
+            prefs[Keys.CUSTOM_1_BACKGROUND] = next.custom1Background
+            prefs[Keys.CUSTOM_1_FOREGROUND] = next.custom1Foreground
+            prefs[Keys.CUSTOM_2_BACKGROUND] = next.custom2Background
+            prefs[Keys.CUSTOM_2_FOREGROUND] = next.custom2Foreground
+            next.fontFamily?.let { prefs[Keys.FONT_FAMILY] = it.name }
+                ?: prefs.remove(Keys.FONT_FAMILY)
             prefs[Keys.THEME] = next.theme.name
             prefs[Keys.FIT_MODE] = next.fitMode.name
             prefs[Keys.PAGE_LAYOUT] = next.pageLayout.name
@@ -127,7 +228,17 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
     }
 
     private fun Preferences.toPrefs() = ReaderDisplayPreferences(
-        fontScale = this[Keys.FONT_SCALE] ?: 1.0,
+        fontScale = (this[Keys.FONT_SCALE] ?: ReaderDisplayPreferences.DEFAULT_FONT_SCALE).let(::normalizeFontScale),
+        lineSpacing = this[Keys.LINE_SPACING_OVERRIDE]?.let(::normalizeLineSpacing),
+        paragraphSpacing = this[Keys.PARAGRAPH_SPACING_OVERRIDE]?.let(::normalizeParagraphSpacing),
+        paragraphIndent = this[Keys.PARAGRAPH_INDENT],
+        justification = this[Keys.JUSTIFICATION],
+        hyphenation = this[Keys.HYPHENATION],
+        custom1Background = this[Keys.CUSTOM_1_BACKGROUND] ?: ReaderDisplayPreferences.DEFAULT_CUSTOM_1_BACKGROUND,
+        custom1Foreground = this[Keys.CUSTOM_1_FOREGROUND] ?: ReaderDisplayPreferences.DEFAULT_CUSTOM_1_FOREGROUND,
+        custom2Background = this[Keys.CUSTOM_2_BACKGROUND] ?: ReaderDisplayPreferences.DEFAULT_CUSTOM_2_BACKGROUND,
+        custom2Foreground = this[Keys.CUSTOM_2_FOREGROUND] ?: ReaderDisplayPreferences.DEFAULT_CUSTOM_2_FOREGROUND,
+        fontFamily = this[Keys.FONT_FAMILY]?.let { enumOrNull<ReaderFontFamily>(it) },
         theme = this[Keys.THEME]?.let { enumOrNull<ReaderTheme>(it) } ?: ReaderTheme.SYSTEM,
         fitMode = this[Keys.FIT_MODE]?.let { enumOrNull<ReaderFitMode>(it) } ?: ReaderFitMode.PAGE_FIT,
         pageLayout = this[Keys.PAGE_LAYOUT]?.let { enumOrNull<ReaderPageLayout>(it) }
@@ -155,6 +266,30 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
 
 private inline fun <reified T : Enum<T>> enumOrNull(name: String): T? =
     runCatching { enumValueOf<T>(name) }.getOrNull()
+
+private fun normalizeFontScale(fontScale: Double): Double =
+    normalizeScale(
+        fontScale,
+        ReaderDisplayPreferences.MIN_FONT_SCALE,
+        ReaderDisplayPreferences.MAX_FONT_SCALE,
+    )
+
+private fun normalizeLineSpacing(lineSpacing: Double): Double =
+    normalizeScale(
+        lineSpacing,
+        ReaderDisplayPreferences.MIN_LINE_SPACING,
+        ReaderDisplayPreferences.MAX_LINE_SPACING,
+    )
+
+private fun normalizeParagraphSpacing(paragraphSpacing: Double): Double =
+    normalizeScale(
+        paragraphSpacing,
+        ReaderDisplayPreferences.MIN_PARAGRAPH_SPACING,
+        ReaderDisplayPreferences.MAX_PARAGRAPH_SPACING,
+    )
+
+private fun normalizeScale(value: Double, min: Double, max: Double): Double =
+    (value.coerceIn(min, max) * 10).roundToInt() / 10.0
 
 /** Opaque per-platform handle [readerPreferencesFilePath] needs to locate the preferences
  * file — see [PlatformStorageContext] (shared with [SyncStateStore]/[AppPreferencesStore]). */

@@ -1,5 +1,7 @@
 package net.dexxicon.reader.shared.settings
 
+import net.dexxicon.reader.shared.reader.ResetTextButton
+import net.dexxicon.reader.shared.reader.ReaderThemeSetting
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -19,7 +21,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import net.dexxicon.reader.core.datastore.PLAYBACK_SPEEDS
+import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.datastore.ReaderFitMode
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderScrollMode
@@ -38,6 +40,8 @@ import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
 import net.dexxicon.reader.core.datastore.ReaderTheme
 import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.reader.proportionalScaleLabel
+import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
 
 /**
  * Phase 4 Stage H (issue #145) — Book Defaults, ported from native's
@@ -126,9 +130,8 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 4.dp),
         )
-        DefaultsChips("Background", ReaderTheme.entries, prefs.theme, ::readerThemeLabel) { theme ->
-            update { it.copy(theme = theme) }
-        }
+        // issue #261 — the theme picker shared with every reader.
+        ReaderThemeSetting(prefs, update)
         Text(
             "EPUB and PDF.",
             style = MaterialTheme.typography.bodySmall,
@@ -182,16 +185,70 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
 
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SettingsSubsectionTitle("EPUB")
-        Text("Text size", style = MaterialTheme.typography.bodyMedium)
-        Slider(
-            value = prefs.fontScale.toFloat(),
-            onValueChange = { v -> update { it.copy(fontScale = v.toDouble()) } },
-            valueRange = 0.6f..2.4f,
-            steps = 8,
-        )
+        // issue #261 — hierarchical: the page first, then the text on it.
         DefaultsChips("Page layout", ReaderPageLayout.entries, prefs.pageLayout, ::readerPageLayoutLabel) { layout ->
             update { it.copy(pageLayout = layout) }
         }
+        ReaderProportionalScaleControl(
+            title = "Font size",
+            scale = prefs.fontScale,
+            min = ReaderDisplayPreferences.MIN_FONT_SCALE,
+            max = ReaderDisplayPreferences.MAX_FONT_SCALE,
+            onDecreaseDescription = "Decrease font size",
+            onIncreaseDescription = "Increase font size",
+        ) { scale ->
+            update { it.copy(fontScale = scale) }
+        }
+        ReaderProportionalScaleControl(
+            title = "Line spacing",
+            scale = prefs.lineSpacing ?: ReaderDisplayPreferences.DEFAULT_LINE_SPACING,
+            min = ReaderDisplayPreferences.MIN_LINE_SPACING,
+            max = ReaderDisplayPreferences.MAX_LINE_SPACING,
+            onDecreaseDescription = "Decrease line spacing",
+            onIncreaseDescription = "Increase line spacing",
+            valueLabel = prefs.lineSpacing?.let { "${proportionalScaleLabel(it)}×" } ?: "Default",
+        ) { spacing ->
+            update { it.copy(lineSpacing = spacing) }
+        }
+        ReaderProportionalScaleControl(
+            title = "Paragraph spacing",
+            scale = prefs.paragraphSpacing ?: ReaderDisplayPreferences.DEFAULT_PARAGRAPH_SPACING,
+            min = ReaderDisplayPreferences.MIN_PARAGRAPH_SPACING,
+            max = ReaderDisplayPreferences.MAX_PARAGRAPH_SPACING,
+            onDecreaseDescription = "Decrease paragraph spacing",
+            onIncreaseDescription = "Increase paragraph spacing",
+            valueLabel = prefs.paragraphSpacing?.let { "${proportionalScaleLabel(it)} rem" } ?: "Default",
+        ) { spacing ->
+            update { it.copy(paragraphSpacing = spacing) }
+        }
+        SettingRow(
+            title = "Paragraph indent",
+            subtitle = if (prefs.paragraphIndent == null) "Readium default" else null,
+        ) {
+            Switch(
+                checked = prefs.paragraphIndent ?: false,
+                onCheckedChange = { enabled -> update { it.copy(paragraphIndent = enabled) } },
+            )
+        }
+        SettingRow(
+            title = "Justification",
+            subtitle = if (prefs.justification == null) "Readium default" else null,
+        ) {
+            Switch(
+                checked = prefs.justification ?: false,
+                onCheckedChange = { enabled -> update { it.copy(justification = enabled) } },
+            )
+        }
+        SettingRow(
+            title = "Hyphenation",
+            subtitle = if (prefs.hyphenation == null) "Readium default" else null,
+        ) {
+            Switch(
+                checked = prefs.hyphenation ?: false,
+                onCheckedChange = { enabled -> update { it.copy(hyphenation = enabled) } },
+            )
+        }
+        ResetTextButton(prefs, update)
 
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SettingsSubsectionTitle("Comics")
@@ -293,14 +350,6 @@ private fun <T> DefaultsChips(
             )
         }
     }
-}
-
-private fun readerThemeLabel(theme: ReaderTheme): String = when (theme) {
-    ReaderTheme.SYSTEM -> "System"
-    ReaderTheme.LIGHT -> "White"
-    ReaderTheme.SEPIA -> "Sepia"
-    ReaderTheme.GREY -> "Grey"
-    ReaderTheme.DARK -> "Black"
 }
 
 private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {
