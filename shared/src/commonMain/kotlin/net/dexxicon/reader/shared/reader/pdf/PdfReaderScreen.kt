@@ -10,6 +10,8 @@ import androidx.compose.ui.graphics.luminance
 import net.dexxicon.reader.core.designsystem.theme.LocalDarkTheme
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -35,6 +37,8 @@ import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -44,6 +48,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -73,6 +78,7 @@ import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
 import net.dexxicon.reader.core.datastore.ReaderTheme
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.shared.reader.epub.TocEntry
+import net.dexxicon.reader.shared.reader.ReaderFullscreenButton
 
 /**
  * Phase 3 of the shared-reader-chrome redesign (issue #183) — the PDF reader's chrome, ported
@@ -94,6 +100,8 @@ fun PdfReaderScreen(
     bookmarks: List<Bookmark> = emptyList(),
     currentBookmark: Bookmark? = null,
     currentPage: Int = 1,
+    fullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null,
     onAddBookmark: () -> Unit = {},
     onDeleteBookmark: (String) -> Unit = {},
     onGoToBookmark: (Bookmark) -> Unit = {},
@@ -119,6 +127,8 @@ fun PdfReaderScreen(
             bookmarks = bookmarks,
             currentBookmark = currentBookmark,
             currentPage = currentPage,
+            fullscreen = fullscreen,
+            onToggleFullscreen = onToggleFullscreen,
             onAddBookmark = onAddBookmark,
             onDeleteBookmark = onDeleteBookmark,
             onGoToBookmark = onGoToBookmark,
@@ -139,6 +149,8 @@ private fun ReaderContent(
     bookmarks: List<Bookmark>,
     currentBookmark: Bookmark?,
     currentPage: Int,
+    fullscreen: Boolean,
+    onToggleFullscreen: (() -> Unit)?,
     onAddBookmark: () -> Unit,
     onDeleteBookmark: (String) -> Unit,
     onGoToBookmark: (Bookmark) -> Unit,
@@ -161,6 +173,11 @@ private fun ReaderContent(
     Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = surface,
+        contentWindowInsets = if (fullscreen) {
+            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
+        } else {
+            ScaffoldDefaults.contentWindowInsets
+        },
         // issue #308 — the page-count label sits straight on the reading background, which can be
         // dark even in a light app (Grey, Black), so pick its colour from the background itself.
         contentColor = if (surface.luminance() < 0.5f) Color(0xFFE6E7EA) else Color(0xFF1B1C1F),
@@ -169,6 +186,9 @@ private fun ReaderContent(
                 title = { Text(state.title, maxLines = 1) },
                 navigationIcon = { BackPill(onBack) },
                 actions = {
+                    if (onToggleFullscreen != null) {
+                        ReaderFullscreenButton(fullscreen, onToggleFullscreen)
+                    }
                     IconButton(onClick = toggleBookmark) {
                         Icon(
                             if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
@@ -213,7 +233,12 @@ private fun ReaderContent(
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(
+            Modifier.fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding)
+                .windowInsetsPadding(WindowInsets.displayCutout),
+        ) {
             readerContent()
         }
     }
@@ -221,6 +246,14 @@ private fun ReaderContent(
         SideColumnControls(sideControls) {
             SideColumnButton("chevron.left", Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
             SideColumnGap()
+            if (onToggleFullscreen != null) {
+                SideColumnButton(
+                    symbol = if (fullscreen) "arrow.down.right.and.arrow.up.left" else "arrow.up.left.and.arrow.down.right",
+                    fallback = if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    contentDescription = if (fullscreen) "Exit fullscreen" else "Enter fullscreen",
+                    onClick = onToggleFullscreen,
+                )
+            }
             SideColumnButton(
                 symbol = if (currentBookmark != null) "bookmark.fill" else "bookmark",
                 fallback = if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,

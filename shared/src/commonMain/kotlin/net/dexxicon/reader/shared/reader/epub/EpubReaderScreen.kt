@@ -12,16 +12,24 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -39,6 +47,8 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
@@ -53,6 +63,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -95,6 +106,7 @@ import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
 import net.dexxicon.reader.shared.reader.proportionalScaleLabel
 import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
+import net.dexxicon.reader.shared.reader.ReaderFullscreenButton
 import net.dexxicon.reader.shared.settings.SettingRow
 
 /** issue #117: grey background, unchanged from Android's original standalone screen. */
@@ -126,6 +138,9 @@ fun EpubReaderScreen(
     highlights: List<Highlight> = emptyList(),
     currentBookmark: Bookmark? = null,
     chromeVisible: Boolean = true,
+    pageBackground: Color = Color.White,
+    fullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null,
     /** The highlight (if any) whose editor sheet is open — hoisted rather than owned
      * internally so a native decoration-tap listener (only it hears about a tap on a
      * rendered highlight) can open the editor too, the same way [chromeVisible] is hoisted
@@ -162,6 +177,9 @@ fun EpubReaderScreen(
             highlights = highlights,
             currentBookmark = currentBookmark,
             chromeVisible = chromeVisible,
+            pageBackground = pageBackground,
+            fullscreen = fullscreen,
+            onToggleFullscreen = onToggleFullscreen,
             activeHighlightId = activeHighlightId,
             onActiveHighlightChange = onActiveHighlightChange,
             onBack = onBack,
@@ -190,6 +208,9 @@ private fun ReaderContent(
     highlights: List<Highlight>,
     currentBookmark: Bookmark?,
     chromeVisible: Boolean,
+    pageBackground: Color,
+    fullscreen: Boolean,
+    onToggleFullscreen: (() -> Unit)?,
     activeHighlightId: String?,
     onActiveHighlightChange: (String?) -> Unit,
     onBack: () -> Unit,
@@ -219,38 +240,65 @@ private fun ReaderContent(
 
     Box(Modifier.fillMaxSize()) {
     Scaffold(
+        containerColor = pageBackground,
+        contentWindowInsets = if (fullscreen) {
+            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
+        } else {
+            ScaffoldDefaults.contentWindowInsets
+        },
         topBar = {
             if (chromeVisible && sideColumn == null) {
-                TopAppBar(
-                    // No title here — five action icons plus the BackPill already crowd this
-                    // row with no room left for a title to render legibly (issue #117).
-                    title = {},
-                    navigationIcon = { BackPill(onBack) },
-                    actions = {
-                        IconButton(onClick = toggleBookmark) {
-                            Icon(
-                                if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
-                                contentDescription = if (currentBookmark != null) "Remove bookmark" else "Add bookmark",
-                            )
-                        }
-                        IconButton(onClick = { showBookmarks = true }) {
-                            Icon(Icons.Filled.Bookmarks, contentDescription = "Bookmarks")
-                        }
-                        IconButton(onClick = { showHighlights = true }) {
-                            Icon(Icons.Filled.BorderColor, contentDescription = "Highlights")
-                        }
-                        IconButton(onClick = { showToc = true }) {
-                            Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Contents")
-                        }
-                        IconButton(onClick = { showSettings = true }) {
-                            Icon(Icons.Filled.TextFields, contentDescription = "Display settings")
-                        }
-                    },
-                )
+                BoxWithConstraints {
+                    val actionModifier = if (onToggleFullscreen != null && maxWidth < 360.dp) {
+                        Modifier.size(40.dp)
+                    } else {
+                        Modifier
+                    }
+                    TopAppBar(
+                        title = {},
+                        navigationIcon = {
+                            if (onToggleFullscreen != null && maxWidth < 400.dp) {
+                                IconButton(onClick = onBack, modifier = actionModifier) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                                }
+                            } else {
+                                BackPill(onBack)
+                            }
+                        },
+                        actions = {
+                            if (onToggleFullscreen != null) {
+                                ReaderFullscreenButton(fullscreen, onToggleFullscreen, actionModifier)
+                            }
+                            IconButton(onClick = toggleBookmark, modifier = actionModifier) {
+                                Icon(
+                                    if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                                    contentDescription = if (currentBookmark != null) "Remove bookmark" else "Add bookmark",
+                                )
+                            }
+                            IconButton(onClick = { showBookmarks = true }, modifier = actionModifier) {
+                                Icon(Icons.Filled.Bookmarks, contentDescription = "Bookmarks")
+                            }
+                            IconButton(onClick = { showHighlights = true }, modifier = actionModifier) {
+                                Icon(Icons.Filled.BorderColor, contentDescription = "Highlights")
+                            }
+                            IconButton(onClick = { showToc = true }, modifier = actionModifier) {
+                                Icon(Icons.AutoMirrored.Filled.ListAlt, contentDescription = "Contents")
+                            }
+                            IconButton(onClick = { showSettings = true }, modifier = actionModifier) {
+                                Icon(Icons.Filled.TextFields, contentDescription = "Display settings")
+                            }
+                        },
+                    )
+                }
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(
+            Modifier.fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding)
+                .windowInsetsPadding(WindowInsets.displayCutout),
+        ) {
             readerContent()
 
             if (state.hasRemoteResume && !resumeDismissed) {
@@ -289,6 +337,14 @@ private fun ReaderContent(
         SideColumnControls(sideColumn) {
             SideColumnButton("chevron.left", Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
             SideColumnGap()
+            if (onToggleFullscreen != null) {
+                SideColumnButton(
+                    symbol = if (fullscreen) "arrow.down.right.and.arrow.up.left" else "arrow.up.left.and.arrow.down.right",
+                    fallback = if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    contentDescription = if (fullscreen) "Exit fullscreen" else "Enter fullscreen",
+                    onClick = onToggleFullscreen,
+                )
+            }
             SideColumnButton(
                 symbol = if (currentBookmark != null) "bookmark.fill" else "bookmark",
                 fallback = if (currentBookmark != null) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,

@@ -78,10 +78,9 @@ Building from source instead? See [BUILD.md](BUILD.md).
 - Pull‑to‑refresh on Home, Library and Settings; Home shows when it last synced and which
   server, if any, didn't.
 
-### Readers — identical on Android and iOS
+### Readers on Android and iOS
 One shared UI (Kotlin Multiplatform + Compose) drives the reading experience on both
-platforms, so the settings sheet, gestures and sync behaviour you learn on one match the
-other exactly.
+platforms, with shared settings, gestures and sync behaviour where supported.
 
 | Format | Reader |
 |---|---|
@@ -89,6 +88,11 @@ other exactly.
 | **Comic** — CBZ **and CBR** | Readium image navigator + page slider + pinch zoom + drag‑to‑turn with adjustable sensitivity + **two‑page spread** on tablets/iPad/unfolded foldables, with auto‑detected right‑to‑left (manga) reading order. `.cbr` (RAR) is unpacked and cached as CBZ on first open |
 | **PDF** | Readium + PDFium — page/scroll modes, outline, zoom, drag‑to‑turn with adjustable sensitivity, display settings, page bookmarks |
 | **Audiobook** — M4B / MP3 / … | Background playback, lock‑screen & notification controls (Now Playing / Control Center on iOS), chapter list, scrubber |
+
+The EPUB, comic and PDF reader toolbars have a fullscreen button; leaving the reader restores
+the system UI. The reading viewport stays clear of display cutouts. On iOS, the Home indicator
+hides at the system's discretion. EPUB and comic readers also toggle their toolbars with a
+center tap.
 
 Audiobook extras: playback speed, sleep timer (timed or **end of chapter**), **skip
 silence**, configurable skip‑forward/back intervals, rewind‑on‑resume. The player shows

@@ -2,17 +2,23 @@ package net.dexxicon.reader.shared
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.viewinterop.UIKitViewController
 import androidx.compose.ui.window.ComposeUIViewController
 import coil3.SingletonImageLoader
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.datastore.ReaderTheme
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
@@ -71,6 +77,26 @@ private val appContainer: AppContainer by lazy {
         // which holds here since this runs before any Composable has had a chance to.
         SingletonImageLoader.setSafe { container.imageLoader }
     }
+}
+
+@Composable
+private fun rememberReaderFullscreen(onFullscreenChange: (Boolean) -> Unit): Pair<Boolean, () -> Unit> {
+    var fullscreen by remember { mutableStateOf(false) }
+    return fullscreen to {
+        fullscreen = !fullscreen
+        onFullscreenChange(fullscreen)
+    }
+}
+
+private fun ReaderDisplayPreferences.iosEpubBackground(systemInDark: Boolean): Color = when (theme) {
+    ReaderTheme.LIGHT -> Color.White
+    ReaderTheme.SEPIA -> Color(0xFFFAF4E8)
+    ReaderTheme.GREY -> Color(0xFFC8CBCF)
+    ReaderTheme.DARK -> Color.Black
+    ReaderTheme.CUSTOM_1 -> Color(custom1Background or 0xFF000000.toInt())
+    ReaderTheme.CUSTOM_2 -> Color(custom2Background or 0xFF000000.toInt())
+    ReaderTheme.SYSTEM, ReaderTheme.SEPIA_DARK, ReaderTheme.MIDNIGHT, ReaderTheme.NORD ->
+        if (systemInDark) Color.Black else Color.White
 }
 
 /**
@@ -271,6 +297,7 @@ fun EpubReaderViewController(
     navigatorViewController: UIViewController,
     serverId: String,
     bookId: String,
+    onFullscreenChange: (Boolean) -> Unit,
 ): UIViewController = ComposeUIViewController {
     val native by appContainer.epubReaderState.collectAsState()
     val chromeVisible by appContainer.epubChromeVisible.collectAsState()
@@ -280,6 +307,7 @@ fun EpubReaderViewController(
     val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
     val actions = appContainer.epubReaderActions
     val scope = rememberCoroutineScope()
+    val (fullscreen, toggleFullscreen) = rememberReaderFullscreen(onFullscreenChange)
 
     // issue #183: pulls server-side bookmarks/highlights into the local DB (and pushes any
     // locally-pending ones) on open — the same two calls Android's EpubReaderViewModel.init{}
@@ -313,8 +341,7 @@ fun EpubReaderViewController(
         actions?.applyHighlights?.invoke(highlights)
     }
 
-    // Issue #343 — on the iPhone Duo the page runs the full height (see sideColumnFullHeight).
-    if (actions != null) Box(Modifier.fillMaxSize().sideColumnFullHeight()) {
+    if (actions != null) Box(Modifier.fillMaxSize()) {
         EpubReaderScreen(
             state = screenState,
             onBack = onBack,
@@ -323,6 +350,9 @@ fun EpubReaderViewController(
             highlights = highlights,
             currentBookmark = currentBookmark,
             chromeVisible = chromeVisible,
+            pageBackground = preferences.iosEpubBackground(isSystemInDarkTheme()),
+            fullscreen = fullscreen,
+            onToggleFullscreen = toggleFullscreen,
             activeHighlightId = activeHighlightId,
             onActiveHighlightChange = { appContainer.setEpubActiveHighlightId(it) },
             onAddBookmark = {
@@ -399,12 +429,14 @@ fun PdfReaderViewController(
     navigatorViewController: UIViewController,
     serverId: String,
     bookId: String,
+    onFullscreenChange: (Boolean) -> Unit,
 ): UIViewController = ComposeUIViewController {
     val native by appContainer.pdfReaderState.collectAsState()
     val bookmarks by appContainer.bookmarkRepository.observe(serverId, bookId).collectAsState(emptyList())
     val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
     val actions = appContainer.pdfReaderActions
     val scope = rememberCoroutineScope()
+    val (fullscreen, toggleFullscreen) = rememberReaderFullscreen(onFullscreenChange)
 
     // issue #183: same reasoning as EpubReaderViewController's own sync call — pulls
     // server-side bookmarks into the local DB (and pushes any locally-pending ones) on open.
@@ -424,8 +456,7 @@ fun PdfReaderViewController(
         actions?.submitPreferences?.invoke(preferences)
     }
 
-    // Issue #343 — on the iPhone Duo the page runs the full height (see sideColumnFullHeight).
-    if (actions != null) Box(Modifier.fillMaxSize().sideColumnFullHeight()) {
+    if (actions != null) Box(Modifier.fillMaxSize()) {
         PdfReaderScreen(
             state = screenState,
             onBack = onBack,
@@ -433,6 +464,8 @@ fun PdfReaderViewController(
             bookmarks = bookmarks,
             currentBookmark = currentBookmark,
             currentPage = currentPage,
+            fullscreen = fullscreen,
+            onToggleFullscreen = toggleFullscreen,
             onAddBookmark = {
                 currentLocatorJson?.let { json ->
                     val page = pageFromLocatorJson(json)
@@ -531,6 +564,7 @@ fun ComicReaderViewController(
     navigatorViewController: UIViewController,
     serverId: String,
     bookId: String,
+    onFullscreenChange: (Boolean) -> Unit,
 ): UIViewController = ComposeUIViewController {
     val native by appContainer.comicReaderState.collectAsState()
     val chromeVisible by appContainer.comicChromeVisible.collectAsState()
@@ -538,6 +572,7 @@ fun ComicReaderViewController(
     val isDoubleSpread by appContainer.comicIsDoubleSpread.collectAsState()
     val canUseDoubleSpread by appContainer.comicCanUseDoubleSpread.collectAsState()
     val actions = appContainer.comicReaderActions
+    val (fullscreen, toggleFullscreen) = rememberReaderFullscreen(onFullscreenChange)
 
     val screenState = native?.screenState ?: ComicReaderUiState.Loading
     val currentPage = native?.currentPage ?: 1
@@ -546,13 +581,15 @@ fun ComicReaderViewController(
         actions?.submitPreferences?.invoke(preferences)
     }
 
-    // Issue #343 — on the iPhone Duo the page runs the full height (see sideColumnFullHeight).
-    if (actions != null) Box(Modifier.fillMaxSize().sideColumnFullHeight()) {
+    if (actions != null) Box(Modifier.fillMaxSize()) {
         ComicReaderScreen(
             state = screenState,
             onBack = onBack,
             chromeVisible = chromeVisible,
+            fullscreen = fullscreen,
+            onToggleFullscreen = toggleFullscreen,
             preferences = preferences,
+            pageBackground = if (fullscreen) Color.Black else null,
             // iOS has no Smart Zoom (Android-only — see the shared screen's own doc comment),
             // so double-spread is the only reason tap-navigation is ever unavailable here.
             tapNavigationEnabled = !isDoubleSpread,
