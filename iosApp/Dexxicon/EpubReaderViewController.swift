@@ -231,7 +231,11 @@ final class EpubReaderViewController: UIViewController {
             onBack: { [weak self] in self?.dismiss(animated: true) },
             navigatorViewController: nav,
             serverId: serverId,
-            bookId: bookId
+            bookId: bookId,
+            onFullscreenChange: { [weak self] fullscreen in
+                guard let self else { return }
+                FullScreenReaderPresentation.setFullscreen(fullscreen.boolValue, for: self)
+            }
         )
         addChild(chrome)
         chrome.view.frame = view.bounds

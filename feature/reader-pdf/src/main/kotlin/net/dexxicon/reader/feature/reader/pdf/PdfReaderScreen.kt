@@ -30,6 +30,7 @@ import com.github.barteksc.pdfviewer.PDFView
 import net.dexxicon.reader.core.designsystem.component.pageSnapshot
 import net.dexxicon.reader.core.designsystem.component.pageTurnGesture
 import net.dexxicon.reader.core.designsystem.component.rememberPageTurnState
+import net.dexxicon.reader.core.designsystem.theme.rememberReaderFullscreen
 import net.dexxicon.reader.shared.reader.epub.TocEntry
 import net.dexxicon.reader.shared.reader.pdf.PdfReaderScreen as SharedPdfReaderScreen
 import net.dexxicon.reader.shared.reader.pdf.PdfReaderUiState
@@ -106,6 +107,7 @@ private fun ReaderContent(
     }
 
     val fragmentManager = activity.supportFragmentManager
+    val fullscreen = rememberReaderFullscreen()
     var navigator by remember { mutableStateOf<PdfNavigator?>(null) }
     var pageView by remember { mutableStateOf<View?>(null) }
     var currentLocator by remember { mutableStateOf<Locator?>(null) }
@@ -191,6 +193,8 @@ private fun ReaderContent(
         bookmarks = bookmarks,
         currentBookmark = currentBookmark,
         currentPage = page,
+        fullscreen = fullscreen.value,
+        onToggleFullscreen = { fullscreen.value = !fullscreen.value },
         onAddBookmark = { currentLocator?.let(onAddBookmark) },
         onDeleteBookmark = onDeleteBookmark,
         onGoToBookmark = ::goToBookmark,

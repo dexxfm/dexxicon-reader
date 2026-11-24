@@ -24,6 +24,13 @@ enum FullScreenReaderPresentation {
     static func wrap(_ content: UIViewController, hidesNavigationBar: Bool = false) -> UIViewController {
         FullScreenReaderNavigationController(rootViewController: content, hidesNavigationBar: hidesNavigationBar)
     }
+
+    static func setFullscreen(_ fullscreen: Bool, for content: UIViewController) {
+        guard let controller = content.navigationController as? FullScreenReaderNavigationController else {
+            preconditionFailure("Reader fullscreen requires FullScreenReaderNavigationController")
+        }
+        controller.setReaderFullscreen(fullscreen)
+    }
 }
 
 private final class FullScreenReaderNavigationController: UINavigationController {
@@ -33,6 +40,25 @@ private final class FullScreenReaderNavigationController: UINavigationController
     // `super.init(rootViewController:)` — confirmed live via NSLog, not guessed — so the root is
     // captured directly here instead of relying on that property.
     private let rootContentViewController: UIViewController
+    private var readerFullscreen = false
+
+    override var childForStatusBarHidden: UIViewController? {
+        readerFullscreen ? nil : super.childForStatusBarHidden
+    }
+    override var prefersStatusBarHidden: Bool { readerFullscreen || super.prefersStatusBarHidden }
+    override var childForHomeIndicatorAutoHidden: UIViewController? {
+        readerFullscreen ? nil : super.childForHomeIndicatorAutoHidden
+    }
+    override var prefersHomeIndicatorAutoHidden: Bool {
+        readerFullscreen || super.prefersHomeIndicatorAutoHidden
+    }
+
+    func setReaderFullscreen(_ fullscreen: Bool) {
+        guard readerFullscreen != fullscreen else { return }
+        readerFullscreen = fullscreen
+        setNeedsStatusBarAppearanceUpdate()
+        setNeedsUpdateOfHomeIndicatorAutoHidden()
+    }
 
     init(rootViewController: UIViewController, hidesNavigationBar: Bool) {
         self.hidesNavigationBar = hidesNavigationBar

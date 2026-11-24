@@ -10,6 +10,8 @@ import androidx.compose.ui.graphics.luminance
 import net.dexxicon.reader.core.designsystem.theme.LocalDarkTheme
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.displayCutout
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -27,6 +29,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +40,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -62,6 +67,7 @@ import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderSwipeSensitivity
 import net.dexxicon.reader.core.datastore.ReaderTheme
 import net.dexxicon.reader.core.designsystem.component.BackPill
+import net.dexxicon.reader.shared.reader.ReaderFullscreenButton
 
 /**
  * Phase 4 of the shared-reader-chrome redesign (issue #183) — the comic reader's chrome,
@@ -92,7 +98,10 @@ fun ComicReaderScreen(
     state: ComicReaderUiState,
     onBack: () -> Unit,
     chromeVisible: Boolean = true,
+    fullscreen: Boolean = false,
+    onToggleFullscreen: (() -> Unit)? = null,
     preferences: ReaderDisplayPreferences = ReaderDisplayPreferences(),
+    pageBackground: Color? = null,
     tapNavigationEnabled: Boolean = true,
     tapNavigationDisabledReason: String? = null,
     /** Whether the native embed is *actually* showing two pages side by side right now —
@@ -129,7 +138,10 @@ fun ComicReaderScreen(
             state = state,
             onBack = onBack,
             chromeVisible = chromeVisible,
+            fullscreen = fullscreen,
+            onToggleFullscreen = onToggleFullscreen,
             preferences = preferences,
+            pageBackground = pageBackground,
             tapNavigationEnabled = tapNavigationEnabled,
             tapNavigationDisabledReason = tapNavigationDisabledReason,
             isDoubleSpread = isDoubleSpread,
@@ -149,7 +161,10 @@ private fun ReaderContent(
     state: ComicReaderUiState.Ready,
     onBack: () -> Unit,
     chromeVisible: Boolean,
+    fullscreen: Boolean,
+    onToggleFullscreen: (() -> Unit)?,
     preferences: ReaderDisplayPreferences,
+    pageBackground: Color?,
     tapNavigationEnabled: Boolean,
     tapNavigationDisabledReason: String?,
     isDoubleSpread: Boolean,
@@ -164,13 +179,18 @@ private fun ReaderContent(
     var showSettings by remember { mutableStateOf(false) }
     // issue #308 — the app's theme, not the phone's.
     val darkTheme = LocalDarkTheme.current
-    val surface = preferences.theme.comicSurfaceColor(darkTheme, preferences)
+    val surface = pageBackground ?: preferences.theme.comicSurfaceColor(darkTheme, preferences)
     // Issue #355 — on the iPhone Duo the toolbar stands in the side column or the status band.
     val sideControls = sideControls()
 
     Box(Modifier.fillMaxSize()) {
     Scaffold(
         containerColor = surface,
+        contentWindowInsets = if (fullscreen) {
+            WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal + WindowInsetsSides.Top)
+        } else {
+            ScaffoldDefaults.contentWindowInsets
+        },
         // issue #308 — the page-count label sits straight on the reading background, which can be
         // dark even in a light app (Grey, Black), so pick its colour from the background itself.
         contentColor = if (surface.luminance() < 0.5f) Color(0xFFE6E7EA) else Color(0xFF1B1C1F),
@@ -180,6 +200,9 @@ private fun ReaderContent(
                     title = { Text(state.title, maxLines = 1) },
                     navigationIcon = { BackPill(onBack) },
                     actions = {
+                        if (onToggleFullscreen != null) {
+                            ReaderFullscreenButton(fullscreen, onToggleFullscreen)
+                        }
                         IconButton(onClick = { showSettings = true }) {
                             Icon(Icons.Filled.Tune, contentDescription = "Reading settings")
                         }
@@ -216,7 +239,12 @@ private fun ReaderContent(
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
+        Box(
+            Modifier.fillMaxSize()
+                .padding(padding)
+                .consumeWindowInsets(padding)
+                .windowInsetsPadding(WindowInsets.displayCutout),
+        ) {
             readerContent()
         }
     }
@@ -224,6 +252,14 @@ private fun ReaderContent(
         SideColumnControls(sideControls) {
             SideColumnButton("chevron.left", Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
             SideColumnGap()
+            if (onToggleFullscreen != null) {
+                SideColumnButton(
+                    symbol = if (fullscreen) "arrow.down.right.and.arrow.up.left" else "arrow.up.left.and.arrow.down.right",
+                    fallback = if (fullscreen) Icons.Filled.FullscreenExit else Icons.Filled.Fullscreen,
+                    contentDescription = if (fullscreen) "Exit fullscreen" else "Enter fullscreen",
+                    onClick = onToggleFullscreen,
+                )
+            }
             SideColumnButton("slider.horizontal.3", Icons.Filled.Tune, "Reading settings", { showSettings = true })
         }
     }

@@ -171,6 +171,22 @@ class EpubPreferencesMappingTest {
         assertThat(edited.textColor?.int).isEqualTo(0xFFABCDEF.toInt())
     }
 
+    @Test fun `cutout background follows the resolved Readium theme and custom colors`() {
+        fun color(preferences: ReaderDisplayPreferences, systemInDark: Boolean = false) =
+            preferences.epubBackgroundColor(systemInDark, wideViewport = false)
+
+        assertThat(color(ReaderDisplayPreferences(theme = ReaderTheme.SYSTEM), true))
+            .isEqualTo(Theme.DARK.backgroundColor)
+        assertThat(color(ReaderDisplayPreferences(theme = ReaderTheme.SEPIA)))
+            .isEqualTo(Theme.SEPIA.backgroundColor)
+        assertThat(color(ReaderDisplayPreferences(theme = ReaderTheme.GREY)))
+            .isEqualTo(0xFFC8CBCF.toInt())
+        assertThat(color(ReaderDisplayPreferences(theme = ReaderTheme.CUSTOM_1, custom1Background = 0xFF123456.toInt())))
+            .isEqualTo(0xFF123456.toInt())
+        assertThat(color(ReaderDisplayPreferences(theme = ReaderTheme.CUSTOM_1, custom1Background = 0xFF654321.toInt())))
+            .isEqualTo(0xFF654321.toInt())
+    }
+
     @Test fun `auto page layout switches to two columns on a wide viewport`() {
         val narrow = ReaderDisplayPreferences(pageLayout = ReaderPageLayout.AUTO)
             .toEpubPreferences(systemInDark = false, wideViewport = false)

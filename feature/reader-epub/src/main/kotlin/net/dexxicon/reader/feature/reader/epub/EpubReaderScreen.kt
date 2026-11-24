@@ -19,6 +19,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -28,6 +29,7 @@ import androidx.fragment.app.commit
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.dexxicon.reader.core.reader.EdgeTapNavigator
+import net.dexxicon.reader.core.designsystem.theme.rememberReaderFullscreen
 import net.dexxicon.reader.shared.reader.epub.EpubReaderScreen as SharedEpubReaderScreen
 import net.dexxicon.reader.shared.reader.epub.EpubReaderUiState
 import net.dexxicon.reader.shared.reader.epub.TocEntry
@@ -119,6 +121,7 @@ private fun ReaderContent(
     }
 
     val fragmentManager = activity.supportFragmentManager
+    val fullscreen = rememberReaderFullscreen()
     var navigator by remember { mutableStateOf<EpubNavigatorFragment?>(null) }
     var activeHighlightId by remember { mutableStateOf<String?>(null) }
     var currentLocator by remember { mutableStateOf<Locator?>(null) }
@@ -256,6 +259,9 @@ private fun ReaderContent(
         highlights = highlights,
         currentBookmark = currentBookmark,
         chromeVisible = chromeVisible,
+        pageBackground = Color(preferences.epubBackgroundColor(darkTheme, wideViewport)),
+        fullscreen = fullscreen.value,
+        onToggleFullscreen = { fullscreen.value = !fullscreen.value },
         activeHighlightId = activeHighlightId,
         onActiveHighlightChange = { activeHighlightId = it },
         onAddBookmark = { currentLocator?.let(onAddBookmark) },

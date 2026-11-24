@@ -57,6 +57,7 @@ import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.designsystem.component.pageSnapshot
 import net.dexxicon.reader.core.designsystem.component.pageTurnGesture
 import net.dexxicon.reader.core.designsystem.component.rememberPageTurnState
+import net.dexxicon.reader.core.designsystem.theme.rememberReaderFullscreen
 import net.dexxicon.reader.core.reader.ComicPanelDetector
 import net.dexxicon.reader.core.reader.EdgeTapNavigator
 import net.dexxicon.reader.core.reader.PanelSteppingNavigator
@@ -145,6 +146,7 @@ private fun ReaderContent(
         return
     }
     val fragmentManager = activity.supportFragmentManager
+    val fullscreen = rememberReaderFullscreen()
 
     val wideViewport = LocalConfiguration.current.screenWidthDp.dp >= 720.dp
     // issue #204 — DOUBLE used to force double-spread at any width, even a phone-narrow one
@@ -191,6 +193,8 @@ private fun ReaderContent(
         state = ComicReaderUiState.Ready(title = state.title, pageCount = state.pageCount),
         onBack = onBack,
         chromeVisible = chromeVisible,
+        fullscreen = fullscreen.value,
+        onToggleFullscreen = { fullscreen.value = !fullscreen.value },
         preferences = preferences,
         onUpdatePreferences = onUpdatePreferences,
         tapNavigationEnabled = !preferences.comicSmartZoom && !isDoubleSpread,

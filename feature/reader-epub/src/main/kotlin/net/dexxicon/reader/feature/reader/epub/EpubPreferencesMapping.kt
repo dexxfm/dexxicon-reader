@@ -24,6 +24,11 @@ private val GREY_TEXT = 0xFF17181A.toInt()
 val SEPIA_BACKGROUND = 0xFFF5ECDC.toInt()
 val DARK_BACKGROUND = 0xFF000000.toInt()
 
+internal fun ReaderDisplayPreferences.epubBackgroundColor(systemInDark: Boolean, wideViewport: Boolean): Int {
+    val preferences = toEpubPreferences(systemInDark, wideViewport)
+    return preferences.backgroundColor?.int ?: checkNotNull(preferences.theme).backgroundColor
+}
+
 fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewport: Boolean = false): EpubPreferences {
     val resolvedTheme = when (theme) {
         ReaderTheme.LIGHT -> Theme.LIGHT
