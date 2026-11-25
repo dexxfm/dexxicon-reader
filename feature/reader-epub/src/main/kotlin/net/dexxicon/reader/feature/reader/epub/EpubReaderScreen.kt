@@ -134,6 +134,22 @@ private fun ReaderContent(
     val tocEntries = remember(flatToc) {
         flatToc.mapIndexed { index, (depth, link) -> TocEntry(depth, link.title ?: link.href.toString(), index.toString()) }
     }
+    val currentTocRef = remember(flatToc, currentLocator) {
+        val locator = currentLocator ?: return@remember null
+        val currentHref = locator.href.toString().substringBefore('#')
+        val matches = flatToc.withIndex().filter { (_, entry) ->
+            entry.second.href.toString().substringBefore('#') == currentHref
+        }
+        val fragments = locator.locations.fragments
+        matches.firstOrNull { (_, entry) ->
+            val fragment = entry.second.href.toString().substringAfter('#', "")
+            fragment.isNotEmpty() && fragment in fragments
+        }?.index?.toString()
+            ?: matches.firstOrNull { (_, entry) ->
+                entry.second.href.toString().substringAfter('#', "").isEmpty()
+            }?.index?.toString()
+            ?: matches.firstOrNull()?.index?.toString()
+    }
 
     // Build the navigator fragment once per opened publication and set it as the factory
     // the FragmentManager will use to instantiate EpubNavigatorFragment by class.
@@ -248,6 +264,7 @@ private fun ReaderContent(
         state = EpubReaderUiState.Ready(
             title = state.title,
             toc = tocEntries,
+            currentTocRef = currentTocRef,
             remoteResumePercent = state.remoteResumePercent,
         ),
         onBack = onBack,

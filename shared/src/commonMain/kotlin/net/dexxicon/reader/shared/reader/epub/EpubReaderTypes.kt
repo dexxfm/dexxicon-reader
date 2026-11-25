@@ -19,6 +19,7 @@ sealed interface EpubReaderUiState {
     data class Ready(
         val title: String,
         val toc: List<TocEntry>,
+        val currentTocRef: String? = null,
         /** A newer position from KOReader sync / another device, if any (0.0–1.0). */
         val remoteResumePercent: Double? = null,
         val hasRemoteResume: Boolean = remoteResumePercent != null,

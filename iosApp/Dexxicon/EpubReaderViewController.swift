@@ -248,12 +248,27 @@ final class EpubReaderViewController: UIViewController {
                 screenState: EpubReaderUiStateReady(
                     title: "",
                     toc: tocEntries,
+                    currentTocRef: currentTocRef(),
                     remoteResumePercent: remoteResumePercentValue.map { KotlinDouble(double: $0) },
                     hasRemoteResume: remoteResumePercentValue != nil
                 ),
                 currentLocatorJson: try? currentLocator?.jsonString()
             )
         )
+    }
+
+    private func currentTocRef() -> String? {
+        guard let currentLocator else { return nil }
+        let currentHref = currentLocator.href.string.components(separatedBy: "#").first ?? currentLocator.href.string
+        let matches = flatToc.enumerated().filter { _, entry in
+            entry.link.href.components(separatedBy: "#").first == currentHref
+        }
+        if let match = matches.first(where: { _, entry in
+            entry.link.href.components(separatedBy: "#").count == 1
+        }) {
+            return String(match.offset)
+        }
+        return matches.first.map { String($0.offset) }
     }
 
     private func goToBookmark(_ bookmark: ModelBookmark) {

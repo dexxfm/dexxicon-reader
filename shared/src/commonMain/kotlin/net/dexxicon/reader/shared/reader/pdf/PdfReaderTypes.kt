@@ -17,5 +17,6 @@ sealed interface PdfReaderUiState {
         val title: String,
         val toc: List<TocEntry>,
         val pageCount: Int,
+        val currentTocRef: String? = null,
     ) : PdfReaderUiState
 }
