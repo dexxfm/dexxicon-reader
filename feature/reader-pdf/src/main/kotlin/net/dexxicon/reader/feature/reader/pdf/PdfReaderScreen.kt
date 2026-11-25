@@ -36,6 +36,8 @@ import net.dexxicon.reader.shared.reader.pdf.PdfReaderUiState
 import org.readium.adapter.pdfium.navigator.PdfiumEngineProvider
 import org.readium.adapter.pdfium.navigator.PdfiumPreferences
 import org.readium.adapter.pdfium.navigator.PdfiumSettings
+import org.readium.r2.navigator.input.InputListener
+import org.readium.r2.navigator.input.TapEvent
 import org.readium.r2.navigator.pdf.PdfNavigatorFactory
 import org.readium.r2.navigator.pdf.PdfNavigatorFragment
 import org.readium.r2.shared.publication.Link
@@ -110,6 +112,7 @@ private fun ReaderContent(
     var pageView by remember { mutableStateOf<View?>(null) }
     var currentLocator by remember { mutableStateOf<Locator?>(null) }
     var page by remember { mutableIntStateOf(1) }
+    var chromeVisible by remember { mutableStateOf(true) }
 
     val flatToc = remember(state.publication) { flatten(state.publication.tableOfContents) }
     val tocEntries = remember(flatToc) {
@@ -148,6 +151,19 @@ private fun ReaderContent(
             currentLocator = locator
             page = locator.locations.position ?: 1
         }
+    }
+
+    DisposableEffect(navigator) {
+        val nav = navigator
+        val listener = object : InputListener {
+            override fun onTap(event: TapEvent): Boolean {
+                if (!isCenterTap(event.point.x, pageView?.width ?: 0)) return false
+                chromeVisible = !chromeVisible
+                return true
+            }
+        }
+        nav?.addInputListener(listener)
+        onDispose { nav?.removeInputListener(listener) }
     }
 
     LaunchedEffect(preferences, navigator) {
@@ -191,6 +207,7 @@ private fun ReaderContent(
         bookmarks = bookmarks,
         currentBookmark = currentBookmark,
         currentPage = page,
+        chromeVisible = chromeVisible,
         onAddBookmark = { currentLocator?.let(onAddBookmark) },
         onDeleteBookmark = onDeleteBookmark,
         onGoToBookmark = ::goToBookmark,
@@ -249,6 +266,9 @@ private fun ReaderContent(
         },
     )
 }
+
+internal fun isCenterTap(x: Float, width: Int): Boolean =
+    width > 0 && x >= width * 0.28f && x <= width * 0.72f
 
 /** The page a bookmark points at, from its stored Readium locator. Null for foreign ones. */
 private fun net.dexxicon.reader.core.model.Bookmark.pageNumber(): Int? = runCatching {

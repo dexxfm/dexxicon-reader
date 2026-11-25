@@ -371,14 +371,14 @@ fun updatePdfReaderState(state: PdfReaderNativeState?) {
 }
 
 /** Wires the shared PDF chrome's navigation/preference commands back to the real Readium
- * Swift navigator, same convention as [setEpubReaderActions] — narrower, since PDF has no
- * highlights/decorations/chrome-hide to wire up. */
+ * Swift navigator, same convention as [setEpubReaderActions]. */
 fun setPdfReaderActions(
     goToPage: (Int) -> Unit,
     goToLocatorJson: (String) -> Unit,
     goToToc: (TocEntry) -> Unit,
     submitPreferences: (ReaderDisplayPreferences) -> Unit,
 ) {
+    appContainer.resetPdfChrome()
     appContainer.pdfReaderActions = PdfReaderActions(
         goToPage = goToPage,
         goToLocatorJson = goToLocatorJson,
@@ -387,9 +387,14 @@ fun setPdfReaderActions(
     )
 }
 
+/** A native PDF centre tap toggles the shared chrome. */
+fun pdfReaderToggleChrome() {
+    appContainer.togglePdfChrome()
+}
+
 /**
  * Fourth Compose root for iOS (issue #183) — same shape as [EpubReaderViewController], minus
- * the highlights/decorations/chrome-hide plumbing PDF's chrome doesn't have. Bookmarks resolve
+ * highlights/decorations. Bookmarks resolve
  * to a plain page number via [pageFromLocatorJson] (portable string parsing — see
  * [PdfReaderActions]'s own doc comment), so `onGoToBookmark` doesn't need a dedicated Swift
  * action the way EPUB's did.
@@ -401,6 +406,7 @@ fun PdfReaderViewController(
     bookId: String,
 ): UIViewController = ComposeUIViewController {
     val native by appContainer.pdfReaderState.collectAsState()
+    val chromeVisible by appContainer.pdfChromeVisible.collectAsState()
     val bookmarks by appContainer.bookmarkRepository.observe(serverId, bookId).collectAsState(emptyList())
     val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
     val actions = appContainer.pdfReaderActions
@@ -433,6 +439,7 @@ fun PdfReaderViewController(
             bookmarks = bookmarks,
             currentBookmark = currentBookmark,
             currentPage = currentPage,
+            chromeVisible = chromeVisible,
             onAddBookmark = {
                 currentLocatorJson?.let { json ->
                     val page = pageFromLocatorJson(json)
