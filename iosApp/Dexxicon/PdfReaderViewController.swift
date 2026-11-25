@@ -14,9 +14,8 @@ import SharedKit
 /// sheets, page-number bottom bar) is `:shared`'s `PdfReaderScreen`, embedded via
 /// `MainViewControllerKt.PdfReaderViewController(...)` once the navigator is ready.
 ///
-/// Simpler than `EpubReaderViewController`: no highlights/decorations (PDF has bookmarks only),
-/// no chrome-hide-on-tap (the bars are always visible — no edge-tap/centre-tap wiring needed;
-/// PDFKit's own built-in swipe/scroll navigation handles paging), and no remote-resume banner —
+/// Simpler than `EpubReaderViewController`: no highlights/decorations (PDF has bookmarks only)
+/// and no remote-resume banner —
 /// `PdfProgressBridge.initialLocatorJson` already resolves the local-vs-server position before
 /// this class ever sees it, so there's no separate `positions()` lookup to do here either.
 ///
@@ -256,6 +255,12 @@ extension PdfReaderViewController {
 }
 
 extension PdfReaderViewController: PDFNavigatorDelegate {
+    func navigator(_ navigator: VisualNavigator, didTapAt point: CGPoint) {
+        let width = navigator.view.bounds.width
+        guard width > 0, point.x >= width * 0.28, point.x <= width * 0.72 else { return }
+        MainViewControllerKt.pdfReaderToggleChrome()
+    }
+
     /// Pushes the new position into the shared chrome and schedules a debounced (~1s, same
     /// cadence as Android's `locatorUpdates.debounce(1_000)`) save via `PdfProgressBridge`.
     func navigator(_ navigator: Navigator, locationDidChange locator: Locator) {

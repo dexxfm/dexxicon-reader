@@ -77,9 +77,8 @@ import net.dexxicon.reader.shared.reader.epub.TocEntry
 /**
  * Phase 3 of the shared-reader-chrome redesign (issue #183) — the PDF reader's chrome, ported
  * from `feature/reader-pdf`'s original `PdfReaderScreen.kt`/`ReaderContent`. Simpler than
- * EPUB's: no highlights (PDF bookmarks only), no chrome-hide-on-tap (the top/bottom bars are
- * always visible in the original — no native centre-tap wiring needed here), and no
- * remote-resume banner (see [PdfProgressBridge]'s own doc comment for why).
+ * EPUB's: no highlights (PDF bookmarks only) and no remote-resume banner (see
+ * [PdfProgressBridge]'s own doc comment for why). Native centre taps toggle [chromeVisible].
  *
  * The page-turn drag gesture (Android's `pageTurnGesture`, built on `PDFView
  * .canScrollHorizontally`) stays entirely native — like EPUB's edge-tap navigation, it has no
@@ -94,6 +93,7 @@ fun PdfReaderScreen(
     bookmarks: List<Bookmark> = emptyList(),
     currentBookmark: Bookmark? = null,
     currentPage: Int = 1,
+    chromeVisible: Boolean = true,
     onAddBookmark: () -> Unit = {},
     onDeleteBookmark: (String) -> Unit = {},
     onGoToBookmark: (Bookmark) -> Unit = {},
@@ -119,6 +119,7 @@ fun PdfReaderScreen(
             bookmarks = bookmarks,
             currentBookmark = currentBookmark,
             currentPage = currentPage,
+            chromeVisible = chromeVisible,
             onAddBookmark = onAddBookmark,
             onDeleteBookmark = onDeleteBookmark,
             onGoToBookmark = onGoToBookmark,
@@ -139,6 +140,7 @@ private fun ReaderContent(
     bookmarks: List<Bookmark>,
     currentBookmark: Bookmark?,
     currentPage: Int,
+    chromeVisible: Boolean,
     onAddBookmark: () -> Unit,
     onDeleteBookmark: (String) -> Unit,
     onGoToBookmark: (Bookmark) -> Unit,
@@ -165,7 +167,7 @@ private fun ReaderContent(
         // dark even in a light app (Grey, Black), so pick its colour from the background itself.
         contentColor = if (surface.luminance() < 0.5f) Color(0xFFE6E7EA) else Color(0xFF1B1C1F),
         topBar = {
-            if (sideControls == null) TopAppBar(
+            if (chromeVisible && sideControls == null) TopAppBar(
                 title = { Text(state.title, maxLines = 1) },
                 navigationIcon = { BackPill(onBack) },
                 actions = {
@@ -190,7 +192,7 @@ private fun ReaderContent(
             )
         },
         bottomBar = {
-            if (state.pageCount > 1) {
+            if (chromeVisible && state.pageCount > 1) {
                 // issue #306 — clear of the navigation bar (3-button nav drew over the slider) and,
                 // in landscape, the camera cutout.
                 Column(
@@ -217,7 +219,7 @@ private fun ReaderContent(
             readerContent()
         }
     }
-    if (sideControls != null) {
+    if (chromeVisible && sideControls != null) {
         SideColumnControls(sideControls) {
             SideColumnButton("chevron.left", Icons.AutoMirrored.Filled.ArrowBack, "Back", onBack)
             SideColumnGap()

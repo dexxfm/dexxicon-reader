@@ -434,9 +434,7 @@ class AppContainer(
         }
     }
 
-    /** Phase 3 of the shared-reader-chrome redesign (issue #183) — the iOS PDF reader's own
-     * bridge; simpler than the EPUB one (no chrome-hide/active-highlight state — PDF's chrome
-     * has neither), see [PdfReaderNativeState]/[PdfReaderActions]'s own doc comments. */
+    /** The iOS PDF reader's native state and chrome actions. */
     private val _pdfReaderState = MutableStateFlow<PdfReaderNativeState?>(null)
     val pdfReaderState: StateFlow<PdfReaderNativeState?> = _pdfReaderState.asStateFlow()
 
@@ -448,11 +446,20 @@ class AppContainer(
 
     val pdfProgressBridge: PdfProgressBridge = PdfProgressBridge(progressRepository, scope)
 
+    private val _pdfChromeVisible = MutableStateFlow(true)
+    val pdfChromeVisible: StateFlow<Boolean> = _pdfChromeVisible.asStateFlow()
+
+    fun togglePdfChrome() {
+        _pdfChromeVisible.value = !_pdfChromeVisible.value
+    }
+
+    fun resetPdfChrome() {
+        _pdfChromeVisible.value = true
+    }
+
     /** Phase 4 of the shared-reader-chrome redesign (issue #183) — the iOS comic reader's own
      * bridge; narrower still than PDF's (no locator string at all — see
-     * [ComicReaderNativeState]'s own doc comment) but chrome-hide-on-tap comes back (comics
-     * are full-bleed images, same reasoning as EPUB's), hence [comicChromeVisible] here and
-     * not on the PDF block above. */
+     * [ComicReaderNativeState]'s own doc comment). */
     private val _comicReaderState = MutableStateFlow<ComicReaderNativeState?>(null)
     val comicReaderState: StateFlow<ComicReaderNativeState?> = _comicReaderState.asStateFlow()
 
