@@ -2,7 +2,6 @@ package net.dexxicon.reader.feature.reader.epub
 
 import com.google.common.truth.Truth.assertThat
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
-import net.dexxicon.reader.core.datastore.ReaderFitMode
 import net.dexxicon.reader.core.datastore.ReaderFontFamily
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderScrollMode
@@ -23,18 +22,16 @@ class EpubPreferencesMappingTest {
         fun layout(l: ReaderPageLayout) =
             ReaderDisplayPreferences(pageLayout = l).toEpubPreferences(systemInDark = false).columnCount
 
-        assertThat(layout(ReaderPageLayout.AUTO)).isEqualTo(ColumnCount.AUTO)
+        assertThat(layout(ReaderPageLayout.AUTO)).isEqualTo(ColumnCount.ONE)
         assertThat(layout(ReaderPageLayout.SINGLE)).isEqualTo(ColumnCount.ONE)
         assertThat(layout(ReaderPageLayout.DOUBLE)).isEqualTo(ColumnCount.TWO)
     }
 
-    @Test fun `fit mode adjusts page margins, widest for page width`() {
-        fun margins(f: ReaderFitMode) =
-            ReaderDisplayPreferences(fitMode = f).toEpubPreferences(systemInDark = false).pageMargins!!
-
-        assertThat(margins(ReaderFitMode.PAGE_WIDTH)).isLessThan(margins(ReaderFitMode.PAGE_FIT))
-        assertThat(margins(ReaderFitMode.ACTUAL_SIZE)).isGreaterThan(margins(ReaderFitMode.PAGE_FIT))
-        assertThat(margins(ReaderFitMode.PAGE_HEIGHT)).isEqualTo(margins(ReaderFitMode.PAGE_FIT))
+    @Test fun `spread margin is passed to Readium`() {
+        val preferences = ReaderDisplayPreferences()
+        assertThat(preferences.toEpubPreferences(systemInDark = false).pageMargins).isEqualTo(0.0)
+        assertThat(preferences.toEpubPreferences(systemInDark = false, spreadPageMargin = 36.0).pageMargins)
+            .isEqualTo(36.0)
     }
 
     @Test fun `font family maps to Readium font family and null preserves publisher default`() {
@@ -174,7 +171,7 @@ class EpubPreferencesMappingTest {
     @Test fun `auto page layout switches to two columns on a wide viewport`() {
         val narrow = ReaderDisplayPreferences(pageLayout = ReaderPageLayout.AUTO)
             .toEpubPreferences(systemInDark = false, wideViewport = false)
-        assertThat(narrow.columnCount).isEqualTo(ColumnCount.AUTO)
+        assertThat(narrow.columnCount).isEqualTo(ColumnCount.ONE)
 
         val wide = ReaderDisplayPreferences(pageLayout = ReaderPageLayout.AUTO)
             .toEpubPreferences(systemInDark = false, wideViewport = true)

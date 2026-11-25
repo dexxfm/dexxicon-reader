@@ -12,7 +12,7 @@ import org.readium.r2.navigator.preferences.Fit
  * supported by this engine, so they're left out of the PDF settings sheet.
  */
 fun ReaderDisplayPreferences.toPdfiumPreferences(): PdfiumPreferences = PdfiumPreferences(
-    fit = when (fitMode) {
+    fit = when (pdfFitMode) {
         ReaderFitMode.PAGE_WIDTH -> Fit.WIDTH
         // PAGE_FIT / PAGE_HEIGHT / ACTUAL_SIZE — the engine only offers contain vs. width.
         else -> Fit.CONTAIN

@@ -85,9 +85,9 @@ other exactly.
 
 | Format | Reader |
 |---|---|
-| **EPUB** | Readium — font size, light/sepia/dark themes, paged or scrolling, TOC, tap **and swipe** to turn pages, highlights & notes, **bookmarks** |
+| **EPUB** | Readium — font size, light/sepia/dark themes, paged or scrolling, TOC, tap **and swipe** to turn pages, highlights & notes, **bookmarks**, **adjustable page margins** (top/bottom/left/right, 0–25%, defaults 0% / 5%; taps and swipes in the margins still turn pages), page layout **Auto** (two pages in landscape, one in portrait) / Single / Double |
 | **Comic** — CBZ **and CBR** | Readium image navigator + page slider + pinch zoom + drag‑to‑turn with adjustable sensitivity + **two‑page spread** on tablets/iPad/unfolded foldables, with auto‑detected right‑to‑left (manga) reading order. `.cbr` (RAR) is unpacked and cached as CBZ on first open |
-| **PDF** | Readium + PDFium — page/scroll modes, outline, zoom, drag‑to‑turn with adjustable sensitivity, display settings, page bookmarks |
+| **PDF** | Readium + PDFium — page/scroll modes, outline, zoom, drag‑to‑turn with adjustable sensitivity, display settings (own fit setting), page bookmarks |
 | **Audiobook** — M4B / MP3 / … | Background playback, lock‑screen & notification controls (Now Playing / Control Center on iOS), chapter list, scrubber |
 
 Audiobook extras: playback speed, sleep timer (timed or **end of chapter**), **skip

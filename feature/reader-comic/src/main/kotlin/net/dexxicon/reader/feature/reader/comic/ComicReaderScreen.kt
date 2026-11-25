@@ -402,8 +402,8 @@ private fun SingleSpreadReader(
     // itself changes. [setPagePhotoViewsFitWidth] is a no-op until that fresh PhotoView has
     // both laid out *and* finished decoding its image — retried on a short poll rather than a
     // single fixed delay, since a slow (cold-cache/network) decode can outlast any one delay.
-    LaunchedEffect(pageView, page, preferences.fitMode) {
-        val fitWidth = preferences.fitMode == ReaderFitMode.PAGE_WIDTH
+    LaunchedEffect(pageView, page, preferences.comicFitMode) {
+        val fitWidth = preferences.comicFitMode == ReaderFitMode.PAGE_WIDTH
         repeat(20) {
             kotlinx.coroutines.delay(50)
             if (setPagePhotoViewsFitWidth(pageView, fitWidth)) return@LaunchedEffect

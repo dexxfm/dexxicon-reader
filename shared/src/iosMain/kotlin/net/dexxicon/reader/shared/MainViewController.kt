@@ -31,6 +31,7 @@ import net.dexxicon.reader.shared.reader.comic.ComicReaderNativeState
 import net.dexxicon.reader.shared.reader.comic.ComicReaderScreen
 import net.dexxicon.reader.shared.reader.comic.ComicReaderUiState
 import net.dexxicon.reader.shared.reader.epub.EpubProgressBridge
+import net.dexxicon.reader.shared.reader.epub.EpubMarginGeometry
 import net.dexxicon.reader.shared.reader.epub.EpubReaderActions
 import net.dexxicon.reader.shared.reader.epub.EpubReaderNativeState
 import net.dexxicon.reader.shared.reader.epub.EpubReaderScreen
@@ -211,7 +212,8 @@ fun setEpubReaderActions(
     goToHighlight: (Highlight) -> Unit,
     goToToc: (TocEntry) -> Unit,
     jumpToRemoteResume: () -> Unit,
-    submitPreferences: (ReaderDisplayPreferences) -> Unit,
+    submitPreferences: (ReaderDisplayPreferences, EpubMarginGeometry) -> Unit,
+    onMarginTap: (String) -> Unit,
     applyHighlights: (List<Highlight>) -> Unit,
 ) {
     appContainer.epubReaderActions = EpubReaderActions(
@@ -220,6 +222,7 @@ fun setEpubReaderActions(
         goToToc = goToToc,
         jumpToRemoteResume = jumpToRemoteResume,
         submitPreferences = submitPreferences,
+        onMarginTap = onMarginTap,
         applyHighlights = applyHighlights,
     )
 }
@@ -306,9 +309,6 @@ fun EpubReaderViewController(
         }
     }
 
-    LaunchedEffect(preferences) {
-        actions?.submitPreferences?.invoke(preferences)
-    }
     LaunchedEffect(highlights) {
         actions?.applyHighlights?.invoke(highlights)
     }
@@ -348,7 +348,20 @@ fun EpubReaderViewController(
             onJumpToRemoteResume = actions.jumpToRemoteResume,
             onDismissRemoteResume = {},
             onUpdatePreferences = { transform -> appContainer.readerPreferences.update(transform) },
-            readerContent = {
+            onMarginTap = { position ->
+                val direction = when {
+                    !preferences.tapNavigation -> "center"
+                    position < 0.28f -> "left"
+                    position > 0.72f -> "right"
+                    else -> "center"
+                }
+                actions.onMarginTap(direction)
+            },
+            onMarginSwipe = { forward -> actions.onMarginTap(if (forward) "right" else "left") },
+            readerContent = { geometry ->
+                LaunchedEffect(actions, preferences, geometry) {
+                    actions.submitPreferences(preferences, geometry)
+                }
                 UIKitViewController(
                     factory = { navigatorViewController },
                     modifier = Modifier.fillMaxSize(),

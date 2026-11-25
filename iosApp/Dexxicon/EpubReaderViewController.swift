@@ -39,6 +39,7 @@ final class EpubReaderViewController: UIViewController {
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
     private var navigator: EPUBNavigatorViewController?
     private var publication: Publication?
+    private var verticalText = false
     /// Flattened table of contents — index in this array is the `TocEntry.ref` string the
     /// shared chrome hands back to `goToToc(_:)`, mirroring Android's own `flatToc` local.
     private var flatToc: [(depth: Int, link: Link)] = []
@@ -183,6 +184,25 @@ final class EpubReaderViewController: UIViewController {
                     EditingAction(title: "Highlight", action: #selector(highlight(_:))),
                 ]
             )
+            verticalText = EPUBPreferencesEditor(
+                initialPreferences: config.preferences,
+                metadata: publication.metadata,
+                defaults: config.defaults
+            ).verticalText.effectiveValue
+            if publication.metadata.epubLayout != .fixed {
+                if !verticalText {
+                    config.readiumCSSRSProperties = CSSRSProperties(overrides: [
+                        "--RS__pageGutter": "1px",
+                        "--RS__colGap": "0px",
+                        "--RS__colWidth": "auto",
+                        "--RS__colCount": "var(--USER__colCount, 1)",
+                    ])
+                }
+                config.contentInset = [
+                    .compact: (top: 0, bottom: 0),
+                    .regular: (top: 0, bottom: 0),
+                ]
+            }
             // issue #279: Readium's own highlight template again at a stronger tint, for dark
             // pages (see `.strongHighlight`).
             config.decorationTemplates[.strongHighlight] = HTMLDecorationTemplate.defaultTemplates(alpha: 0.5)[.highlight]
@@ -218,7 +238,8 @@ final class EpubReaderViewController: UIViewController {
                 guard let self, let target = self.remoteResumeLocator else { return }
                 Task { _ = await self.navigator?.go(to: target, options: .init()) }
             },
-            submitPreferences: { [weak self] prefs in self?.submitPreferences(prefs) },
+            submitPreferences: { [weak self] prefs, geometry in self?.submitPreferences(prefs, geometry: geometry) },
+            onMarginTap: { [weak self] direction in self?.handleMarginTap(direction) },
             applyHighlights: { [weak self] highlights in self?.applyDecorations(for: highlights) }
         )
         // issue #183: registered once here (not inside applyDecorations, which can run many
@@ -249,7 +270,9 @@ final class EpubReaderViewController: UIViewController {
                     title: "",
                     toc: tocEntries,
                     remoteResumePercent: remoteResumePercentValue.map { KotlinDouble(double: $0) },
-                    hasRemoteResume: remoteResumePercentValue != nil
+                    hasRemoteResume: remoteResumePercentValue != nil,
+                    isReflowable: publication?.metadata.epubLayout != .fixed,
+                    isVerticalText: verticalText
                 ),
                 currentLocatorJson: try? currentLocator?.jsonString()
             )
@@ -288,7 +311,7 @@ final class EpubReaderViewController: UIViewController {
 
     /// The Swift-side equivalent of Android's `EpubPreferencesMapping.kt` — Readium Swift's
     /// own `EPUBPreferences` isn't a KMP type, so this mapping can't live in `:shared`.
-    private func submitPreferences(_ prefs: DatastoreReaderDisplayPreferences) {
+    private func submitPreferences(_ prefs: DatastoreReaderDisplayPreferences, geometry: EpubMarginGeometry) {
         // issue #183: Kotlin enums bridge to Swift as a KotlinEnum-conforming class hierarchy,
         // not a true Swift enum — `switch`'s exhaustiveness/`@unknown default` checking doesn't
         // apply the same way, so this compares against the bridged static cases with `==`
@@ -365,22 +388,23 @@ final class EpubReaderViewController: UIViewController {
         // issue #183: Kotlin's `auto`/`double` enum cases are exported as `auto_`/`double_` —
         // both are Objective-C/C keywords, confirmed via a real ios-ci compile error.
         if prefs.pageLayout == DatastoreReaderPageLayout.auto_ {
-            epubPrefs.columnCount = view.bounds.width >= 720 ? ColumnCount.two : ColumnCount.auto
+            epubPrefs.columnCount = geometry.spread ? ColumnCount.two : ColumnCount.one
         } else if prefs.pageLayout == DatastoreReaderPageLayout.single {
             epubPrefs.columnCount = ColumnCount.one
         } else if prefs.pageLayout == DatastoreReaderPageLayout.double_ {
             epubPrefs.columnCount = ColumnCount.two
         }
-        if prefs.fitMode == DatastoreReaderFitMode.pageWidth {
-            epubPrefs.pageMargins = 0.5
-        } else if prefs.fitMode == DatastoreReaderFitMode.pageFit {
-            epubPrefs.pageMargins = 1.0
-        } else if prefs.fitMode == DatastoreReaderFitMode.pageHeight {
-            epubPrefs.pageMargins = 1.0
-        } else if prefs.fitMode == DatastoreReaderFitMode.actualSize {
-            epubPrefs.pageMargins = 1.6
-        }
+        epubPrefs.pageMargins = geometry.spreadPageMargin
         navigator?.submitPreferences(epubPrefs)
+    }
+
+    private func handleMarginTap(_ direction: String) {
+        guard let navigator else { return }
+        switch direction {
+        case "left": turnPage(navigator, physicallyForward: false)
+        case "right": turnPage(navigator, physicallyForward: true)
+        default: MainViewControllerKt.epubReaderToggleChrome()
+        }
     }
 
     /// Renders highlight decorations — the Swift equivalent of Android's own

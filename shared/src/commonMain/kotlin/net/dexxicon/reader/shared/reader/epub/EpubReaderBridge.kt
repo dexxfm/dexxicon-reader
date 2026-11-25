@@ -54,7 +54,8 @@ data class EpubReaderActions(
     /** Applies [ReaderDisplayPreferences] to the real navigator — the Swift-side equivalent
      * of `EpubPreferencesMapping.kt`'s `toEpubPreferences()`, since Readium Swift's own
      * `EPUBPreferences` isn't a KMP type. */
-    val submitPreferences: (ReaderDisplayPreferences) -> Unit,
+    val submitPreferences: (ReaderDisplayPreferences, EpubMarginGeometry) -> Unit,
+    val onMarginTap: (String) -> Unit,
     /** Called whenever the collected highlights list changes, so the native navigator can
      * rebuild and re-apply its `Decoration`s — the Swift-side mirror of Android's own
      * `LaunchedEffect(navigator, highlights) { nav.applyDecorations(...) }`, needed here only

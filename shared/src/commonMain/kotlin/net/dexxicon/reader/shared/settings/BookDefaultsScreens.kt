@@ -42,6 +42,7 @@ import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.reader.proportionalScaleLabel
 import net.dexxicon.reader.shared.reader.ReaderProportionalScaleControl
+import net.dexxicon.reader.shared.reader.epub.EpubMarginSettings
 
 /**
  * Phase 4 Stage H (issue #145) — Book Defaults, ported from native's
@@ -132,19 +133,6 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
         )
         // issue #261 — the theme picker shared with every reader.
         ReaderThemeSetting(prefs, update)
-        Text(
-            "EPUB and PDF.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        DefaultsChips("Page fit", ReaderFitMode.entries, prefs.fitMode, ::readerFitLabel) { fit ->
-            update { it.copy(fitMode = fit) }
-        }
-        Text(
-            "EPUB honours all four; the PDF engine only distinguishes fit-page from fit-width.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
         DefaultsChips(
             "Reading mode",
             listOf(ReaderScrollMode.PAGED, ReaderScrollMode.SCROLL),
@@ -186,6 +174,7 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SettingsSubsectionTitle("EPUB")
         // issue #261 — hierarchical: the page first, then the text on it.
+        EpubMarginSettings(prefs, update)
         DefaultsChips("Page layout", ReaderPageLayout.entries, prefs.pageLayout, ::readerPageLayoutLabel) { layout ->
             update { it.copy(pageLayout = layout) }
         }
@@ -252,6 +241,17 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
 
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SettingsSubsectionTitle("Comics")
+        DefaultsChips(
+            "Page fit",
+            listOf(ReaderFitMode.PAGE_FIT, ReaderFitMode.PAGE_WIDTH),
+            prefs.comicFitMode,
+            ::readerFitLabel,
+        ) { fit -> update { it.copy(comicFitMode = fit) } }
+        Text(
+            "Two-page layout always fills the height.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Text(
             "Also uses the page-turn swipe and tap-to-turn settings above.",
             style = MaterialTheme.typography.bodySmall,
@@ -283,8 +283,14 @@ fun BookDefaultsScreen(container: AppContainer, onBack: () -> Unit) {
 
         HorizontalDivider(Modifier.padding(vertical = 20.dp))
         SettingsSubsectionTitle("PDF")
+        DefaultsChips(
+            "Page fit",
+            listOf(ReaderFitMode.PAGE_FIT, ReaderFitMode.PAGE_WIDTH),
+            prefs.pdfFitMode,
+            ::readerFitLabel,
+        ) { fit -> update { it.copy(pdfFitMode = fit) } }
         Text(
-            "Background, page fit, reading mode and page-turn swipe are set above. The page " +
+            "Background, reading mode and page-turn swipe are set above. The page " +
                 "colour applies to the margins and spacing — the PDF engine can't recolour the " +
                 "page content itself.",
             style = MaterialTheme.typography.bodySmall,

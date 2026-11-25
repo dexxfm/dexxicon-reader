@@ -22,5 +22,7 @@ sealed interface EpubReaderUiState {
         /** A newer position from KOReader sync / another device, if any (0.0–1.0). */
         val remoteResumePercent: Double? = null,
         val hasRemoteResume: Boolean = remoteResumePercent != null,
+        val isReflowable: Boolean = true,
+        val isVerticalText: Boolean = false,
     ) : EpubReaderUiState
 }
