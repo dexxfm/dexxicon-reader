@@ -2,6 +2,7 @@ package net.dexxicon.reader.shared.reader.epub
 
 import net.dexxicon.reader.shared.reader.ResetTextButton
 import net.dexxicon.reader.shared.reader.ReaderThemeSetting
+import net.dexxicon.reader.shared.reader.TocList
 import net.dexxicon.reader.shared.SideColumnGap
 import net.dexxicon.reader.shared.SideColumnControls
 import net.dexxicon.reader.shared.SideColumnButton
@@ -306,27 +307,11 @@ private fun ReaderContent(
 
     if (showToc) {
         ModalBottomSheet(onDismissRequest = { showToc = false }) {
-            LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                if (state.toc.isEmpty()) {
-                    item {
-                        Box(Modifier.fillMaxWidth().padding(24.dp), Alignment.Center) {
-                            Text("No table of contents")
-                        }
-                    }
-                }
-                items(state.toc) { entry ->
-                    TextButton(
-                        onClick = { onGoToToc(entry); showToc = false },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            entry.title,
-                            modifier = Modifier.fillMaxWidth().padding(start = (entry.depth * 16).dp),
-                            textAlign = TextAlign.Start,
-                        )
-                    }
-                }
-            }
+            TocList(
+                entries = state.toc,
+                currentRef = state.currentTocRef,
+                onSelect = { entry -> onGoToToc(entry); showToc = false },
+            )
         }
     }
 

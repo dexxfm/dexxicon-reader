@@ -1,6 +1,7 @@
 package net.dexxicon.reader.shared.reader.pdf
 
 import net.dexxicon.reader.shared.reader.ReaderThemeSetting
+import net.dexxicon.reader.shared.reader.TocList
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import net.dexxicon.reader.shared.sideControls
 import net.dexxicon.reader.shared.SideColumnGap
@@ -259,20 +260,11 @@ private fun ReaderContent(
 
     if (showToc) {
         ModalBottomSheet(onDismissRequest = { showToc = false }) {
-            LazyColumn(Modifier.fillMaxWidth().padding(bottom = 24.dp)) {
-                items(state.toc) { entry ->
-                    TextButton(
-                        onClick = { onGoToToc(entry); showToc = false },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            entry.title,
-                            modifier = Modifier.fillMaxWidth().padding(start = (entry.depth * 16).dp),
-                            textAlign = TextAlign.Start,
-                        )
-                    }
-                }
-            }
+            TocList(
+                entries = state.toc,
+                currentRef = state.currentTocRef,
+                onSelect = { entry -> onGoToToc(entry); showToc = false },
+            )
         }
     }
 

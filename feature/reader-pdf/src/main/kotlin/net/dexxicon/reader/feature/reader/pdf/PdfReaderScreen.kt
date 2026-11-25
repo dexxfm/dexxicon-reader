@@ -115,6 +115,17 @@ private fun ReaderContent(
     val tocEntries = remember(flatToc) {
         flatToc.mapIndexed { index, (depth, link) -> TocEntry(depth, link.title ?: link.href.toString(), index.toString()) }
     }
+    val currentTocRef = remember(flatToc, page) {
+        flatToc.withIndex()
+            .mapNotNull { (index, entry) ->
+                pageFromTocHref(entry.second.href.toString())
+                    ?.takeIf { it <= page }
+                    ?.let { index to it }
+            }
+            .maxWithOrNull(compareBy<Pair<Int, Int>> { it.second }.thenBy { it.first })
+            ?.first
+            ?.toString()
+    }
 
     val initialPrefs = remember(state.publication) { preferences.toPdfiumPreferences() }
     DisposableEffect(state.publication) {
@@ -185,6 +196,7 @@ private fun ReaderContent(
             title = state.title,
             toc = tocEntries,
             pageCount = state.pageCount,
+            currentTocRef = currentTocRef,
         ),
         onBack = onBack,
         preferences = preferences,
@@ -255,6 +267,13 @@ private fun net.dexxicon.reader.core.model.Bookmark.pageNumber(): Int? = runCatc
     org.json.JSONObject(locatorJson).optJSONObject("locations")?.optInt("position", -1)
         ?.takeIf { it > 0 }
 }.getOrNull()
+
+private fun pageFromTocHref(href: String): Int? =
+    href.substringAfter('#', "")
+        .split('&')
+        .firstOrNull { it.substringBefore('=') == "page" }
+        ?.substringAfter('=', "")
+        ?.toIntOrNull()
 
 private fun flatten(links: List<Link>, depth: Int = 0): List<Pair<Int, Link>> =
     links.flatMap { link -> listOf(depth to link) + flatten(link.children, depth + 1) }

@@ -176,11 +176,33 @@ final class PdfReaderViewController: UIViewController {
                 screenState: PdfReaderUiStateReady(
                     title: publication?.metadata.title ?? "",
                     toc: tocEntries,
-                    pageCount: Int32(pageCount)
+                    pageCount: Int32(pageCount),
+                    currentTocRef: currentTocRef()
                 ),
                 currentLocatorJson: try? currentLocator?.jsonString()
             )
         )
+    }
+
+    private func currentTocRef() -> String? {
+        guard let currentPage = currentLocator?.locations.position else { return nil }
+        return flatToc.enumerated()
+            .compactMap { index, entry -> (index: Int, page: Int)? in
+                guard let page = Self.pageNumber(from: entry.link.href), page <= currentPage else { return nil }
+                return (index, page)
+            }
+            .max { lhs, rhs in
+                lhs.page == rhs.page ? lhs.index < rhs.index : lhs.page < rhs.page
+            }
+            .map { String($0.index) }
+    }
+
+    private static func pageNumber(from href: String) -> Int? {
+        guard let fragment = href.split(separator: "#", maxSplits: 1).last,
+              let page = fragment.split(separator: "&").first(where: { $0.hasPrefix("page=") }) else {
+            return nil
+        }
+        return Int(page.dropFirst("page=".count))
     }
 
     /// The page slider (and a bookmark with an extractable page number) resolve to a plain
