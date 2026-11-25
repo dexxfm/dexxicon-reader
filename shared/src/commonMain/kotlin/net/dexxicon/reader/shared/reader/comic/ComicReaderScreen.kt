@@ -286,16 +286,16 @@ private fun ComicSettings(
         ) {
             // Same two-option reduction as PDF's own "Page fit" — the underlying engines
             // don't distinguish anything finer than fit-page vs. fit-width.
-            val fitWidth = preferences.fitMode == ReaderFitMode.PAGE_WIDTH
+            val fitWidth = preferences.comicFitMode == ReaderFitMode.PAGE_WIDTH
             FilterChip(
                 selected = !fitWidth,
-                onClick = { onChange { it.copy(fitMode = ReaderFitMode.PAGE_FIT) } },
+                onClick = { onChange { it.copy(comicFitMode = ReaderFitMode.PAGE_FIT) } },
                 label = { Text("Fit") },
                 enabled = !isDoubleSpread,
             )
             FilterChip(
                 selected = fitWidth,
-                onClick = { onChange { it.copy(fitMode = ReaderFitMode.PAGE_WIDTH) } },
+                onClick = { onChange { it.copy(comicFitMode = ReaderFitMode.PAGE_WIDTH) } },
                 label = { Text("Width") },
                 enabled = !isDoubleSpread,
             )

@@ -5,6 +5,7 @@ import android.view.View
 import android.widget.FrameLayout
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,6 +36,9 @@ import org.readium.r2.navigator.Decoration
 import org.readium.r2.navigator.DecorableNavigator
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.navigator.epub.EpubNavigatorFragment
+import org.readium.r2.navigator.epub.css.RsProperties
+import org.readium.r2.shared.ExperimentalReadiumApi
+import org.readium.r2.shared.publication.Layout
 import org.readium.r2.shared.publication.Link
 import org.readium.r2.shared.publication.Locator
 
@@ -84,7 +88,7 @@ fun EpubReaderScreen(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalReadiumApi::class)
 @Composable
 private fun ReaderContent(
     state: EpubReaderState.Ready,
@@ -104,10 +108,10 @@ private fun ReaderContent(
     val activity = LocalActivity.current as? FragmentActivity
     val darkTheme = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
         Configuration.UI_MODE_NIGHT_YES
-    // issue #117: same 720dp breakpoint used elsewhere (App.kt's two-pane split, the
-    // audiobook player's side-by-side layout) — the reader is always a full-screen route, so
-    // the configuration's width is the viewport width, no BoxWithConstraints needed.
-    val wideViewport = LocalConfiguration.current.screenWidthDp.dp >= 720.dp
+    // Auto page layout: two pages in landscape, one in portrait.
+    val configuration = LocalConfiguration.current
+    val wideViewport = configuration.screenWidthDp > configuration.screenHeightDp
+    val isReflowable = state.publication.metadata.layout != Layout.FIXED
 
     if (activity == null) {
         Surface(Modifier.fillMaxSize()) {
@@ -138,12 +142,25 @@ private fun ReaderContent(
     // Build the navigator fragment once per opened publication and set it as the factory
     // the FragmentManager will use to instantiate EpubNavigatorFragment by class.
     val initialPrefs = remember(state.publication) { preferences.toEpubPreferences(darkTheme, wideViewport) }
+    val verticalText = remember(state.publication) {
+        EpubNavigatorFactory(state.publication).createPreferencesEditor(initialPrefs).verticalText.effectiveValue
+    }
     DisposableEffect(state.publication) {
         fragmentManager.fragmentFactory = EpubNavigatorFactory(state.publication)
             .createFragmentFactory(
                 initialLocator = state.initialLocator,
                 initialPreferences = initialPrefs,
                 configuration = EpubNavigatorFragment.Configuration().apply {
+                    if (isReflowable && !verticalText) {
+                        readiumCssRsProperties = RsProperties(
+                            overrides = mapOf(
+                                "--RS__pageGutter" to "1px",
+                                "--RS__colGap" to "0px",
+                                "--RS__colWidth" to "auto",
+                                "--RS__colCount" to "var(--USER__colCount, 1)",
+                            ),
+                        )
+                    }
                     decorationTemplates = highlightDecorationTemplates()
                     selectionActionModeCallback = HighlightSelectionCallback(
                         activity = activity,
@@ -240,15 +257,13 @@ private fun ReaderContent(
         onDispose { if (nav != null && listener != null) nav.removeInputListener(listener) }
     }
 
-    LaunchedEffect(preferences, darkTheme, wideViewport, navigator) {
-        navigator?.submitPreferences(preferences.toEpubPreferences(darkTheme, wideViewport))
-    }
-
     SharedEpubReaderScreen(
         state = EpubReaderUiState.Ready(
             title = state.title,
             toc = tocEntries,
             remoteResumePercent = state.remoteResumePercent,
+            isReflowable = isReflowable,
+            isVerticalText = verticalText,
         ),
         onBack = onBack,
         preferences = preferences,
@@ -269,8 +284,38 @@ private fun ReaderContent(
         onJumpToRemoteResume = { state.remoteResumeLocator?.let { navigator?.go(it, true) } },
         onDismissRemoteResume = {},
         onUpdatePreferences = onUpdatePreferences,
-        readerContent = {
-            androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+        onMarginTap = { position ->
+            val nav = navigator
+            when {
+                !tapNavEnabled -> chromeVisible = !chromeVisible
+                position < 0.28f -> nav?.goBackward(true)
+                position > 0.72f -> nav?.goForward(true)
+                else -> chromeVisible = !chromeVisible
+            }
+        },
+        onMarginSwipe = { forward ->
+            if (forward) navigator?.goForward(true) else navigator?.goBackward(true)
+        },
+        readerContent = { geometry ->
+            var nudge by remember { mutableStateOf(false) }
+            LaunchedEffect(preferences, darkTheme, geometry, navigator) {
+                val nav = navigator ?: return@LaunchedEffect
+                nav.submitPreferences(
+                    preferences.toEpubPreferences(darkTheme, geometry.spread, geometry.spreadPageMargin),
+                )
+                // Readium keeps column offsets from the old viewport size, which truncates text or
+                // shows the next page. Hiding the toolbar fixes it because the WebView is resized,
+                // so resize it by 1dp after changes settle (debounced while a slider moves).
+                kotlinx.coroutines.delay(300)
+                nudge = true
+                kotlinx.coroutines.delay(150)
+                nudge = false
+                kotlinx.coroutines.delay(150)
+                nav.go(nav.currentLocator.value, false)
+            }
+            androidx.compose.foundation.layout.Box(
+                Modifier.fillMaxSize().padding(bottom = if (nudge) 1.dp else 0.dp),
+            ) {
                 AndroidView(
                     factory = { ctx ->
                         val container = FragmentContainerView(ctx).apply {

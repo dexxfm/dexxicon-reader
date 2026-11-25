@@ -1,7 +1,6 @@
 package net.dexxicon.reader.feature.reader.epub
 
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
-import net.dexxicon.reader.core.datastore.ReaderFitMode
 import net.dexxicon.reader.core.datastore.ReaderFontFamily
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderTheme
@@ -24,7 +23,11 @@ private val GREY_TEXT = 0xFF17181A.toInt()
 val SEPIA_BACKGROUND = 0xFFF5ECDC.toInt()
 val DARK_BACKGROUND = 0xFF000000.toInt()
 
-fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewport: Boolean = false): EpubPreferences {
+fun ReaderDisplayPreferences.toEpubPreferences(
+    systemInDark: Boolean,
+    wideViewport: Boolean = false,
+    spreadPageMargin: Double = 0.0,
+): EpubPreferences {
     val resolvedTheme = when (theme) {
         ReaderTheme.LIGHT -> Theme.LIGHT
         ReaderTheme.SEPIA -> Theme.SEPIA
@@ -79,16 +82,10 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         // columns on a wide viewport by itself — force TWO past the breakpoint instead. A
         // manual SINGLE/DOUBLE choice always wins regardless of viewport width.
         columnCount = when (pageLayout) {
-            ReaderPageLayout.AUTO -> if (wideViewport) ColumnCount.TWO else ColumnCount.AUTO
+            ReaderPageLayout.AUTO -> if (wideViewport) ColumnCount.TWO else ColumnCount.ONE
             ReaderPageLayout.SINGLE -> ColumnCount.ONE
             ReaderPageLayout.DOUBLE -> ColumnCount.TWO
         },
-        // Reflowable text has no literal "fit"; approximate it with the margin width.
-        pageMargins = when (fitMode) {
-            ReaderFitMode.PAGE_WIDTH -> 0.5
-            ReaderFitMode.PAGE_FIT -> 1.0
-            ReaderFitMode.PAGE_HEIGHT -> 1.0
-            ReaderFitMode.ACTUAL_SIZE -> 1.6
-        },
+        pageMargins = spreadPageMargin,
     )
 }

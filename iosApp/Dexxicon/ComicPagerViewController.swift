@@ -232,7 +232,7 @@ final class ComicPagerViewController: UIViewController {
         content?.rightToLeft = prefs.comicRightToLeft
         content?.tapNavigationEnabled = prefs.tapNavigation
         content?.commitFraction = CGFloat(prefs.swipeSensitivity.commitFraction)
-        content?.fitWidth = prefs.fitMode == DatastoreReaderFitMode.pageWidth
+        content?.fitWidth = prefs.comicFitMode == DatastoreReaderFitMode.pageWidth
         updateIsDoubleSpread()
     }
 

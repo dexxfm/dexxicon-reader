@@ -10,18 +10,27 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.absolutePadding
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -66,10 +75,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -86,7 +99,6 @@ import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.core.designsystem.theme.Pill
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.datastore.ReaderFontFamily
-import net.dexxicon.reader.core.datastore.ReaderFitMode
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderScrollMode
 import net.dexxicon.reader.core.datastore.ReaderTheme
@@ -143,7 +155,9 @@ fun EpubReaderScreen(
     onJumpToRemoteResume: () -> Unit = {},
     onDismissRemoteResume: () -> Unit = {},
     onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit = {},
-    readerContent: @Composable () -> Unit = {},
+    onMarginTap: (Float) -> Unit = {},
+    onMarginSwipe: (Boolean) -> Unit = {},
+    readerContent: @Composable (EpubMarginGeometry) -> Unit = {},
 ) {
     when (state) {
         is EpubReaderUiState.Loading -> Center { CircularProgressIndicator() }
@@ -176,6 +190,8 @@ fun EpubReaderScreen(
             onJumpToRemoteResume = onJumpToRemoteResume,
             onDismissRemoteResume = onDismissRemoteResume,
             onUpdatePreferences = onUpdatePreferences,
+            onMarginTap = onMarginTap,
+            onMarginSwipe = onMarginSwipe,
             readerContent = readerContent,
         )
     }
@@ -204,7 +220,9 @@ private fun ReaderContent(
     onJumpToRemoteResume: () -> Unit,
     onDismissRemoteResume: () -> Unit,
     onUpdatePreferences: suspend ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
-    readerContent: @Composable () -> Unit,
+    onMarginTap: (Float) -> Unit,
+    onMarginSwipe: (Boolean) -> Unit,
+    readerContent: @Composable (EpubMarginGeometry) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
     var showToc by remember { mutableStateOf(false) }
@@ -250,8 +268,24 @@ private fun ReaderContent(
             }
         },
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding)) {
-            readerContent()
+        BoxWithConstraints(Modifier.fillMaxSize().padding(padding)) {
+            val geometry = epubMarginGeometry(
+                preferences, maxWidth.value, maxHeight.value, state.isReflowable, state.isVerticalText,
+            )
+            val viewportWidth = with(LocalDensity.current) { maxWidth.toPx() }
+            Box(Modifier.fillMaxSize().background(epubMarginBackground(preferences))) {
+                Box(
+                    Modifier.fillMaxSize().absolutePadding(
+                        left = geometry.left.dp,
+                        top = geometry.top.dp,
+                        right = geometry.right.dp,
+                        bottom = geometry.bottom.dp,
+                    ),
+                ) {
+                    readerContent(geometry)
+                }
+                MarginTapTargets(geometry, viewportWidth, onMarginTap, onMarginSwipe)
+            }
 
             if (state.hasRemoteResume && !resumeDismissed) {
                 Surface(
@@ -561,6 +595,82 @@ private fun HighlightEditor(
     }
 }
 
+@Composable
+private fun epubMarginBackground(preferences: ReaderDisplayPreferences): Color {
+    val painted = preferences.paintedColors
+    if (painted != null) return Color(painted.background)
+    return when (preferences.theme) {
+        ReaderTheme.SYSTEM -> if (isSystemInDarkTheme()) Color.Black else Color.White
+        ReaderTheme.LIGHT -> Color.White
+        ReaderTheme.SEPIA -> Color(0xFFFAF4E8)
+        ReaderTheme.GREY -> Color(0xFFC8CBCF)
+        ReaderTheme.DARK -> Color.Black
+        else -> Color.White
+    }
+}
+
+@Composable
+private fun BoxScope.MarginTapTargets(
+    geometry: EpubMarginGeometry,
+    viewportWidth: Float,
+    onTap: (Float) -> Unit,
+    onSwipe: (Boolean) -> Unit,
+) {
+    if (geometry.top > 0f) {
+        Box(
+            Modifier.align(Alignment.TopCenter).fillMaxWidth().height(geometry.top.dp)
+                .marginTapTarget(viewportWidth, onSwipe) { point, width -> onTap(point.x / width) },
+        )
+    }
+    if (geometry.bottom > 0f) {
+        Box(
+            Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(geometry.bottom.dp)
+                .marginTapTarget(viewportWidth, onSwipe) { point, width -> onTap(point.x / width) },
+        )
+    }
+    if (geometry.left > 0f) {
+        Box(
+            Modifier.align(AbsoluteAlignment.CenterLeft).fillMaxHeight().width(geometry.left.dp)
+                .marginTapTarget(viewportWidth, onSwipe) { _, _ -> onTap(0f) },
+        )
+    }
+    if (geometry.right > 0f) {
+        Box(
+            Modifier.align(AbsoluteAlignment.CenterRight).fillMaxHeight().width(geometry.right.dp)
+                .marginTapTarget(viewportWidth, onSwipe) { _, _ -> onTap(1f) },
+        )
+    }
+}
+
+private fun Modifier.marginTapTarget(
+    viewportWidth: Float,
+    onSwipe: (Boolean) -> Unit,
+    onTap: (Offset, Int) -> Unit,
+): Modifier = pointerInput(viewportWidth, onSwipe, onTap) {
+    awaitEachGesture {
+        val down = awaitFirstDown()
+        var maxDistance = 0f
+        var consumed = false
+        while (true) {
+            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id } ?: break
+            val delta = change.position - down.position
+            maxDistance = maxOf(maxDistance, delta.getDistance())
+            consumed = consumed || change.isConsumed
+            if (!change.pressed) {
+                if (!consumed && size.width > 0) {
+                    when (classifyMarginGesture(delta.x, delta.y, maxDistance, viewConfiguration.touchSlop, viewportWidth)) {
+                        EpubMarginGesture.TAP -> onTap(down.position, size.width)
+                        EpubMarginGesture.FORWARD -> onSwipe(true)
+                        EpubMarginGesture.BACKWARD -> onSwipe(false)
+                        EpubMarginGesture.NONE -> Unit
+                    }
+                }
+                break
+            }
+        }
+    }
+}
+
 private fun Modifier.clickableText(onClick: () -> Unit): Modifier = this.clickable(onClick = onClick)
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -587,14 +697,7 @@ private fun DisplaySettings(
             expanded = pageExpanded,
             onToggle = { pageExpanded = !pageExpanded },
         ) {
-            SettingChips(
-                title = "Page fit",
-                entries = ReaderFitMode.entries,
-                selected = preferences.fitMode,
-                label = ::readerFitLabel,
-                onSelect = { fit -> onChange { it.copy(fitMode = fit) } },
-            )
-
+            EpubMarginSettings(preferences, onChange)
             SettingChips(
                 title = "Page layout",
                 entries = ReaderPageLayout.entries,
@@ -809,13 +912,6 @@ private fun <T> SettingChips(
             )
         }
     }
-}
-
-private fun readerFitLabel(fit: ReaderFitMode): String = when (fit) {
-    ReaderFitMode.PAGE_FIT -> "Fit"
-    ReaderFitMode.PAGE_WIDTH -> "Width"
-    ReaderFitMode.PAGE_HEIGHT -> "Height"
-    ReaderFitMode.ACTUAL_SIZE -> "Actual size"
 }
 
 private fun readerPageLayoutLabel(layout: ReaderPageLayout): String = when (layout) {

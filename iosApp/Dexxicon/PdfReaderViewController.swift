@@ -213,7 +213,7 @@ final class PdfReaderViewController: UIViewController {
     /// background comes from the shared chrome's own `Scaffold` colour, not the engine.
     private func submitPreferences(_ prefs: DatastoreReaderDisplayPreferences) {
         let pdfPrefs = PDFPreferences(
-            fit: prefs.fitMode == DatastoreReaderFitMode.pageWidth ? .width : .page,
+            fit: prefs.pdfFitMode == DatastoreReaderFitMode.pageWidth ? .width : .page,
             scroll: prefs.scroll,
             scrollAxis: prefs.scrollMode.scrolling ? .vertical : .horizontal
         )

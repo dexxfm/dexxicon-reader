@@ -334,13 +334,13 @@ private fun PdfDisplaySettings(
             title = "Page fit",
             // The engine only distinguishes fit-page from fit-width.
             entries = listOf(ReaderFitMode.PAGE_FIT, ReaderFitMode.PAGE_WIDTH),
-            selected = if (preferences.fitMode == ReaderFitMode.PAGE_WIDTH) {
+            selected = if (preferences.pdfFitMode == ReaderFitMode.PAGE_WIDTH) {
                 ReaderFitMode.PAGE_WIDTH
             } else {
                 ReaderFitMode.PAGE_FIT
             },
             label = ::readerFitLabel,
-            onSelect = { fit -> onChange { it.copy(fitMode = fit) } },
+            onSelect = { fit -> onChange { it.copy(pdfFitMode = fit) } },
         )
         SettingChips(
             title = "Reading mode",

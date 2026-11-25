@@ -28,11 +28,14 @@ data class ReaderDisplayPreferences(
     /** EPUB typeface override. Null leaves the publication's own font in effect. */
     val fontFamily: ReaderFontFamily? = null,
     val theme: ReaderTheme = ReaderTheme.SYSTEM,
-    /**
-     * How a page is sized within the viewport. Honoured directly by fixed-layout books,
-     * PDFs and comics; for reflowable EPUB text it maps onto the page margins.
-     */
-    val fitMode: ReaderFitMode = ReaderFitMode.PAGE_FIT,
+    /** Independent page-fit choices for PDF and comics. */
+    val pdfFitMode: ReaderFitMode = ReaderFitMode.PAGE_FIT,
+    val comicFitMode: ReaderFitMode = ReaderFitMode.PAGE_FIT,
+    /** EPUB margins as percentages of the available reading area. */
+    val epubMarginTop: Int = DEFAULT_EPUB_VERTICAL_MARGIN,
+    val epubMarginBottom: Int = DEFAULT_EPUB_VERTICAL_MARGIN,
+    val epubMarginLeft: Int = DEFAULT_EPUB_HORIZONTAL_MARGIN,
+    val epubMarginRight: Int = DEFAULT_EPUB_HORIZONTAL_MARGIN,
     /**
      * One page at a time, or a two-page spread once the screen is wide enough — tablets
      * and unfolded foldables. [ReaderPageLayout.AUTO] lets the navigator decide.
@@ -85,6 +88,9 @@ data class ReaderDisplayPreferences(
         const val MIN_PARAGRAPH_SPACING = 0.0
         const val MAX_PARAGRAPH_SPACING = 2.0
         const val DEFAULT_PARAGRAPH_SPACING = 0.0
+        const val DEFAULT_EPUB_VERTICAL_MARGIN = 0
+        const val DEFAULT_EPUB_HORIZONTAL_MARGIN = 5
+        const val MAX_EPUB_MARGIN = 25
         const val DEFAULT_CUSTOM_1_BACKGROUND = 0xFFFFFFFF.toInt()
         const val DEFAULT_CUSTOM_1_FOREGROUND = 0xFF000000.toInt()
         const val DEFAULT_CUSTOM_2_BACKGROUND = 0xFF000000.toInt()
@@ -137,9 +143,7 @@ enum class ReaderFontFamily(val label: String) {
 enum class ReaderTheme { SYSTEM, LIGHT, SEPIA, SEPIA_DARK, GREY, DARK, MIDNIGHT, NORD, CUSTOM_1, CUSTOM_2 }
 
 /**
- * Page-fit modes, borrowed from image/PDF viewers. Reflowable EPUB has no true "fit", so
- * the EPUB mapping approximates these with margin width; PDFs and fixed-layout books use
- * them literally once wired.
+ * Page-fit modes. The PDF and comic engines currently distinguish only page fit and width.
  */
 enum class ReaderFitMode { PAGE_FIT, PAGE_WIDTH, PAGE_HEIGHT, ACTUAL_SIZE }
 
@@ -184,6 +188,12 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
         val FONT_FAMILY = stringPreferencesKey("font_family")
         val THEME = stringPreferencesKey("theme")
         val FIT_MODE = stringPreferencesKey("fit_mode")
+        val PDF_FIT_MODE = stringPreferencesKey("pdf_fit_mode")
+        val COMIC_FIT_MODE = stringPreferencesKey("comic_fit_mode")
+        val EPUB_MARGIN_TOP = intPreferencesKey("epub_margin_top")
+        val EPUB_MARGIN_BOTTOM = intPreferencesKey("epub_margin_bottom")
+        val EPUB_MARGIN_LEFT = intPreferencesKey("epub_margin_left")
+        val EPUB_MARGIN_RIGHT = intPreferencesKey("epub_margin_right")
         val PAGE_LAYOUT = stringPreferencesKey("page_layout")
         val SCROLL_MODE = stringPreferencesKey("scroll_mode")
         val SCROLL = booleanPreferencesKey("scroll")
@@ -216,7 +226,12 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
             next.fontFamily?.let { prefs[Keys.FONT_FAMILY] = it.name }
                 ?: prefs.remove(Keys.FONT_FAMILY)
             prefs[Keys.THEME] = next.theme.name
-            prefs[Keys.FIT_MODE] = next.fitMode.name
+            prefs[Keys.PDF_FIT_MODE] = normalizeFitMode(next.pdfFitMode).name
+            prefs[Keys.COMIC_FIT_MODE] = normalizeFitMode(next.comicFitMode).name
+            prefs[Keys.EPUB_MARGIN_TOP] = normalizeEpubMargin(next.epubMarginTop)
+            prefs[Keys.EPUB_MARGIN_BOTTOM] = normalizeEpubMargin(next.epubMarginBottom)
+            prefs[Keys.EPUB_MARGIN_LEFT] = normalizeEpubMargin(next.epubMarginLeft)
+            prefs[Keys.EPUB_MARGIN_RIGHT] = normalizeEpubMargin(next.epubMarginRight)
             prefs[Keys.PAGE_LAYOUT] = next.pageLayout.name
             prefs[Keys.SCROLL_MODE] = next.scrollMode.name
             prefs[Keys.SCROLL] = next.scroll
@@ -240,7 +255,12 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
         custom2Foreground = this[Keys.CUSTOM_2_FOREGROUND] ?: ReaderDisplayPreferences.DEFAULT_CUSTOM_2_FOREGROUND,
         fontFamily = this[Keys.FONT_FAMILY]?.let { enumOrNull<ReaderFontFamily>(it) },
         theme = this[Keys.THEME]?.let { enumOrNull<ReaderTheme>(it) } ?: ReaderTheme.SYSTEM,
-        fitMode = this[Keys.FIT_MODE]?.let { enumOrNull<ReaderFitMode>(it) } ?: ReaderFitMode.PAGE_FIT,
+        pdfFitMode = fitMode(Keys.PDF_FIT_MODE),
+        comicFitMode = fitMode(Keys.COMIC_FIT_MODE),
+        epubMarginTop = normalizeEpubMargin(this[Keys.EPUB_MARGIN_TOP] ?: ReaderDisplayPreferences.DEFAULT_EPUB_VERTICAL_MARGIN),
+        epubMarginBottom = normalizeEpubMargin(this[Keys.EPUB_MARGIN_BOTTOM] ?: ReaderDisplayPreferences.DEFAULT_EPUB_VERTICAL_MARGIN),
+        epubMarginLeft = normalizeEpubMargin(this[Keys.EPUB_MARGIN_LEFT] ?: ReaderDisplayPreferences.DEFAULT_EPUB_HORIZONTAL_MARGIN),
+        epubMarginRight = normalizeEpubMargin(this[Keys.EPUB_MARGIN_RIGHT] ?: ReaderDisplayPreferences.DEFAULT_EPUB_HORIZONTAL_MARGIN),
         pageLayout = this[Keys.PAGE_LAYOUT]?.let { enumOrNull<ReaderPageLayout>(it) }
             ?: ReaderPageLayout.AUTO,
         scrollMode = this[Keys.SCROLL_MODE]?.let { enumOrNull<ReaderScrollMode>(it) }
@@ -252,6 +272,12 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
         comicSmartZoom = this[Keys.COMIC_SMART_ZOOM] ?: false,
         comicRightToLeft = this[Keys.COMIC_RIGHT_TO_LEFT] ?: false,
     )
+
+    private fun Preferences.fitMode(key: Preferences.Key<String>): ReaderFitMode =
+        normalizeFitMode(
+            (this[key] ?: this[Keys.FIT_MODE])?.let { enumOrNull<ReaderFitMode>(it) }
+                ?: ReaderFitMode.PAGE_FIT,
+        )
 
     private companion object {
         /** Same reasoning as [SyncStateStore]'s own `dataStores` cache. */
@@ -266,6 +292,12 @@ class ReaderPreferencesStore(context: PlatformStorageContext) {
 
 private inline fun <reified T : Enum<T>> enumOrNull(name: String): T? =
     runCatching { enumValueOf<T>(name) }.getOrNull()
+
+private fun normalizeFitMode(value: ReaderFitMode): ReaderFitMode =
+    if (value == ReaderFitMode.PAGE_WIDTH) ReaderFitMode.PAGE_WIDTH else ReaderFitMode.PAGE_FIT
+
+private fun normalizeEpubMargin(value: Int): Int =
+    value.coerceIn(0, ReaderDisplayPreferences.MAX_EPUB_MARGIN)
 
 private fun normalizeFontScale(fontScale: Double): Double =
     normalizeScale(
