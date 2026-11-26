@@ -71,6 +71,14 @@ class EpubPreferencesMappingTest {
                 .toEpubPreferences(systemInDark = false).fontSize
             assertThat(fontSize).isEqualTo(expectedScale)
         }
+
+    }
+
+    @Test fun `downloaded fonts apply only when available`() {
+        val preferences = ReaderDisplayPreferences(customFontFamilyId = "abc")
+        assertThat(preferences.toEpubPreferences(false, availableFontIds = setOf("abc")).fontFamily?.name)
+            .isEqualTo("dexxicon_abc")
+        assertThat(preferences.toEpubPreferences(false, availableFontIds = emptySet()).fontFamily).isNull()
     }
 
     @Test fun `selected line spacing disables publisher styles and maps to Readium line height`() {

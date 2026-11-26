@@ -1,11 +1,13 @@
 package net.dexxicon.reader.shared.settings
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.dexxicon.reader.core.datastore.AppPreferences
@@ -13,6 +15,9 @@ import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.datastore.PlayerPreferences
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
+import net.dexxicon.reader.core.data.font.AvailableFontFamily
+import net.dexxicon.reader.core.model.Server
+import net.dexxicon.reader.core.model.ServerType
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookViewMode
 import net.dexxicon.reader.core.model.GlassIntensity
@@ -65,6 +70,70 @@ class SettingsState(
         container.downloadRepository.usedBytes.stateIn(scope, SharingStarted.WhileSubscribed(5_000), 0L)
 
     val versionName: String get() = container.appVersionName
+
+    val fontServers: StateFlow<List<Server>> = container.serverRepository.servers
+        .map { servers -> servers.filter { it.type == ServerType.BOOKORBIT } }
+        .stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyList())
+    val downloadedFonts = container.fontLibrary.families
+    val missingFonts = container.fontLibrary.missingFamilies
+    private val _availableFonts = MutableStateFlow<List<AvailableFontFamily>>(emptyList())
+    val availableFonts: StateFlow<List<AvailableFontFamily>> = _availableFonts
+    private val _fontSearchCompleted = MutableStateFlow(false)
+    val fontSearchCompleted: StateFlow<Boolean> = _fontSearchCompleted
+    private val _fontServerId = MutableStateFlow<String?>(null)
+    val fontServerId: StateFlow<String?> = _fontServerId
+    private val _fontBusy = MutableStateFlow(false)
+    val fontBusy: StateFlow<Boolean> = _fontBusy
+    private val _fontError = MutableStateFlow<String?>(null)
+    val fontError: StateFlow<String?> = _fontError
+
+    init {
+        fontAction { container.fontLibrary.load() }
+    }
+
+    fun selectFontServer(id: String) {
+        _fontServerId.value = id
+        _availableFonts.value = emptyList()
+        _fontSearchCompleted.value = false
+        _fontError.value = null
+    }
+
+    fun discoverFonts(id: String) {
+        selectFontServer(id)
+        fontAction {
+            val server = requireNotNull(container.serverRepository.get(id)) { "Server no longer exists." }
+            _availableFonts.value = container.fontLibrary.discover(server)
+            _fontSearchCompleted.value = true
+        }
+    }
+
+    fun downloadFont(family: AvailableFontFamily) = fontAction {
+        val server = requireNotNull(container.serverRepository.get(family.serverId)) { "Server no longer exists." }
+        container.fontLibrary.download(server, family)
+    }
+
+    fun enableFont(id: String, enabled: Boolean) = fontAction { container.fontLibrary.setEnabled(id, enabled) }
+
+    fun removeFont(id: String) = fontAction { container.fontLibrary.remove(id) }
+
+    fun reloadFontLibrary() = fontAction { container.fontLibrary.load() }
+
+    private fun fontAction(action: suspend () -> Unit) {
+        if (_fontBusy.value) return
+        _fontBusy.value = true
+        _fontError.value = null
+        scope.launch {
+            try {
+                action()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _fontError.value = e.message ?: "Font operation failed."
+            } finally {
+                _fontBusy.value = false
+            }
+        }
+    }
 
     fun setTheme(theme: AppTheme) {
         scope.launch { container.appPreferences.setTheme(theme) }

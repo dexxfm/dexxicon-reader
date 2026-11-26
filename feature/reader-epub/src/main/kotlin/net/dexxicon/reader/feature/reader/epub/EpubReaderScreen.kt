@@ -137,13 +137,15 @@ private fun ReaderContent(
 
     // Build the navigator fragment once per opened publication and set it as the factory
     // the FragmentManager will use to instantiate EpubNavigatorFragment by class.
-    val initialPrefs = remember(state.publication) { preferences.toEpubPreferences(darkTheme, wideViewport) }
+    val fontIds = remember(state.fonts) { state.fonts.map { it.id }.toSet() }
+    val initialPrefs = remember(state.publication) { preferences.toEpubPreferences(darkTheme, wideViewport, fontIds) }
     DisposableEffect(state.publication) {
         fragmentManager.fragmentFactory = EpubNavigatorFactory(state.publication)
             .createFragmentFactory(
                 initialLocator = state.initialLocator,
                 initialPreferences = initialPrefs,
                 configuration = EpubNavigatorFragment.Configuration().apply {
+                    addDownloadedFonts(state.fonts)
                     decorationTemplates = highlightDecorationTemplates()
                     selectionActionModeCallback = HighlightSelectionCallback(
                         activity = activity,
@@ -241,7 +243,7 @@ private fun ReaderContent(
     }
 
     LaunchedEffect(preferences, darkTheme, wideViewport, navigator) {
-        navigator?.submitPreferences(preferences.toEpubPreferences(darkTheme, wideViewport))
+        navigator?.submitPreferences(preferences.toEpubPreferences(darkTheme, wideViewport, fontIds))
     }
 
     SharedEpubReaderScreen(
@@ -252,6 +254,7 @@ private fun ReaderContent(
         ),
         onBack = onBack,
         preferences = preferences,
+        downloadedFonts = state.fonts,
         bookmarks = bookmarks,
         highlights = highlights,
         currentBookmark = currentBookmark,

@@ -35,6 +35,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -44,6 +46,7 @@ import kotlin.math.abs
 import kotlin.math.round
 import net.dexxicon.reader.core.datastore.AppTheme
 import net.dexxicon.reader.core.datastore.CoverTapAction
+import net.dexxicon.reader.core.data.font.FontScope
 import net.dexxicon.reader.core.designsystem.component.FormatLegend
 import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.BookSort
@@ -130,6 +133,14 @@ fun SettingsScreen(
     val usedBytes by state.downloadUsedBytes.collectAsState()
     val syncRows by state.syncRows.collectAsState()
     val syncRefreshing by state.syncRefreshing.collectAsState()
+    val fontServers by state.fontServers.collectAsState()
+    val downloadedFonts by state.downloadedFonts.collectAsState()
+    val missingFonts by state.missingFonts.collectAsState()
+    val availableFonts by state.availableFonts.collectAsState()
+    val fontSearchCompleted by state.fontSearchCompleted.collectAsState()
+    val fontServerId by state.fontServerId.collectAsState()
+    val fontBusy by state.fontBusy.collectAsState()
+    val fontError by state.fontError.collectAsState()
 
     Scaffold { padding ->
         PullToRefreshBox(
@@ -154,6 +165,80 @@ fun SettingsScreen(
                     subtitle = "Add, edit, remove, or reorder your servers.",
                     onClick = onManageServers,
                 )
+            }
+
+            SettingsSection("Fonts") {
+                Text(
+                    "Download font families from BookOrbit for use in EPUB books.",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                if (fontServers.isEmpty()) {
+                    Text("Add a BookOrbit server to download fonts.")
+                } else {
+                    val selectedId = fontServerId?.takeIf { id -> fontServers.any { it.id == id } }
+                        ?: fontServers.first().id
+                    if (fontServers.size > 1) {
+                        ChipRow {
+                            fontServers.forEach { server ->
+                                FilterChip(
+                                    selected = selectedId == server.id,
+                                    enabled = !fontBusy,
+                                    onClick = { state.selectFontServer(server.id) },
+                                    label = { Text(server.displayName) },
+                                )
+                            }
+                        }
+                    }
+                    TextButton(enabled = !fontBusy, onClick = { state.discoverFonts(selectedId) }) {
+                        Text("Find server fonts")
+                    }
+                    if (fontSearchCompleted && availableFonts.isEmpty()) {
+                        Text("No font families found on this server.")
+                    }
+                    availableFonts.forEach { family ->
+                        val downloaded = downloadedFonts.any {
+                            it.serverId == family.serverId && it.scope == family.scope && it.name == family.name
+                        }
+                        SettingRow(
+                            title = family.name,
+                            subtitle = if (family.scope == FontScope.SERVER) "Server collection" else "Personal collection",
+                        ) {
+                            TextButton(enabled = !fontBusy && !downloaded, onClick = { state.downloadFont(family) }) {
+                                Text(if (downloaded) "Downloaded" else "Download")
+                            }
+                        }
+                    }
+                }
+                if (downloadedFonts.isNotEmpty()) {
+                    Text("Downloaded fonts", style = MaterialTheme.typography.titleSmall)
+                    downloadedFonts.sortedBy { it.name.lowercase() }.forEach { family ->
+                        SettingRow(
+                            title = family.name,
+                            subtitle = if (family.id in missingFonts) {
+                                "Files missing — remove and download again"
+                            } else {
+                                "${family.serverName} · ${if (family.scope == FontScope.SERVER) "Server" else "Personal"}"
+                            },
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Switch(
+                                    checked = family.enabled && family.id !in missingFonts,
+                                    enabled = !fontBusy && family.id !in missingFonts,
+                                    onCheckedChange = { state.enableFont(family.id, it) },
+                                    modifier = Modifier.semantics { contentDescription = "Enable ${family.name}" },
+                                )
+                                TextButton(enabled = !fontBusy, onClick = { state.removeFont(family.id) }) {
+                                    Text("Remove")
+                                }
+                            }
+                        }
+                    }
+                }
+                if (fontBusy) CircularProgressIndicator(Modifier.size(24.dp))
+                fontError?.let { error ->
+                    Text(error, color = MaterialTheme.colorScheme.error)
+                    TextButton(enabled = !fontBusy, onClick = state::reloadFontLibrary) { Text("Retry") }
+                }
             }
 
             SettingsSection("Home screen") {

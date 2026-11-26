@@ -50,22 +50,30 @@ class PublicationStreamer @Inject constructor(
         ),
     )
 
-    suspend fun open(url: String, mediaType: MediaType): Outcome<Publication> = withContext(io) {
+    suspend fun open(
+        url: String,
+        mediaType: MediaType,
+        onCreatePublication: Publication.Builder.() -> Unit = {},
+    ): Outcome<Publication> = withContext(io) {
         val absolute = AbsoluteUrl(url)
             ?: return@withContext Outcome.Failure(DexxiconError.Parse("This book has an invalid address"))
         val asset = assetRetriever.retrieve(absolute, mediaType).getOrNull()
             ?: return@withContext Outcome.Failure(
                 DexxiconError.Network("Couldn't open the book file on the server"),
             )
-        openAsset(asset)
+        openAsset(asset, onCreatePublication)
     }
 
-    suspend fun open(file: File, mediaType: MediaType): Outcome<Publication> = withContext(io) {
+    suspend fun open(
+        file: File,
+        mediaType: MediaType,
+        onCreatePublication: Publication.Builder.() -> Unit = {},
+    ): Outcome<Publication> = withContext(io) {
         val asset = assetRetriever.retrieve(file, mediaType).getOrNull()
             ?: return@withContext Outcome.Failure(
                 DexxiconError.Parse("Couldn't read the downloaded file"),
             )
-        openAsset(asset)
+        openAsset(asset, onCreatePublication)
     }
 
     /**
@@ -90,8 +98,11 @@ class PublicationStreamer @Inject constructor(
         return Outcome.Success(Publication(manifest, container, services))
     }
 
-    private suspend fun openAsset(asset: Asset): Outcome<Publication> =
-        publicationOpener.open(asset, allowUserInteraction = false).fold(
+    private suspend fun openAsset(
+        asset: Asset,
+        onCreatePublication: Publication.Builder.() -> Unit,
+    ): Outcome<Publication> =
+        publicationOpener.open(asset, allowUserInteraction = false, onCreatePublication = onCreatePublication).fold(
             onSuccess = { Outcome.Success(it) },
             onFailure = { Outcome.Failure(DexxiconError.Parse(it.message)) },
         )

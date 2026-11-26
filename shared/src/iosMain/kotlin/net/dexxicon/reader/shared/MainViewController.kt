@@ -12,6 +12,12 @@ import androidx.compose.ui.viewinterop.UIKitViewController
 import androidx.compose.ui.window.ComposeUIViewController
 import coil3.SingletonImageLoader
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import net.dexxicon.reader.core.datastore.ReaderDisplayPreferences
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.Highlight
@@ -194,6 +200,37 @@ fun PlayerViewController(onBack: () -> Unit): UIViewController = ComposeUIViewCo
  */
 fun epubProgressBridge(): EpubProgressBridge = appContainer.epubProgressBridge
 
+fun loadEpubFonts(completion: (String?, String?) -> Unit) {
+    CoroutineScope(Dispatchers.Main).launch {
+        try {
+            val library = appContainer.fontLibrary
+            library.load()
+            val fonts = buildJsonArray {
+                library.families.value.filter { it.enabled && it.id !in library.missingFamilies.value }.forEach { family ->
+                    add(buildJsonObject {
+                        put("id", family.id)
+                        put("faces", buildJsonArray {
+                            family.faces.forEach { face ->
+                                add(buildJsonObject {
+                                    put("path", library.filePath(family, face))
+                                    put("style", face.style)
+                                    put("weightMin", face.weightMin ?: face.weight)
+                                    put("weightMax", face.weightMax ?: face.weight)
+                                })
+                            }
+                        })
+                    })
+                }
+            }
+            completion(fonts.toString(), null)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            completion(null, e.message ?: "Couldn't load downloaded fonts.")
+        }
+    }
+}
+
 /** Swift's `EPUBNavigatorDelegate` calls this on every `locationDidChange`/on open, the same
  * "native engine pushes a fresh snapshot" shape as [updatePlayerState]. */
 fun updateEpubReaderState(state: EpubReaderNativeState?) {
@@ -278,6 +315,8 @@ fun EpubReaderViewController(
     val bookmarks by appContainer.bookmarkRepository.observe(serverId, bookId).collectAsState(emptyList())
     val highlights by appContainer.highlightRepository.observe(serverId, bookId).collectAsState(emptyList())
     val preferences by appContainer.readerPreferences.preferences.collectAsState(ReaderDisplayPreferences())
+    val downloadedFonts by appContainer.fontLibrary.families.collectAsState()
+    val missingFonts by appContainer.fontLibrary.missingFamilies.collectAsState()
     val actions = appContainer.epubReaderActions
     val scope = rememberCoroutineScope()
 
@@ -319,6 +358,7 @@ fun EpubReaderViewController(
             state = screenState,
             onBack = onBack,
             preferences = preferences,
+            downloadedFonts = downloadedFonts.filterNot { it.id in missingFonts },
             bookmarks = bookmarks,
             highlights = highlights,
             currentBookmark = currentBookmark,

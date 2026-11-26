@@ -50,6 +50,7 @@ kotlin {
             // ReadingProgressRepository's locator JSON (issue #126) — replaces the Android-only
             // org.json.JSONObject it used before this module went cross-platform.
             implementation(libs.kotlinx.serialization.json)
+            implementation(libs.okio)
             // NativeProgressSync's server-timestamp parsing — replaces java.time.Instant.
             implementation(libs.kotlinx.datetime)
             // KoSyncRepository/KoReaderDigest's MD5 (kosync auth keys + partial-document

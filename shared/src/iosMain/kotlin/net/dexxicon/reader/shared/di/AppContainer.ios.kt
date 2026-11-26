@@ -18,6 +18,10 @@ import net.dexxicon.reader.core.network.AuthHeaderProvider
 import net.dexxicon.reader.core.network.createHttpClient
 import net.dexxicon.reader.core.security.CredentialStore
 import platform.Foundation.NSBundle
+import platform.Foundation.NSApplicationSupportDirectory
+import platform.Foundation.NSFileManager
+import platform.Foundation.NSURL
+import platform.Foundation.NSUserDomainMask
 import platform.UIKit.UIDevice
 
 /** iOS [actual]: no platform handle is needed — [getDatabaseBuilder] resolves the app's own
@@ -88,6 +92,12 @@ actual fun createAppContainer(context: PlatformContext): AppContainer {
         appPreferences = AppPreferencesStore(PlatformStorageContext()),
         readerPreferences = ReaderPreferencesStore(PlatformStorageContext()),
         playerPreferences = PlayerPreferencesStore(PlatformStorageContext()),
+        fontDirectory = requireNotNull(
+            (NSFileManager.defaultManager.URLsForDirectory(
+                NSApplicationSupportDirectory,
+                NSUserDomainMask,
+            ).firstOrNull() as? NSURL)?.path,
+        ) + "/fonts",
         // identifierForVendor resets if every app from this vendor is uninstalled, unlike
         // Android's ANDROID_ID — acceptable here: a fresh kosync device id just looks like a
         // new device to KOReader's server, same as reinstalling on Android would after a

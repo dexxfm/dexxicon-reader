@@ -257,7 +257,7 @@ internal fun ResetTextButton(
     preferences: ReaderDisplayPreferences,
     onChange: ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
 ) {
-    val overridden = preferences.fontFamily != null || preferences.lineSpacing != null ||
+    val overridden = preferences.fontFamily != null || preferences.customFontFamilyId != null || preferences.lineSpacing != null ||
         preferences.paragraphSpacing != null || preferences.paragraphIndent != null ||
         preferences.justification != null || preferences.hyphenation != null
     TextButton(
@@ -265,6 +265,7 @@ internal fun ResetTextButton(
             onChange {
                 it.copy(
                     fontFamily = null,
+                    customFontFamilyId = null,
                     lineSpacing = null,
                     paragraphSpacing = null,
                     paragraphIndent = null,

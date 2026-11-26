@@ -47,6 +47,7 @@ import net.dexxicon.reader.core.data.catalog.GrimmoryCatalogSource
 import net.dexxicon.reader.core.data.catalog.OpdsCatalogSource
 import net.dexxicon.reader.core.serverapi.opds.OpdsClient
 import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.data.font.BookOrbitFontLibrary
 import net.dexxicon.reader.core.data.sync.KoSyncRepository
 import net.dexxicon.reader.core.data.sync.LibrarySeeder
 import net.dexxicon.reader.core.data.sync.NativeProgressSync
@@ -176,6 +177,7 @@ class AppContainer(
      * why it moved to commonMain. */
     val readerPreferences: ReaderPreferencesStore,
     val playerPreferences: PlayerPreferencesStore,
+    fontDirectory: String,
     /** Phase 4 Stage E1 (issue #136) — Settings' About row. Resolved once per platform, same
      * "plain value, no expect/actual needed" shape as [koSyncRawDeviceId]/[koSyncDeviceModel]:
      * Android reads it via `PackageManager` (the same call
@@ -208,6 +210,7 @@ class AppContainer(
             realAuthHeaderProvider.awaitRefreshedAuthHeader(url, rejected)
     }
     private val httpClient: HttpClient = createHttpClient(engine, authHeaderProvider)
+    val fontLibrary = BookOrbitFontLibrary(httpClient, fontDirectory, io)
 
     private val nativeAuthApi = NativeAuthApi(httpClient)
     private val nativeAuthClient = NativeAuthClient(nativeAuthApi)

@@ -15,6 +15,7 @@ import net.dexxicon.reader.core.common.Dispatcher
 import net.dexxicon.reader.core.data.ServerRepository
 import net.dexxicon.reader.core.data.auth.TokenManager
 import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.data.font.BookOrbitFontLibrary
 import net.dexxicon.reader.core.database.DexxiconDatabase
 import net.dexxicon.reader.core.database.dao.BookmarkDao
 import net.dexxicon.reader.core.database.dao.HighlightDao
@@ -107,6 +108,14 @@ object ServerAuthModule {
         database: DexxiconDatabase,
         @DexxiconHttpClient okHttpClient: OkHttpClient,
     ): TokenManager = AndroidAppContainer.get(context, database, okHttpClient).tokenManager
+
+    @Provides
+    @Singleton
+    fun provideFontLibrary(
+        @ApplicationContext context: Context,
+        database: DexxiconDatabase,
+        @DexxiconHttpClient okHttpClient: OkHttpClient,
+    ): BookOrbitFontLibrary = AndroidAppContainer.get(context, database, okHttpClient).fontLibrary
 
     @Provides
     @Singleton

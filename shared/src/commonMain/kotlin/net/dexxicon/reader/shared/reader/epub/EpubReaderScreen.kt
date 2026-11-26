@@ -43,6 +43,7 @@ import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -90,6 +91,8 @@ import net.dexxicon.reader.core.datastore.ReaderFitMode
 import net.dexxicon.reader.core.datastore.ReaderPageLayout
 import net.dexxicon.reader.core.datastore.ReaderScrollMode
 import net.dexxicon.reader.core.datastore.ReaderTheme
+import net.dexxicon.reader.core.data.font.DownloadedFontFamily
+import net.dexxicon.reader.core.data.font.FontScope
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.Highlight
 import net.dexxicon.reader.core.model.HighlightColor
@@ -122,6 +125,7 @@ fun EpubReaderScreen(
     state: EpubReaderUiState,
     onBack: () -> Unit,
     preferences: ReaderDisplayPreferences = ReaderDisplayPreferences(),
+    downloadedFonts: List<DownloadedFontFamily> = emptyList(),
     bookmarks: List<Bookmark> = emptyList(),
     highlights: List<Highlight> = emptyList(),
     currentBookmark: Bookmark? = null,
@@ -158,6 +162,7 @@ fun EpubReaderScreen(
         is EpubReaderUiState.Ready -> ReaderContent(
             state = state,
             preferences = preferences,
+            downloadedFonts = downloadedFonts,
             bookmarks = bookmarks,
             highlights = highlights,
             currentBookmark = currentBookmark,
@@ -186,6 +191,7 @@ fun EpubReaderScreen(
 private fun ReaderContent(
     state: EpubReaderUiState.Ready,
     preferences: ReaderDisplayPreferences,
+    downloadedFonts: List<DownloadedFontFamily>,
     bookmarks: List<Bookmark>,
     highlights: List<Highlight>,
     currentBookmark: Bookmark?,
@@ -334,6 +340,7 @@ private fun ReaderContent(
         ModalBottomSheet(onDismissRequest = { showSettings = false }) {
             DisplaySettings(
                 preferences = preferences,
+                downloadedFonts = downloadedFonts,
                 onChange = { transform -> scope.launch { onUpdatePreferences(transform) } },
             )
         }
@@ -567,6 +574,7 @@ private fun Modifier.clickableText(onClick: () -> Unit): Modifier = this.clickab
 @Composable
 private fun DisplaySettings(
     preferences: ReaderDisplayPreferences,
+    downloadedFonts: List<DownloadedFontFamily>,
     onChange: ((ReaderDisplayPreferences) -> ReaderDisplayPreferences) -> Unit,
 ) {
     var textExpanded by remember { mutableStateOf(true) }
@@ -635,7 +643,10 @@ private fun DisplaySettings(
         ) {
             FontFamilySelector(
                 selected = preferences.fontFamily,
-                onSelect = { family -> onChange { it.copy(fontFamily = family) } },
+                customSelected = preferences.customFontFamilyId,
+                downloadedFonts = downloadedFonts,
+                onSelect = { family -> onChange { it.copy(fontFamily = family, customFontFamilyId = null) } },
+                onSelectCustom = { id -> onChange { it.copy(fontFamily = null, customFontFamilyId = id) } },
             )
             ReaderProportionalScaleControl(
                 title = "Font size",
@@ -703,8 +714,14 @@ private fun DisplaySettings(
 @Composable
 private fun FontFamilySelector(
     selected: ReaderFontFamily?,
+    customSelected: String?,
+    downloadedFonts: List<DownloadedFontFamily>,
     onSelect: (ReaderFontFamily?) -> Unit,
+    onSelectCustom: (String) -> Unit,
 ) {
+    val availableFonts = downloadedFonts.filter { it.enabled }.sortedBy { it.name.lowercase() }
+    fun fontLabel(font: DownloadedFontFamily): String =
+        "${font.name} — ${font.serverName} (${if (font.scope == FontScope.SERVER) "Server" else "Personal"})"
     var expanded by remember { mutableStateOf(false) }
     ExposedDropdownMenuBox(
         expanded = expanded,
@@ -712,7 +729,7 @@ private fun FontFamilySelector(
         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
     ) {
         OutlinedTextField(
-            value = selected?.label ?: "Publisher default",
+            value = availableFonts.firstOrNull { it.id == customSelected }?.let(::fontLabel) ?: selected?.label ?: "Publisher default",
             onValueChange = {},
             readOnly = true,
             label = { Text("Font family") },
@@ -743,6 +760,19 @@ private fun FontFamilySelector(
                     },
                     contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
                 )
+            }
+            if (availableFonts.isNotEmpty()) {
+                HorizontalDivider()
+                availableFonts.forEach { family ->
+                    DropdownMenuItem(
+                        text = { Text(fontLabel(family)) },
+                        onClick = {
+                            expanded = false
+                            onSelectCustom(family.id)
+                        },
+                        contentPadding = ExposedDropdownMenuDefaults.ItemContentPadding,
+                    )
+                }
             }
         }
     }
