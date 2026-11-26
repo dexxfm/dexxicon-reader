@@ -23,6 +23,9 @@ this flow so every change stays traceable back to why it happened:
    never reach `main` even after both show as "merged" on GitHub).
    Name it `fix/<issue#>-<slug>` or `feature/<issue#>-<slug>` — the number is what makes an
    issue easy to trace forward to its branch/PR at a glance.
+   **`release/dev` is CI-owned** (`.github/workflows/pr-build.yml`, "combine"): `main` plus every
+   open PR, force-pushed on each run, for trying the open PRs together. Never branch from it,
+   PR into it, or push to it.
 4. **Verify before opening the PR**: `./gradlew :app:assembleDebug testDebugUnitTest` green
    at minimum; a live check on-device/emulator when the bug was behavioral (gesture, UI,
    playback), not just a compile check.
