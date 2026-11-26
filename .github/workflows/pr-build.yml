@@ -1,30 +1,84 @@
-# issue #371 — an installable Android debug APK for every pull request, so a PR can be tried on a
-# device without building it locally. The APK is attached to the run (14 days); same-repo PRs also
-# get a comment linking it. Tests run after the APK is saved, so a failing test still leaves a
-# build to try.
+# issue #371 — an installable Android debug APK for pull requests, so a PR can be tried on a device
+# without building it locally.
+#
+#   - Every PR push builds that PR.
+#   - "Run workflow" (Actions tab) builds one PR (enter its number) or, left blank, every open,
+#     non-draft PR at once, one job each.
+#
+# Each APK is attached to the run (14 days) as dexxicon-pr<N>-<sha>.apk and linked from a comment
+# on its PR. Security: the build jobs run the PR's own code, so they get a read-only token and no
+# secrets; only the comment job can write, and it never checks out PR code. Tests run after the
+# APK is saved, so a failing test still leaves a build to try.
 name: PR dev build
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
+    inputs:
+      pr:
+        description: "PR number to build (leave blank for every open, non-draft PR)"
+        required: false
+        default: ""
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
-  group: pr-build-${{ github.event.pull_request.number || github.ref }}
+  group: pr-build-${{ github.event.pull_request.number || format('manual-{0}', github.run_id) }}
   cancel-in-progress: true
 
 jobs:
-  android:
-    name: Android debug APK
+  targets:
+    name: Pick the PRs to build
     if: github.event_name == 'workflow_dispatch' || !github.event.pull_request.draft
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      prs: ${{ steps.pick.outputs.prs }}
     steps:
+      - id: pick
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          THIS_PR: ${{ github.event.pull_request.number }}
+          THIS_SHA: ${{ github.event.pull_request.head.sha }}
+          ASKED: ${{ inputs.pr }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            prs="[{\"pr\":$THIS_PR,\"sha\":\"$THIS_SHA\"}]"
+          elif [ -n "$ASKED" ]; then
+            prs=$(gh pr view "$ASKED" --repo "$GITHUB_REPOSITORY" --json number,headRefOid \
+              --jq '[{pr: .number, sha: .headRefOid}]')
+          else
+            prs=$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 100 \
+              --json number,headRefOid,isDraft \
+              --jq '[.[] | select(.isDraft | not) | {pr: .number, sha: .headRefOid}]')
+          fi
+          echo "Building: $prs"
+          echo "prs=$prs" >> "$GITHUB_OUTPUT"
+
+  android:
+    name: "Android debug APK · PR #${{ matrix.pr }}"
+    needs: targets
+    if: needs.targets.outputs.prs != '' && needs.targets.outputs.prs != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        include: ${{ fromJSON(needs.targets.outputs.prs) }}
+    steps:
+      # The PR's own commits (its head), the same whichever way the run started.
       - uses: actions/checkout@v7
+        with:
+          ref: refs/pull/${{ matrix.pr }}/head
+          persist-credentials: false
 
       - uses: actions/setup-java@v6
         with:
@@ -34,26 +88,29 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
 
       # gradle.properties pins the owner's Windows JDK; a user-level property wins over it.
-      # Every PR build signs with the one CI debug key (.github/ci), so a newer build installs
-      # over an older one. It's a plain debug key with the standard "android" password — never
-      # used for releases.
+      # Every PR build signs with the one CI debug key (.github/ci on main), so a newer build
+      # installs over an older one. It's a plain debug key with the standard "android" password —
+      # never used for releases. Taken from main, so PRs branched before it existed get it too.
       - name: Point Gradle at this JDK; use the shared CI debug key
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           mkdir -p ~/.gradle ~/.android
           echo "org.gradle.java.home=$JAVA_HOME" >> ~/.gradle/gradle.properties
-          cp .github/ci/debug.keystore ~/.android/debug.keystore
+          if [ -f .github/ci/debug.keystore ]; then
+            cp .github/ci/debug.keystore ~/.android/debug.keystore
+          else
+            gh api "repos/$GITHUB_REPOSITORY/contents/.github/ci/debug.keystore?ref=${{ github.event.repository.default_branch }}" \
+              -H "Accept: application/vnd.github.raw" > ~/.android/debug.keystore
+          fi
 
       - name: Build the debug APK
         run: ./gradlew :app:assembleDebug --console=plain
 
       - name: Name the APK after the PR and commit
         id: apk
-        env:
-          PR: ${{ github.event.pull_request.number }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          short=$(echo "$HEAD_SHA" | cut -c1-7)
-          name="dexxicon-${PR:+pr$PR-}$short"
+          name="dexxicon-pr${{ matrix.pr }}-$(echo '${{ matrix.sha }}' | cut -c1-7)"
           cp app/build/outputs/apk/debug/app-debug.apk "$name.apk"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
@@ -72,37 +129,53 @@ jobs:
           URL: ${{ steps.upload.outputs.artifact-url }}
         run: |
           {
-            echo "### Debug APK: [$NAME]($URL)"
+            echo "### PR #${{ matrix.pr }}: [$NAME]($URL)"
             echo
-            echo "Download, unzip and install. It's a debug build (\`.debug\` app id), so it installs beside the store app."
+            echo "Download, unzip and install. A debug build (\`.debug\` app id), so it installs beside the store app."
             echo "Signed with the shared CI debug key: it updates earlier PR builds, but not a debug build made on your own machine (uninstall that first)."
           } >> "$GITHUB_STEP_SUMMARY"
-
-      # A fork's PR gets a read-only token, so only same-repo PRs get the comment; the run's
-      # summary above has the link either way.
-      - name: Link the APK on the PR
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/github-script@v9
-        env:
-          NAME: ${{ steps.apk.outputs.name }}
-          URL: ${{ steps.upload.outputs.artifact-url }}
-        with:
-          script: |
-            const marker = '<!-- dexxicon-pr-build -->';
-            const body = `${marker}\n**Debug APK** for ${context.payload.pull_request.head.sha.slice(0, 7)}: ` +
-              `[${process.env.NAME}](${process.env.URL}) (kept 14 days). Download, unzip and install; ` +
-              `it updates earlier PR builds.`;
-            const { owner, repo } = context.repo;
-            const issue_number = context.payload.pull_request.number;
-            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number });
-            const mine = comments.find(c => c.body && c.body.startsWith(marker));
-            if (mine) {
-              await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
-            } else {
-              await github.rest.issues.createComment({ owner, repo, issue_number, body });
-            }
 
       - name: Unit tests
         run: >-
           ./gradlew testDebugUnitTest :core:data:testAndroidHostTest :core:serverapi:testAndroidHostTest
           :core:model:jvmTest --console=plain
+
+  # Writes only: links each PR's APK in a comment on that PR (one comment, updated each run). It
+  # never checks out PR code. On a fork's own push GitHub hands out a read-only token, so those
+  # comments come from a manual run instead; the run summary has the links either way.
+  comment:
+    name: Link the APKs on their PRs
+    needs: [targets, android]
+    if: >-
+      always() && needs.targets.outputs.prs != '' && needs.targets.outputs.prs != '[]' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      pull-requests: write
+    steps:
+      - uses: actions/github-script@v9
+        env:
+          PRS: ${{ needs.targets.outputs.prs }}
+        with:
+          script: |
+            const marker = '<!-- dexxicon-pr-build -->';
+            const { owner, repo } = context.repo;
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts,
+              { owner, repo, run_id: context.runId });
+            for (const { pr, sha } of JSON.parse(process.env.PRS)) {
+              const name = `dexxicon-pr${pr}-${sha.slice(0, 7)}`;
+              const artifact = artifacts.find(a => a.name === name);
+              if (!artifact) { core.info(`No APK for PR #${pr} (its build failed?)`); continue; }
+              const url = `https://github.com/${owner}/${repo}/actions/runs/${context.runId}/artifacts/${artifact.id}`;
+              const body = `${marker}\n**Debug APK** for ${sha.slice(0, 7)}: [${name}](${url}) (kept 14 days). ` +
+                `Download, unzip and install; it updates earlier PR builds.`;
+              const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: pr });
+              const mine = comments.find(c => c.body && c.body.startsWith(marker));
+              if (mine) {
+                await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body });
+              } else {
+                await github.rest.issues.createComment({ owner, repo, issue_number: pr, body });
+              }
+            }
