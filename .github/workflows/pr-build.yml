@@ -4,6 +4,7 @@
 #   - Every PR push builds that PR.
 #   - "Run workflow" (Actions tab) builds one PR (enter its number) or, left blank, every open,
 #     non-draft PR at once, one job each.
+#   - "Run workflow" with "combine" ticked builds one APK from main with every open PR merged in.
 #
 # Each APK is attached to the run (14 days) as dexxicon-pr<N>-<sha>.apk and linked from a comment
 # on its PR. Security: the build jobs run the PR's own code, so they get a read-only token and no
@@ -20,6 +21,10 @@ on:
         description: "PR number to build (leave blank for every open, non-draft PR)"
         required: false
         default: ""
+      combine:
+        description: "Instead, one APK with every open PR merged into main (PRs that conflict are skipped)"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -63,7 +68,7 @@ jobs:
   android:
     name: "Android debug APK · PR #${{ matrix.pr }}"
     needs: targets
-    if: needs.targets.outputs.prs != '' && needs.targets.outputs.prs != '[]'
+    if: needs.targets.outputs.prs != '' && needs.targets.outputs.prs != '[]' && !inputs.combine
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -140,6 +145,99 @@ jobs:
           ./gradlew testDebugUnitTest :core:data:testAndroidHostTest :core:serverapi:testAndroidHostTest
           :core:model:jvmTest --console=plain
 
+  # One APK from main with every open PR merged in, in PR order, for trying them all together.
+  # A PR that doesn't merge cleanly is skipped and named in the summary. Nothing is pushed: the
+  # merges exist only on the runner. Read-only, like the per-PR builds.
+  combined:
+    name: Android debug APK · all open PRs merged
+    needs: targets
+    if: inputs.combine && needs.targets.outputs.prs != '' && needs.targets.outputs.prs != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Merge the open PRs
+        id: merge
+        env:
+          PRS: ${{ needs.targets.outputs.prs }}
+        run: |
+          git config user.name "PR dev build"
+          git config user.email "pr-dev-build@users.noreply.github.com"
+          base=$(git rev-parse --short HEAD)
+          included=""; skipped=""
+          for pr in $(echo "$PRS" | jq -r '.[].pr' | sort -n); do
+            git fetch -q origin "+refs/pull/$pr/head:refs/remotes/pr/$pr"
+            if git merge -q --no-edit "pr/$pr"; then
+              included="$included #$pr"
+            else
+              git merge --abort
+              skipped="$skipped #$pr"
+            fi
+          done
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "included=${included# }" >> "$GITHUB_OUTPUT"
+          echo "skipped=${skipped# }" >> "$GITHUB_OUTPUT"
+          echo "Included:${included:- none}"; echo "Skipped (conflicts):${skipped:- none}"
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Point Gradle at this JDK; use the shared CI debug key
+        run: |
+          mkdir -p ~/.gradle ~/.android
+          echo "org.gradle.java.home=$JAVA_HOME" >> ~/.gradle/gradle.properties
+          # On main once #371 is merged; until then the runner's own debug key signs it.
+          if [ -f .github/ci/debug.keystore ]; then cp .github/ci/debug.keystore ~/.android/debug.keystore; fi
+
+      - name: Build the debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: Name the APK
+        id: apk
+        run: |
+          name="dexxicon-combined-$(date -u +%Y%m%d-%H%M)-${{ steps.merge.outputs.base }}"
+          cp app/build/outputs/apk/debug/app-debug.apk "$name.apk"
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Attach the APK to the run
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.apk.outputs.name }}
+          path: ${{ steps.apk.outputs.name }}.apk
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Summary
+        if: always()
+        env:
+          NAME: ${{ steps.apk.outputs.name }}
+          URL: ${{ steps.upload.outputs.artifact-url }}
+          BASE: ${{ steps.merge.outputs.base }}
+          INCLUDED: ${{ steps.merge.outputs.included }}
+          SKIPPED: ${{ steps.merge.outputs.skipped }}
+        run: |
+          {
+            if [ -n "$URL" ]; then echo "### Combined debug APK: [$NAME]($URL)"; else echo "### Combined build failed"; fi
+            echo
+            echo "- Base: \`main\` at $BASE"
+            echo "- Merged in: ${INCLUDED:-none}"
+            echo "- Skipped (didn't merge cleanly): ${SKIPPED:-none}"
+            echo
+            echo "Code no single PR will merge as: for trying the open PRs together. A build failure with no skips means two PRs don't compile together."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   # Writes only: links each PR's APK in a comment on that PR (one comment, updated each run). It
   # never checks out PR code. On a fork's own push GitHub hands out a read-only token, so those
   # comments come from a manual run instead; the run summary has the links either way.
@@ -147,7 +245,7 @@ jobs:
     name: Link the APKs on their PRs
     needs: [targets, android]
     if: >-
-      always() && needs.targets.outputs.prs != '' && needs.targets.outputs.prs != '[]' &&
+      always() && needs.targets.outputs.prs != '' && needs.targets.outputs.prs != '[]' && !inputs.combine &&
       (github.event_name == 'workflow_dispatch' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
