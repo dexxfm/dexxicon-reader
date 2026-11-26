@@ -24,7 +24,11 @@ private val GREY_TEXT = 0xFF17181A.toInt()
 val SEPIA_BACKGROUND = 0xFFF5ECDC.toInt()
 val DARK_BACKGROUND = 0xFF000000.toInt()
 
-fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewport: Boolean = false): EpubPreferences {
+fun ReaderDisplayPreferences.toEpubPreferences(
+    systemInDark: Boolean,
+    wideViewport: Boolean = false,
+    availableFontIds: Set<String> = emptySet(),
+): EpubPreferences {
     val resolvedTheme = when (theme) {
         ReaderTheme.LIGHT -> Theme.LIGHT
         ReaderTheme.SEPIA -> Theme.SEPIA
@@ -34,7 +38,9 @@ fun ReaderDisplayPreferences.toEpubPreferences(systemInDark: Boolean, wideViewpo
         ReaderTheme.CUSTOM_2 -> Theme.LIGHT
         ReaderTheme.SYSTEM -> if (systemInDark) Theme.DARK else Theme.LIGHT
     }
-    val resolvedFontFamily = when (fontFamily) {
+    val resolvedFontFamily = customFontFamilyId?.takeIf { it in availableFontIds }?.let {
+        FontFamily(fontFamilyName(it))
+    } ?: when (fontFamily) {
         ReaderFontFamily.SERIF -> FontFamily.SERIF
         ReaderFontFamily.SANS_SERIF -> FontFamily.SANS_SERIF
         ReaderFontFamily.CURSIVE -> FontFamily.CURSIVE

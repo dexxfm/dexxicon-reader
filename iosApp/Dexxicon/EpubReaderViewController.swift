@@ -4,6 +4,17 @@ import ReadiumStreamer
 import ReadiumNavigator
 import SharedKit
 
+private struct DownloadedFont: Decodable {
+    struct Face: Decodable {
+        let path: String
+        let style: String
+        let weightMin: Int
+        let weightMax: Int
+    }
+    let id: String
+    let faces: [Face]
+}
+
 /// Real Readium Swift Toolkit EPUB reader (issue #101, following #99's plumbing) — also the
 /// reader for MOBI/AZW3/FB2 (server-converted to EPUB before either client requests bytes,
 /// see `ReaderLaunch.kt`).
@@ -39,6 +50,7 @@ final class EpubReaderViewController: UIViewController {
     private let loadingIndicator = UIActivityIndicatorView(style: .large)
     private var navigator: EPUBNavigatorViewController?
     private var publication: Publication?
+    private var downloadedFonts: [DownloadedFont] = []
     /// Flattened table of contents — index in this array is the `TocEntry.ref` string the
     /// shared chrome hands back to `goToToc(_:)`, mirroring Android's own `flatToc` local.
     private var flatToc: [(depth: Int, link: Link)] = []
@@ -88,6 +100,22 @@ final class EpubReaderViewController: UIViewController {
 
     @MainActor
     private func openPublication() async {
+        let fontResult = await withCheckedContinuation { (continuation: CheckedContinuation<(String?, String?), Never>) in
+            MainViewControllerKt.loadEpubFonts { json, error in
+                continuation.resume(returning: (json, error))
+            }
+        }
+        guard let json = fontResult.0, let data = json.data(using: .utf8) else {
+            showError(fontResult.1 ?? "Couldn't load downloaded fonts.")
+            return
+        }
+        do {
+            downloadedFonts = try JSONDecoder().decode([DownloadedFont].self, from: data)
+        } catch {
+            NSLog("[EpubReader] Invalid downloaded font metadata: \(error)")
+            showError("Couldn't load downloaded fonts.")
+            return
+        }
         // issue #170/#171: EPUB (and MOBI/AZW3/FB2, server-converted to EPUB) is a ZIP
         // container, and Readium Swift Toolkit 3.11.0's ZIP-over-HTTP range streaming requests
         // a fixed ~6 MiB look-ahead window without ever clamping it to the file's real length —
@@ -186,6 +214,22 @@ final class EpubReaderViewController: UIViewController {
             // issue #279: Readium's own highlight template again at a stronger tint, for dark
             // pages (see `.strongHighlight`).
             config.decorationTemplates[.strongHighlight] = HTMLDecorationTemplate.defaultTemplates(alpha: 0.5)[.highlight]
+            config.fontFamilyDeclarations = try downloadedFonts.map { family in
+                let faces = try family.faces.map { face in
+                    guard let file = FileURL(url: URL(fileURLWithPath: face.path)) else {
+                        throw NSError(domain: "DownloadedFont", code: 1)
+                    }
+                    return CSSFontFace(
+                        file: file,
+                        style: face.style == "italic" ? .italic : .normal,
+                        weight: .variable(face.weightMin...face.weightMax)
+                    )
+                }
+                return CSSFontFamilyDeclaration(
+                    fontFamily: ReadiumNavigator.FontFamily(rawValue: "dexxicon_\(family.id)"),
+                    fontFaces: faces
+                ).eraseToAnyHTMLFontFamilyDeclaration()
+            }
             let nav = try EPUBNavigatorViewController(
                 publication: publication,
                 initialLocation: initialLocator,
@@ -310,7 +354,9 @@ final class EpubReaderViewController: UIViewController {
             resolvedTheme = traitCollection.userInterfaceStyle == .dark ? Theme.dark : Theme.light
         }
         let fontFamily: ReadiumNavigator.FontFamily?
-        if prefs.fontFamily == DatastoreReaderFontFamily.serif {
+        if let id = prefs.customFontFamilyId, downloadedFonts.contains(where: { $0.id == id }) {
+            fontFamily = ReadiumNavigator.FontFamily(rawValue: "dexxicon_\(id)")
+        } else if prefs.fontFamily == DatastoreReaderFontFamily.serif {
             fontFamily = .serif
         } else if prefs.fontFamily == DatastoreReaderFontFamily.sansSerif {
             fontFamily = .sansSerif

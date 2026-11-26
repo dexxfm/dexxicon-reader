@@ -25,6 +25,8 @@ import net.dexxicon.reader.core.data.resumeStart
 import net.dexxicon.reader.core.data.toStart
 import net.dexxicon.reader.core.data.ReadingProgressRepository
 import net.dexxicon.reader.core.data.download.DownloadRepository
+import net.dexxicon.reader.core.data.font.BookOrbitFontLibrary
+import net.dexxicon.reader.core.data.font.DownloadedFontFamily
 import net.dexxicon.reader.core.data.sync.DigestSource
 import net.dexxicon.reader.core.model.Bookmark
 import net.dexxicon.reader.core.model.ContentFormat
@@ -55,6 +57,7 @@ sealed interface EpubReaderState {
         val publication: Publication,
         val initialLocator: Locator?,
         val title: String,
+        val fonts: List<DownloadedFontFamily>,
         /** A newer position from KOReader sync / another device, if any (0.0–1.0). */
         val remoteResumePercent: Double? = null,
         val remoteResumeLocator: Locator? = null,
@@ -72,6 +75,7 @@ class EpubReaderViewModel @Inject constructor(
     private val highlightRepository: HighlightRepository,
     private val bookmarkRepository: BookmarkRepository,
     private val remoteBookCache: RemoteBookCache,
+    private val fontLibrary: BookOrbitFontLibrary,
     preferencesStore: ReaderPreferencesStore,
     savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
@@ -122,6 +126,16 @@ class EpubReaderViewModel @Inject constructor(
     }
 
     private suspend fun load() {
+        try {
+            fontLibrary.load()
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _state.value = EpubReaderState.Error("Couldn't load downloaded fonts: ${e.message ?: "unknown error"}")
+            return
+        }
+        val fonts = fontLibrary.families.value.filter { it.enabled && it.id !in fontLibrary.missingFamilies.value }
+        val overlay = fontOverlay(fontLibrary, fonts)
         // Prefer a downloaded copy — this is also what makes the reader work offline, so
         // don't gate it on the (network) catalog detail call.
         val localFile = downloadRepository.localFile(route.serverId, route.bookId)
@@ -139,33 +153,42 @@ class EpubReaderViewModel @Inject constructor(
         val remoteHref = detail?.acquisitions?.firstOrNull { it.format == ContentFormat.EPUB }?.href
             ?: detail?.primaryAcquisition?.href
 
-        val opened = if (localFile != null) {
-            // DownloadRepository.localFile returns a plain path (issue #126 — java.io.File
-            // isn't portable): DigestSource.LocalFile takes that path directly, while
-            // streamer.open (Readium, Android-only) still needs a real File.
-            digestSource = DigestSource.LocalFile(localFile)
-            streamer.open(File(localFile), MediaType.EPUB)
-        } else {
-            val acquisition = detail!!.acquisitions.firstOrNull { it.format == ContentFormat.EPUB }
-                ?: detail.primaryAcquisition
-            if (acquisition == null || acquisition.format != ContentFormat.EPUB) {
-                _state.value = EpubReaderState.Error("This book isn't an EPUB")
-                return
-            }
-            if (acquisition.relation == AcquisitionRelation.OPEN_ACCESS) {
-                // issue #291 — an OPDS catalog's open-access file: fetch it whole, then open the
-                // copy (ranged streaming stalled on Gutenberg's large EPUBs; see RemoteBookCache).
-                // Only the OPDS source marks acquisitions OPEN_ACCESS — BookOrbit/Grimmory stream.
-                val file = runCatching { remoteBookCache.fetch(acquisition.href, "epub") }.getOrElse {
-                    _state.value = EpubReaderState.Error("Couldn't download this book from the catalog")
+        val opened = try {
+            if (localFile != null) {
+                // DownloadRepository.localFile returns a plain path (issue #126 — java.io.File
+                // isn't portable): DigestSource.LocalFile takes that path directly, while
+                // streamer.open (Readium, Android-only) still needs a real File.
+                digestSource = DigestSource.LocalFile(localFile)
+                streamer.open(File(localFile), MediaType.EPUB, overlay)
+            } else {
+                val acquisition = detail!!.acquisitions.firstOrNull { it.format == ContentFormat.EPUB }
+                    ?: detail.primaryAcquisition
+                if (acquisition == null || acquisition.format != ContentFormat.EPUB) {
+                    _state.value = EpubReaderState.Error("This book isn't an EPUB")
                     return
                 }
-                digestSource = DigestSource.LocalFile(file.path)
-                streamer.open(file, MediaType.EPUB)
-            } else {
-                digestSource = DigestSource.Remote(acquisition.href)
-                streamer.open(acquisition.href, MediaType.EPUB)
+                if (acquisition.relation == AcquisitionRelation.OPEN_ACCESS) {
+                    // Only OPDS marks acquisitions OPEN_ACCESS — BookOrbit/Grimmory stream.
+                    val file = try {
+                        remoteBookCache.fetch(acquisition.href, "epub")
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        _state.value = EpubReaderState.Error("Couldn't download this book from the catalog")
+                        return
+                    }
+                    digestSource = DigestSource.LocalFile(file.path)
+                    streamer.open(file, MediaType.EPUB, overlay)
+                } else {
+                    digestSource = DigestSource.Remote(acquisition.href)
+                    streamer.open(acquisition.href, MediaType.EPUB, overlay)
+                }
             }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            _state.value = EpubReaderState.Error("Couldn't open this EPUB: ${e.message ?: "unknown error"}")
+            return
         }
 
         when (opened) {
@@ -199,6 +222,7 @@ class EpubReaderViewModel @Inject constructor(
                     publication = opened.value,
                     initialLocator = initial,
                     title = detail?.summary?.title ?: downloadTitle ?: "",
+                    fonts = fonts,
                     remoteResumePercent = remote,
                     remoteResumeLocator = remoteLocator,
                 )

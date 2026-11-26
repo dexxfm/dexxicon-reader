@@ -129,6 +129,10 @@ Your audiobook library, browsable and playable without touching your phone:
 ### Settings
 - **Servers** — drag to set display priority (used for the server list, the sync list, and
   which library's books come first when browsing).
+- **Fonts** — download BookOrbit server or personal font families for offline EPUB reading;
+  enable, disable, or remove downloaded families here. Enabled families appear after the
+  built-in choices in the EPUB display settings. Font overrides apply to reflowable EPUBs;
+  disabling or removing the selected family falls back to the publisher's font.
 - **Appearance** — theme (system / light / dark), the default book layout (grid or list)
   for the Library and server catalogues (each screen keeps its own toggle), default sort
   order for Library and server browsing, and **Glass intensity** for the floating nav bar.
