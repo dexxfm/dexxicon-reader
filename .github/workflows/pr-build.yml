@@ -4,7 +4,8 @@
 #   - Every PR push builds that PR.
 #   - "Run workflow" (Actions tab) builds one PR (enter its number) or, left blank, every open,
 #     non-draft PR at once, one job each.
-#   - "Run workflow" with "combine" ticked builds one APK from main with every open PR merged in.
+#   - "Run workflow" with "combine" ticked rebuilds the release/dev branch (main plus every open,
+#     non-draft PR merged in) and builds one APK from it.
 #
 # Each APK is attached to the run (14 days) as dexxicon-pr<N>-<sha>.apk and linked from a comment
 # on its PR. Security: the build jobs run the PR's own code, so they get a read-only token and no
@@ -22,7 +23,7 @@ on:
         required: false
         default: ""
       combine:
-        description: "Instead, one APK with every open PR merged into main (PRs that conflict are skipped)"
+        description: "Instead, rebuild release/dev (main + every open PR) and build one APK from it"
         type: boolean
         default: false
 
@@ -145,13 +146,70 @@ jobs:
           ./gradlew testDebugUnitTest :core:data:testAndroidHostTest :core:serverapi:testAndroidHostTest
           :core:model:jvmTest --console=plain
 
-  # One APK from main with every open PR merged in, in PR order, for trying them all together.
-  # A PR that doesn't merge cleanly is skipped and named in the summary. Nothing is pushed: the
-  # merges exist only on the runner. Read-only, like the per-PR builds.
-  combined:
-    name: Android debug APK · all open PRs merged
+  # Rebuilds release/dev: main with every open, non-draft PR merged in, in PR order, force-pushed.
+  # A throwaway preview branch for trying the open PRs together: no PR targets it and nothing is
+  # built on top of it. This is the only job that can push, and it never builds or runs PR code:
+  # merging is git alone. A PR that doesn't merge cleanly is skipped, and so is one that changes
+  # .github/workflows (GitHub won't let the workflow's own token push workflow changes).
+  integrate:
+    name: Rebuild release/dev
     needs: targets
     if: inputs.combine && needs.targets.outputs.prs != '' && needs.targets.outputs.prs != '[]'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: release-dev
+      cancel-in-progress: false
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.merge.outputs.sha }}
+      base: ${{ steps.merge.outputs.base }}
+      included: ${{ steps.merge.outputs.included }}
+      skipped: ${{ steps.merge.outputs.skipped }}
+      workflows: ${{ steps.merge.outputs.workflows }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+
+      - name: Merge the open PRs into a fresh release/dev
+        id: merge
+        env:
+          PRS: ${{ needs.targets.outputs.prs }}
+        run: |
+          git config user.name "PR dev build"
+          git config user.email "pr-dev-build@users.noreply.github.com"
+          git checkout -q -B release/dev
+          base=$(git rev-parse --short HEAD)
+          included=""; skipped=""; workflows=""
+          for pr in $(echo "$PRS" | jq -r '.[].pr' | sort -n); do
+            git fetch -q origin "+refs/pull/$pr/head:refs/remotes/pr/$pr"
+            if [ -n "$(git diff --name-only "HEAD...pr/$pr" -- .github/workflows)" ]; then
+              workflows="$workflows #$pr"
+              continue
+            fi
+            if git merge -q --no-edit -m "release/dev: merge PR #$pr" "pr/$pr"; then
+              included="$included #$pr"
+            else
+              git merge --abort
+              skipped="$skipped #$pr"
+            fi
+          done
+          git push -q --force origin release/dev
+          {
+            echo "sha=$(git rev-parse HEAD)"
+            echo "base=$base"
+            echo "included=${included# }"
+            echo "skipped=${skipped# }"
+            echo "workflows=${workflows# }"
+          } >> "$GITHUB_OUTPUT"
+          echo "release/dev = main ($base) +${included:- nothing}; conflicts:${skipped:- none}; workflow changes:${workflows:- none}"
+
+  # Builds the APK from the exact release/dev commit just pushed. Read-only, like the per-PR builds.
+  combined:
+    name: Android debug APK · release/dev
+    needs: integrate
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -159,32 +217,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.repository.default_branch }}
-          fetch-depth: 0
+          ref: ${{ needs.integrate.outputs.sha }}
           persist-credentials: false
-
-      - name: Merge the open PRs
-        id: merge
-        env:
-          PRS: ${{ needs.targets.outputs.prs }}
-        run: |
-          git config user.name "PR dev build"
-          git config user.email "pr-dev-build@users.noreply.github.com"
-          base=$(git rev-parse --short HEAD)
-          included=""; skipped=""
-          for pr in $(echo "$PRS" | jq -r '.[].pr' | sort -n); do
-            git fetch -q origin "+refs/pull/$pr/head:refs/remotes/pr/$pr"
-            if git merge -q --no-edit "pr/$pr"; then
-              included="$included #$pr"
-            else
-              git merge --abort
-              skipped="$skipped #$pr"
-            fi
-          done
-          echo "base=$base" >> "$GITHUB_OUTPUT"
-          echo "included=${included# }" >> "$GITHUB_OUTPUT"
-          echo "skipped=${skipped# }" >> "$GITHUB_OUTPUT"
-          echo "Included:${included:- none}"; echo "Skipped (conflicts):${skipped:- none}"
 
       - uses: actions/setup-java@v6
         with:
@@ -205,8 +239,10 @@ jobs:
 
       - name: Name the APK
         id: apk
+        env:
+          SHA: ${{ needs.integrate.outputs.sha }}
         run: |
-          name="dexxicon-combined-$(date -u +%Y%m%d-%H%M)-${{ steps.merge.outputs.base }}"
+          name="dexxicon-release-dev-$(date -u +%Y%m%d-%H%M)-$(echo "$SHA" | cut -c1-7)"
           cp app/build/outputs/apk/debug/app-debug.apk "$name.apk"
           echo "name=$name" >> "$GITHUB_OUTPUT"
 
@@ -224,18 +260,21 @@ jobs:
         env:
           NAME: ${{ steps.apk.outputs.name }}
           URL: ${{ steps.upload.outputs.artifact-url }}
-          BASE: ${{ steps.merge.outputs.base }}
-          INCLUDED: ${{ steps.merge.outputs.included }}
-          SKIPPED: ${{ steps.merge.outputs.skipped }}
+          SHA: ${{ needs.integrate.outputs.sha }}
+          BASE: ${{ needs.integrate.outputs.base }}
+          INCLUDED: ${{ needs.integrate.outputs.included }}
+          SKIPPED: ${{ needs.integrate.outputs.skipped }}
+          WORKFLOWS: ${{ needs.integrate.outputs.workflows }}
         run: |
           {
-            if [ -n "$URL" ]; then echo "### Combined debug APK: [$NAME]($URL)"; else echo "### Combined build failed"; fi
+            if [ -n "$URL" ]; then echo "### release/dev debug APK: [$NAME]($URL)"; else echo "### release/dev build failed"; fi
             echo
-            echo "- Base: \`main\` at $BASE"
+            echo "- Branch: [\`release/dev\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/tree/release/dev) at \`${SHA:0:7}\`, from \`main\` at $BASE"
             echo "- Merged in: ${INCLUDED:-none}"
-            echo "- Skipped (didn't merge cleanly): ${SKIPPED:-none}"
+            echo "- Skipped, didn't merge cleanly: ${SKIPPED:-none}"
+            echo "- Skipped, changes workflow files: ${WORKFLOWS:-none}"
             echo
-            echo "Code no single PR will merge as: for trying the open PRs together. A build failure with no skips means two PRs don't compile together."
+            echo "A throwaway preview of the open PRs together; rebuilt (force-pushed) each run. A build failure with nothing skipped means two PRs don't compile together."
           } >> "$GITHUB_STEP_SUMMARY"
 
   # Writes only: links each PR's APK in a comment on that PR (one comment, updated each run). It
