@@ -7,6 +7,7 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -54,6 +56,7 @@ import net.dexxicon.reader.core.data.sync.ServerSyncFailure
 import net.dexxicon.reader.core.data.sync.SyncFailureReason
 import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.EdgeFadeRow
+import net.dexxicon.reader.core.designsystem.component.CoverAspects
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.ContentFormat
@@ -234,8 +237,10 @@ fun HomeContent(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    else -> LazyVerticalGrid(
-                        columns = GridCells.Adaptive(112.dp),
+                    else -> BoxWithConstraints(Modifier.fillMaxSize()) {
+                    val columns = CoverAspects.gridColumns(maxWidth)
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(columns),
                         modifier = Modifier.fillMaxSize(),
                         // issue #132 — bottom padding clears the floating nav (and mini-player,
                         // when showing) now that it overlays content instead of reserving its
@@ -266,10 +271,11 @@ fun HomeContent(
                                     HomeSection.ON_DECK -> onDeckShelf(
                                         section.title, uiState.onDeck, onOpenBook, ::onDeckActions, wantToRead = true,
                                     )
-                                    HomeSection.DOWNLOADED -> downloadedShelf(uiState, onOpenBook, ::downloadActions)
+                                    HomeSection.DOWNLOADED -> downloadedShelf(uiState, columns, onOpenBook, ::downloadActions)
                                 }
                             }
                         }
+                    }
                     }
                 }
             }
@@ -295,14 +301,18 @@ val HomeSection.title: String
 
 private fun LazyGridScope.downloadedShelf(
     uiState: HomeUiState,
+    columns: Int,
     onOpenBook: (String, String) -> Unit,
     actionsFor: (Download) -> HomeItemActions,
 ) {
     if (uiState.downloads.isEmpty()) return
     fullWidthItem { SectionHeader(HomeSection.DOWNLOADED.title) }
-    items(uiState.downloads, key = { it.key }) { download ->
+    itemsIndexed(uiState.downloads, key = { _, it -> it.key }) { index, download ->
         DownloadCard(
             download = download,
+            slotAspect = CoverAspects.rowSlotOf(uiState.downloads.size, index, columns) {
+                CoverAspects.shapeOf(uiState.downloads[it].coverUrl)
+            },
             readingProgress = uiState.downloadProgress[download.key],
             seriesIndex = uiState.downloadSeriesIndex[download.key],
             onClick = { onOpenBook(download.serverId, download.bookId) },
@@ -342,11 +352,13 @@ private fun LazyGridScope.onDeckShelf(
     fullWidthItem { SectionHeader(title) }
     fullWidthItem {
         val listState = rememberLazyListState()
+        val slot = CoverAspects.slotOf(items.map { CoverAspects.shapeOf(it.coverUrl) })
         EdgeFadeRow(listState) {
             LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(items, key = { "${it.serverId}:${it.bookId}" }) { entry ->
                     OnDeckCard(
                         entry = entry,
+                        slotAspect = slot,
                         onClick = { onOpenBook(entry.serverId, entry.bookId) },
                         actions = actionsFor(entry),
                         wantToRead = wantToRead,
@@ -368,11 +380,13 @@ private fun LazyGridScope.continueShelf(
     fullWidthItem { SectionHeader(title) }
     fullWidthItem {
         val listState = rememberLazyListState()
+        val slot = CoverAspects.slotOf(items.map { CoverAspects.shapeOf(it.coverUrl) })
         EdgeFadeRow(listState) {
             LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(items, key = { "${it.serverId}:${it.bookId}" }) { entry ->
                     ContinueCard(
                         entry = entry,
+                        slotAspect = slot,
                         onClick = { state.continueReading(entry, onOpenReader) },
                         actions = actionsFor(entry),
                     )
@@ -389,7 +403,7 @@ private fun SectionHeader(text: String) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun OnDeckCard(entry: OnDeckItem, onClick: () -> Unit, actions: HomeItemActions, wantToRead: Boolean) {
+private fun OnDeckCard(entry: OnDeckItem, slotAspect: Float, onClick: () -> Unit, actions: HomeItemActions, wantToRead: Boolean) {
     var menuOpen by remember { mutableStateOf(false) }
     Box(Modifier.width(112.dp)) {
         Column(
@@ -410,6 +424,7 @@ private fun OnDeckCard(entry: OnDeckItem, onClick: () -> Unit, actions: HomeItem
                 downloaded = entry.downloadStatus == DownloadStatus.DONE,
                 format = entry.format,
                 seriesIndex = entry.seriesIndex,
+                slotAspect = slotAspect,
             )
             Text(
                 entry.title,
@@ -434,7 +449,7 @@ private fun OnDeckCard(entry: OnDeckItem, onClick: () -> Unit, actions: HomeItem
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit, actions: HomeItemActions) {
+private fun ContinueCard(entry: ContinueItem, slotAspect: Float, onClick: () -> Unit, actions: HomeItemActions) {
     var menuOpen by remember { mutableStateOf(false) }
     val pct = (entry.percent * 100).toInt()
     Box(Modifier.width(112.dp)) {
@@ -454,6 +469,7 @@ private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit, actions: Home
                 downloaded = entry.downloadStatus == DownloadStatus.DONE,
                 format = entry.format,
                 seriesIndex = entry.seriesIndex,
+                slotAspect = slotAspect,
             )
             Text(
                 entry.title,
@@ -472,6 +488,7 @@ private fun ContinueCard(entry: ContinueItem, onClick: () -> Unit, actions: Home
 @Composable
 private fun DownloadCard(
     download: Download,
+    slotAspect: Float,
     readingProgress: Float?,
     seriesIndex: Double?,
     onClick: () -> Unit,
@@ -506,6 +523,7 @@ private fun DownloadCard(
                     downloaded = done,
                     format = download.format,
                     seriesIndex = seriesIndex,
+                    slotAspect = slotAspect,
                 )
                 DownloadStatusOverlay(download)
             }

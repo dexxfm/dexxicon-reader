@@ -163,6 +163,8 @@ data class BookOrbitBook(
     val genres: List<String> = emptyList(),
     val tags: List<String> = emptyList(),
     val hasCover: Boolean = false,
+    /** `"2/3"` or `"1/1"` — the cover frame the book's library (or medium) calls for. */
+    val coverAspectRatio: String? = null,
     val libraryId: Long? = null,
     val libraryName: String? = null,
     val readStatus: BookOrbitReadStatus? = null,

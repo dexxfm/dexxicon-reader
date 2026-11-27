@@ -93,6 +93,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import net.dexxicon.reader.core.designsystem.component.CoverAspects
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.component.LocalCoverBadges
 import net.dexxicon.reader.core.model.AggregatedBook
@@ -322,6 +323,7 @@ private fun SeriesShelf(
         TextButton(onClick = onSeeAll) { Text("See all") }
     }
     Spacer(Modifier.height(8.dp))
+    val slot = CoverAspects.slotOf(books.map { it.coverAspect ?: CoverAspects.shapeOf(it.coverUrl) })
     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(books, key = { it.key }) { book ->
             Column(
@@ -343,6 +345,8 @@ private fun SeriesShelf(
                         contentDescription = null,
                         format = book.format,
                         seriesIndex = book.seriesIndex,
+                        aspectRatio = book.coverAspect,
+                        slotAspect = slot,
                     )
                 }
                 Text(
@@ -371,7 +375,7 @@ private fun HeroBlock(
     val cover: @Composable (Modifier) -> Unit = { m ->
         Box(
             m
-                .aspectRatio(0.66f)
+                .aspectRatio(s.coverAspect ?: CoverAspects.shapeOf(s.coverUrl))
                 .clip(CoverShapeMedium)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CoverShapeMedium),
@@ -398,7 +402,13 @@ private fun HeroBlock(
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
-                    onState = { state -> failed = state is AsyncImagePainter.State.Error },
+                    onState = { state ->
+                        failed = state is AsyncImagePainter.State.Error
+                        if (state is AsyncImagePainter.State.Success && s.coverAspect == null) {
+                            val size = state.painter.intrinsicSize
+                            s.coverUrl?.let { CoverAspects.measured(it, size.width, size.height) }
+                        }
+                    },
                 )
             } else {
                 // Same "no cover" treatment as the grid's CoverImage — a genuine load failure

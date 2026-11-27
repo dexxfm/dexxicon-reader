@@ -82,6 +82,8 @@ data class AggregatedBook(
     val copies: List<BookCopy> = emptyList(),
     /** issue #328 — see [BookSummary.opensGroup]: a card that opens this group's list. */
     val opensGroup: BookGroup? = null,
+    /** See [BookSummary.coverAspect]. */
+    val coverAspect: Float? = null,
 ) {
     val authorLine: String get() = authors.joinToString(", ")
 
@@ -121,6 +123,9 @@ data class BookSummary(
      * then the group's own id, never a book's.
      */
     val opensGroup: BookGroup? = null,
+    /** Cover width / height when the source declares one (BookOrbit's per-library setting);
+     *  null lets the UI infer it from the cover image. */
+    val coverAspect: Float? = null,
 ) {
     val authorLine: String get() = authors.joinToString(", ")
 }

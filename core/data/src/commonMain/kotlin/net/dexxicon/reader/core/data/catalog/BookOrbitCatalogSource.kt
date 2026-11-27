@@ -245,6 +245,7 @@ class BookOrbitCatalogSource(
         format = formatOf(primaryFile?.format),
         shelfId = libraryId?.toString(),
         seriesId = seriesId?.toString(),
+        coverAspect = if (coverAspectRatio == "1/1") 1f else if (coverAspectRatio != null) 0.66f else null,
     )
 
     // BookOrbit's sort fields (packages/types SortField): author, title, series, seriesIndex,

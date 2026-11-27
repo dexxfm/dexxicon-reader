@@ -18,6 +18,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -32,6 +33,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -68,6 +70,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.ContentFilterChips
+import net.dexxicon.reader.core.designsystem.component.CoverAspects
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.component.LocalCoverBadges
 import net.dexxicon.reader.core.model.seriesPositionText
@@ -318,8 +321,10 @@ fun LibraryBooksPane(
                         modifier = Modifier.padding(32.dp),
                     )
                 }
-                uiState.viewMode == BookViewMode.GRID -> LazyVerticalGrid(
-                    columns = GridCells.Adaptive(112.dp),
+                uiState.viewMode == BookViewMode.GRID -> BoxWithConstraints(Modifier.fillMaxSize()) {
+                val columns = CoverAspects.gridColumns(maxWidth)
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(columns),
                     state = gridState,
                     modifier = Modifier.fillMaxSize(),
                     // issue #132 — clears the floating nav (and mini-player, when
@@ -333,15 +338,19 @@ fun LibraryBooksPane(
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    gridItems(uiState.books, key = { it.key }) { book ->
+                    itemsIndexed(uiState.books, key = { _, it -> it.key }) { index, book ->
                         LibraryGridCard(
                             book = book,
+                            slotAspect = CoverAspects.rowSlotOf(uiState.books.size, index, columns) {
+                                uiState.books[it].let { b -> b.coverAspect ?: CoverAspects.shapeOf(b.coverUrl) }
+                            },
                             progress = book.progressFrom(overlays),
                             downloaded = book.downloadedIn(overlays),
                             onClick = { onTapCover(book) },
                             actions = actionsFor(book),
                         )
                     }
+                }
                 }
                 else -> LazyColumn(
                     state = listState,
@@ -400,7 +409,7 @@ private fun LibraryRow(
             supportingContent = { Text(subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             leadingContent = {
                 Box(Modifier.width(44.dp)) {
-                    CoverImage(book.coverUrl, contentDescription = null, progress = progress, downloaded = downloaded)
+                    CoverImage(book.coverUrl, contentDescription = null, progress = progress, downloaded = downloaded, aspectRatio = book.coverAspect)
                 }
             },
             modifier = Modifier
@@ -418,6 +427,7 @@ private fun LibraryRow(
 @Composable
 private fun LibraryGridCard(
     book: AggregatedBook,
+    slotAspect: Float,
     progress: Float?,
     downloaded: Boolean,
     onClick: () -> Unit,
@@ -453,6 +463,8 @@ private fun LibraryGridCard(
                 downloaded = downloaded,
                 format = book.format,
                 seriesIndex = book.seriesIndex,
+                aspectRatio = book.coverAspect,
+                slotAspect = slotAspect,
             )
             Text(
                 book.title,
