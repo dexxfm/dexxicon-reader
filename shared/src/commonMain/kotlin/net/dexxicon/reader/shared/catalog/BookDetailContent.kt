@@ -60,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.style.TextAlign
@@ -372,10 +373,15 @@ private fun HeroBlock(
     stacked: Boolean,
 ) {
     val s = detail.summary
+    val coverShape = s.coverAspect ?: CoverAspects.shapeOf(s.coverUrl)
+    val coverUrl = s.coverUrl
+    if (coverUrl != null && s.coverAspect != null) {
+        SideEffect { CoverAspects.hint(coverUrl, s.coverAspect!!) }
+    }
     val cover: @Composable (Modifier) -> Unit = { m ->
         Box(
             m
-                .aspectRatio(s.coverAspect ?: CoverAspects.shapeOf(s.coverUrl))
+                .aspectRatio(coverShape)
                 .clip(CoverShapeMedium)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CoverShapeMedium),
@@ -400,11 +406,11 @@ private fun HeroBlock(
                             .build()
                     },
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    contentScale = CoverAspects.scaleFor(s.coverUrl, coverShape),
                     modifier = Modifier.fillMaxSize(),
                     onState = { state ->
                         failed = state is AsyncImagePainter.State.Error
-                        if (state is AsyncImagePainter.State.Success && s.coverAspect == null) {
+                        if (state is AsyncImagePainter.State.Success) {
                             val size = state.painter.intrinsicSize
                             s.coverUrl?.let { CoverAspects.measured(it, size.width, size.height) }
                         }

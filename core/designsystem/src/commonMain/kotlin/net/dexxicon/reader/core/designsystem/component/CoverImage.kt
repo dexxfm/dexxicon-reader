@@ -94,11 +94,11 @@ fun CoverImage(
             AsyncImage(
                 model = coverUrl,
                 contentDescription = contentDescription,
-                contentScale = ContentScale.Crop,
+                contentScale = CoverAspects.scaleFor(coverUrl, shape),
                 modifier = Modifier.fillMaxSize(),
                 onState = { state ->
                     failed = state is AsyncImagePainter.State.Error
-                    if (state is AsyncImagePainter.State.Success && aspectRatio == null) {
+                    if (state is AsyncImagePainter.State.Success) {
                         val size = state.painter.intrinsicSize
                         CoverAspects.measured(coverUrl, size.width, size.height)
                     }
@@ -187,9 +187,11 @@ fun snapCoverAspect(ratio: Float): Float =
  * (Home shelves, downloads). Fed by server-declared shapes and by what loaded images measure.
  */
 object CoverAspects {
-    private val shapes = mutableStateMapOf<String, Float>()
+    private val declared = mutableStateMapOf<String, Float>()
+    private val measuredShapes = mutableStateMapOf<String, Float>()
 
-    fun shapeOf(url: String?): Float = url?.let { shapes[it] } ?: COVER_ASPECT
+    fun shapeOf(url: String?): Float =
+        url?.let { declared[it] ?: measuredShapes[it] } ?: COVER_ASPECT
 
     /** The slot shape for covers sharing a row or shelf: the tallest one's. */
     fun slotOf(shapes: List<Float>): Float = shapes.minOrNull() ?: COVER_ASPECT
@@ -211,13 +213,24 @@ object CoverAspects {
     fun gridColumns(width: Dp, minCell: Dp = 112.dp, spacing: Dp = 12.dp, padding: Dp = 24.dp): Int =
         ((width - padding + spacing) / (minCell + spacing)).toInt().coerceAtLeast(1)
 
+    /** A shape the source declares; it wins over what the image itself measures. */
     fun hint(url: String, ratio: Float) {
-        if (shapes[url] != ratio) shapes[url] = ratio
+        if (declared[url] != ratio) declared[url] = ratio
     }
+
+    /** The shape of the image as loaded, if it has been; may differ from the declared frame. */
+    fun imageShapeOf(url: String?): Float? = url?.let { measuredShapes[it] }
 
     fun measured(url: String, width: Float, height: Float) {
         if (width.isFinite() && height.isFinite() && width > 0f && height > 0f) {
-            hint(url, snapCoverAspect(width / height))
+            val ratio = snapCoverAspect(width / height)
+            if (measuredShapes[url] != ratio) measuredShapes[url] = ratio
         }
+    }
+
+    /** Fit the whole image in the frame when it doesn't match, rather than cropping it. */
+    fun scaleFor(url: String?, frame: Float): ContentScale {
+        val image = imageShapeOf(url)
+        return if (image != null && image != frame) ContentScale.Fit else ContentScale.Crop
     }
 }
