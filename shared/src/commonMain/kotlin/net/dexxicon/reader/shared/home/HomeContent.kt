@@ -300,14 +300,21 @@ private fun LazyGridScope.downloadedShelf(
 ) {
     if (uiState.downloads.isEmpty()) return
     fullWidthItem { SectionHeader(HomeSection.DOWNLOADED.title) }
-    items(uiState.downloads, key = { it.key }) { download ->
-        DownloadCard(
-            download = download,
-            readingProgress = uiState.downloadProgress[download.key],
-            seriesIndex = uiState.downloadSeriesIndex[download.key],
-            onClick = { onOpenBook(download.serverId, download.bookId) },
-            actions = actionsFor(download),
-        )
+    fullWidthItem {
+        val listState = rememberLazyListState()
+        EdgeFadeRow(listState) {
+            LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                items(uiState.downloads, key = { it.key }) { download ->
+                    DownloadCard(
+                        download = download,
+                        readingProgress = uiState.downloadProgress[download.key],
+                        seriesIndex = uiState.downloadSeriesIndex[download.key],
+                        onClick = { onOpenBook(download.serverId, download.bookId) },
+                        actions = actionsFor(download),
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -492,7 +499,7 @@ private fun DownloadCard(
             else -> append(", downloading")
         }
     }
-    Box {
+    Box(Modifier.width(112.dp)) {
         Column(
             Modifier
                 .combinedClickable(onClick = onClick, onLongClick = { menuOpen = true })
