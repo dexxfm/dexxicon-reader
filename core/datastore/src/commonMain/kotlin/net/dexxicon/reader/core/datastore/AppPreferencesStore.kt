@@ -101,6 +101,26 @@ class AppPreferencesStore(context: PlatformStorageContext) {
         val HOME_LAYOUT = stringPreferencesKey("home_layout")
         val SAVE_COPIES_FOLDER_URI = stringPreferencesKey("save_copies_folder_uri")
         val SAVE_COPIES_FOLDER_NAME = stringPreferencesKey("save_copies_folder_name")
+        val COVER_SHAPES = stringPreferencesKey("cover_shapes")
+    }
+
+    /** Cover shapes (width / height) the servers have declared, by cover URL, so Home can draw
+     *  a book's cover in its declared frame before anything has re-fetched it. */
+    val coverShapes: Flow<Map<String, Float>> = dataStore.data.map { p ->
+        buildMap {
+            p[Keys.COVER_SHAPES]?.lineSequence()?.forEach { line ->
+                val tab = line.lastIndexOf('\t')
+                val ratio = if (tab > 0) line.substring(tab + 1).toFloatOrNull() else null
+                if (ratio != null) put(line.substring(0, tab), ratio)
+            }
+        }
+    }
+
+    suspend fun setCoverShapes(shapes: Map<String, Float>) {
+        dataStore.edit { p ->
+            p[Keys.COVER_SHAPES] = shapes.entries.take(MAX_COVER_SHAPES)
+                .joinToString("\n") { "${it.key}\t${it.value}" }
+        }
     }
 
     val preferences: Flow<AppPreferences> = dataStore.data.map { p ->
@@ -227,6 +247,7 @@ class AppPreferencesStore(context: PlatformStorageContext) {
     }
 
     private companion object {
+        const val MAX_COVER_SHAPES = 5000
         /** Same reasoning as [SyncStateStore]'s own `dataStores` cache — duplicated rather
          * than shared, since two call sites don't justify a shared abstraction. */
         private val dataStores = mutableMapOf<String, DataStore<Preferences>>()

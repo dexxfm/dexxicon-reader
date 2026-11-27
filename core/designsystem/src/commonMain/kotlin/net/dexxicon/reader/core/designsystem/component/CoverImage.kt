@@ -213,6 +213,14 @@ object CoverAspects {
     fun gridColumns(width: Dp, minCell: Dp = 112.dp, spacing: Dp = 12.dp, padding: Dp = 24.dp): Int =
         ((width - padding + spacing) / (minCell + spacing)).toInt().coerceAtLeast(1)
 
+    /** The source-declared shapes, for saving; reading it inside `snapshotFlow` tracks changes. */
+    fun declaredSnapshot(): Map<String, Float> = declared.toMap()
+
+    /** Loads previously saved shapes, never overriding one declared this session. */
+    fun restore(saved: Map<String, Float>) {
+        for ((url, ratio) in saved) if (url !in declared) declared[url] = ratio
+    }
+
     /** A shape the source declares; it wins over what the image itself measures. */
     fun hint(url: String, ratio: Float) {
         if (declared[url] != ratio) declared[url] = ratio

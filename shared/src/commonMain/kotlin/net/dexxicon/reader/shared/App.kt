@@ -61,6 +61,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
+import net.dexxicon.reader.core.designsystem.component.CoverAspects
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -249,6 +255,14 @@ fun App(
         platformGlassQuality
     }
     val glassState = rememberLiquidGlassState(glassQuality)
+    // Declared cover shapes outlive the process so Home can frame covers before any re-fetch.
+    LaunchedEffect(Unit) {
+        CoverAspects.restore(container.appPreferences.coverShapes.first())
+        snapshotFlow { CoverAspects.declaredSnapshot() }.drop(1).collectLatest { shapes ->
+            delay(2_000)
+            container.appPreferences.setCoverShapes(shapes)
+        }
+    }
     DexxiconTheme(
         darkTheme = darkTheme,
         coverBadges = CoverBadges(
