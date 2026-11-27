@@ -38,6 +38,8 @@ class LibrarySeeder(
     /** issue #328 — Kavita's in-progress chapters come from its catalog source (shared caches). */
     private val kavita: KavitaCatalogSource,
     private val io: CoroutineDispatcher,
+    /** Receives the cover shapes the server declares (cover URL -> width / height). */
+    private val onCoverShapes: suspend (Map<String, Float>) -> Unit = {},
 ) {
     /** Every in-progress book the server knows about, as progress rows ready to persist. */
     suspend fun inProgress(server: Server): List<ReadingProgress> =
@@ -166,6 +168,18 @@ class LibrarySeeder(
         val rows = buildList {
             addAll(bookOrbit.dashboardScroller(server.resolve("/api/v1/dashboard/scrollers/continue-reading?limit=50")))
             addAll(bookOrbit.dashboardScroller(server.resolve("/api/v1/dashboard/scrollers/continue-listening?limit=50")))
+        }
+        runCatching {
+            onCoverShapes(
+                rows.mapNotNull { card ->
+                    val shape = when (card.coverAspectRatio) {
+                        null -> return@mapNotNull null
+                        "1/1" -> 1f
+                        else -> 0.66f
+                    }
+                    server.resolve("/api/v1/books/${card.id}/cover") to shape
+                }.toMap(),
+            )
         }
         return rows.distinctBy { it.id }.mapNotNull { card ->
             val name = card.title?.takeIf { it.isNotBlank() } ?: return@mapNotNull null

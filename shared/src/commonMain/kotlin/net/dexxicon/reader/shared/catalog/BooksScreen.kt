@@ -4,6 +4,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -20,6 +21,7 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -51,6 +53,7 @@ import net.dexxicon.reader.core.datastore.CoverTapAction
 import net.dexxicon.reader.core.designsystem.component.BackPill
 import net.dexxicon.reader.core.designsystem.component.BookContextMenu
 import net.dexxicon.reader.core.designsystem.component.ContentFilterChips
+import net.dexxicon.reader.core.designsystem.component.CoverAspects
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.component.LocalCoverBadges
 import net.dexxicon.reader.core.model.seriesPositionText
@@ -201,8 +204,10 @@ private fun BooksGrid(
         state.books.isEmpty() -> CenterMessage {
             Text("No books match this filter.", style = MaterialTheme.typography.bodyMedium)
         }
-        state.viewMode == BookViewMode.GRID -> LazyVerticalGrid(
-            columns = GridCells.Adaptive(112.dp),
+        state.viewMode == BookViewMode.GRID -> BoxWithConstraints(Modifier.fillMaxSize()) {
+        val columns = CoverAspects.gridColumns(maxWidth)
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columns),
             modifier = Modifier.fillMaxSize(),
             // issue #132 — clears the floating mini-player, which can overlay any screen
             // (not just the top-level ones with the full nav pill) while a book is playing.
@@ -210,9 +215,12 @@ private fun BooksGrid(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            gridItems(state.books, key = { it.id }) { book ->
+            itemsIndexed(state.books, key = { _, it -> it.id }) { index, book ->
                 BookGridCard(
                     book = book,
+                    slotAspect = CoverAspects.rowSlotOf(state.books.size, index, columns) {
+                        state.books[it].let { b -> b.coverAspect ?: CoverAspects.shapeOf(b.coverUrl) }
+                    },
                     progress = AggregatedProgress(book, overlays),
                     downloaded = "${book.serverId}::${book.id}" in overlays.downloaded,
                     onClick = { onTapCover(book) },
@@ -220,6 +228,7 @@ private fun BooksGrid(
                 )
             }
             loadMoreItem(state)
+        }
         }
         else -> LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -295,7 +304,7 @@ private fun BookRow(
             supportingContent = { Text(subtitle, maxLines = 2, overflow = TextOverflow.Ellipsis) },
             leadingContent = {
                 Box(Modifier.width(44.dp)) {
-                    CoverImage(book.coverUrl, contentDescription = null, progress = progress, downloaded = downloaded)
+                    CoverImage(book.coverUrl, contentDescription = null, progress = progress, downloaded = downloaded, aspectRatio = book.coverAspect)
                 }
             },
             modifier = Modifier
@@ -313,6 +322,7 @@ private fun BookRow(
 @Composable
 private fun BookGridCard(
     book: BookSummary,
+    slotAspect: Float,
     progress: Float?,
     downloaded: Boolean,
     onClick: () -> Unit,
@@ -342,6 +352,8 @@ private fun BookGridCard(
                 downloaded = downloaded,
                 format = book.format,
                 seriesIndex = book.seriesIndex,
+                aspectRatio = book.coverAspect,
+                slotAspect = slotAspect,
             )
             Text(
                 book.title,

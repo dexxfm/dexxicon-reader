@@ -42,6 +42,7 @@ internal fun mergeAggregated(
                     format = book.format,
                     copies = listOf(copy),
                     opensGroup = book.opensGroup,
+                    coverAspect = book.coverAspect,
                 )
             } else if (existing.copies.any { it.serverId == server.id }) {
                 existing // same server returned the book twice — keep one copy
@@ -51,6 +52,7 @@ internal fun mergeAggregated(
                     title = if (book.title.length < existing.title.length) book.title else existing.title,
                     copies = existing.copies + copy,
                     coverUrl = existing.coverUrl ?: book.coverUrl,
+                    coverAspect = existing.coverAspect ?: book.coverAspect,
                 )
             }
         }

@@ -101,6 +101,34 @@ class AppPreferencesStore(context: PlatformStorageContext) {
         val HOME_LAYOUT = stringPreferencesKey("home_layout")
         val SAVE_COPIES_FOLDER_URI = stringPreferencesKey("save_copies_folder_uri")
         val SAVE_COPIES_FOLDER_NAME = stringPreferencesKey("save_copies_folder_name")
+        val COVER_SHAPES = stringPreferencesKey("cover_shapes")
+    }
+
+    /** Cover shapes (width / height) the servers have declared, by cover URL, so Home can draw
+     *  a book's cover in its declared frame before anything has re-fetched it. */
+    val coverShapes: Flow<Map<String, Float>> = dataStore.data.map { p -> decodeCoverShapes(p[Keys.COVER_SHAPES]) }
+
+    private fun decodeCoverShapes(raw: String?): Map<String, Float> = buildMap {
+        raw?.lineSequence()?.forEach { line ->
+            val tab = line.lastIndexOf('\t')
+            val ratio = if (tab > 0) line.substring(tab + 1).toFloatOrNull() else null
+            if (ratio != null) put(line.substring(0, tab), ratio)
+        }
+    }
+
+    /** Merges [shapes] into the saved ones; the newest entries survive the size cap. */
+    suspend fun addCoverShapes(shapes: Map<String, Float>) {
+        if (shapes.isEmpty()) return
+        dataStore.edit { p ->
+            val merged = LinkedHashMap(decodeCoverShapes(p[Keys.COVER_SHAPES]))
+            if (merged.entries.containsAll(shapes.entries)) return@edit
+            for ((url, ratio) in shapes) {
+                merged.remove(url)
+                merged[url] = ratio
+            }
+            p[Keys.COVER_SHAPES] = merged.entries.toList().takeLast(MAX_COVER_SHAPES)
+                .joinToString("\n") { "${it.key}\t${it.value}" }
+        }
     }
 
     val preferences: Flow<AppPreferences> = dataStore.data.map { p ->
@@ -227,6 +255,7 @@ class AppPreferencesStore(context: PlatformStorageContext) {
     }
 
     private companion object {
+        const val MAX_COVER_SHAPES = 5000
         /** Same reasoning as [SyncStateStore]'s own `dataStores` cache — duplicated rather
          * than shared, since two call sites don't justify a shared abstraction. */
         private val dataStores = mutableMapOf<String, DataStore<Preferences>>()

@@ -60,6 +60,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.style.TextAlign
@@ -93,6 +94,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import net.dexxicon.reader.core.designsystem.component.CoverAspects
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.component.LocalCoverBadges
 import net.dexxicon.reader.core.model.AggregatedBook
@@ -322,6 +324,7 @@ private fun SeriesShelf(
         TextButton(onClick = onSeeAll) { Text("See all") }
     }
     Spacer(Modifier.height(8.dp))
+    val slot = CoverAspects.slotOf(books.map { it.coverAspect ?: CoverAspects.shapeOf(it.coverUrl) })
     LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         items(books, key = { it.key }) { book ->
             Column(
@@ -343,6 +346,8 @@ private fun SeriesShelf(
                         contentDescription = null,
                         format = book.format,
                         seriesIndex = book.seriesIndex,
+                        aspectRatio = book.coverAspect,
+                        slotAspect = slot,
                     )
                 }
                 Text(
@@ -368,10 +373,15 @@ private fun HeroBlock(
     stacked: Boolean,
 ) {
     val s = detail.summary
+    val coverShape = s.coverAspect ?: CoverAspects.shapeOf(s.coverUrl)
+    val coverUrl = s.coverUrl
+    if (coverUrl != null && s.coverAspect != null) {
+        SideEffect { CoverAspects.hint(coverUrl, s.coverAspect!!) }
+    }
     val cover: @Composable (Modifier) -> Unit = { m ->
         Box(
             m
-                .aspectRatio(0.66f)
+                .aspectRatio(coverShape)
                 .clip(CoverShapeMedium)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CoverShapeMedium),
@@ -396,9 +406,15 @@ private fun HeroBlock(
                             .build()
                     },
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
+                    contentScale = CoverAspects.scaleFor(s.coverUrl, coverShape),
                     modifier = Modifier.fillMaxSize(),
-                    onState = { state -> failed = state is AsyncImagePainter.State.Error },
+                    onState = { state ->
+                        failed = state is AsyncImagePainter.State.Error
+                        if (state is AsyncImagePainter.State.Success) {
+                            val size = state.painter.intrinsicSize
+                            s.coverUrl?.let { CoverAspects.measured(it, size.width, size.height) }
+                        }
+                    },
                 )
             } else {
                 // Same "no cover" treatment as the grid's CoverImage — a genuine load failure

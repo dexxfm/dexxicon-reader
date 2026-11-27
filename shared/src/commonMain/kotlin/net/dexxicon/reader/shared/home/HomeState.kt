@@ -69,6 +69,8 @@ data class OnDeckItem(
     val seriesIndex: Double? = null,
     /** issue #258 — see [ContinueItem.downloadStatus]. */
     val downloadStatus: DownloadStatus? = null,
+    /** See [BookSummary.coverAspect]. */
+    val coverAspect: Float? = null,
 )
 
 data class HomeUiState(
@@ -184,6 +186,7 @@ class HomeState(
                         format = book.format,
                         seriesIndex = book.seriesIndex,
                         downloadStatus = status["${copy.serverId}::${copy.bookId}"],
+                        coverAspect = book.coverAspect,
                     )
                 }
             }
@@ -289,6 +292,7 @@ class HomeState(
         coverUrl = coverUrl,
         format = format,
         seriesIndex = seriesIndex,
+        coverAspect = coverAspect,
     )
 
     fun markRead(serverId: String, bookId: String) = container.bookActions.markFinished(serverId, bookId, true)
