@@ -106,19 +106,27 @@ class AppPreferencesStore(context: PlatformStorageContext) {
 
     /** Cover shapes (width / height) the servers have declared, by cover URL, so Home can draw
      *  a book's cover in its declared frame before anything has re-fetched it. */
-    val coverShapes: Flow<Map<String, Float>> = dataStore.data.map { p ->
-        buildMap {
-            p[Keys.COVER_SHAPES]?.lineSequence()?.forEach { line ->
-                val tab = line.lastIndexOf('\t')
-                val ratio = if (tab > 0) line.substring(tab + 1).toFloatOrNull() else null
-                if (ratio != null) put(line.substring(0, tab), ratio)
-            }
+    val coverShapes: Flow<Map<String, Float>> = dataStore.data.map { p -> decodeCoverShapes(p[Keys.COVER_SHAPES]) }
+
+    private fun decodeCoverShapes(raw: String?): Map<String, Float> = buildMap {
+        raw?.lineSequence()?.forEach { line ->
+            val tab = line.lastIndexOf('\t')
+            val ratio = if (tab > 0) line.substring(tab + 1).toFloatOrNull() else null
+            if (ratio != null) put(line.substring(0, tab), ratio)
         }
     }
 
-    suspend fun setCoverShapes(shapes: Map<String, Float>) {
+    /** Merges [shapes] into the saved ones; the newest entries survive the size cap. */
+    suspend fun addCoverShapes(shapes: Map<String, Float>) {
+        if (shapes.isEmpty()) return
         dataStore.edit { p ->
-            p[Keys.COVER_SHAPES] = shapes.entries.take(MAX_COVER_SHAPES)
+            val merged = LinkedHashMap(decodeCoverShapes(p[Keys.COVER_SHAPES]))
+            if (merged.entries.containsAll(shapes.entries)) return@edit
+            for ((url, ratio) in shapes) {
+                merged.remove(url)
+                merged[url] = ratio
+            }
+            p[Keys.COVER_SHAPES] = merged.entries.toList().takeLast(MAX_COVER_SHAPES)
                 .joinToString("\n") { "${it.key}\t${it.value}" }
         }
     }

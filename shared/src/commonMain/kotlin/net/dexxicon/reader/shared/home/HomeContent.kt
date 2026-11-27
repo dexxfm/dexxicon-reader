@@ -352,7 +352,7 @@ private fun LazyGridScope.onDeckShelf(
     fullWidthItem { SectionHeader(title) }
     fullWidthItem {
         val listState = rememberLazyListState()
-        val slot = CoverAspects.slotOf(items.map { CoverAspects.shapeOf(it.coverUrl) })
+        val slot = CoverAspects.slotOf(items.map { it.coverAspect ?: CoverAspects.shapeOf(it.coverUrl) })
         EdgeFadeRow(listState) {
             LazyRow(state = listState, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(items, key = { "${it.serverId}:${it.bookId}" }) { entry ->
@@ -424,6 +424,7 @@ private fun OnDeckCard(entry: OnDeckItem, slotAspect: Float, onClick: () -> Unit
                 downloaded = entry.downloadStatus == DownloadStatus.DONE,
                 format = entry.format,
                 seriesIndex = entry.seriesIndex,
+                aspectRatio = entry.coverAspect,
                 slotAspect = slotAspect,
             )
             Text(

@@ -257,11 +257,14 @@ fun App(
     val glassState = rememberLiquidGlassState(glassQuality)
     // Declared cover shapes outlive the process so Home can frame covers before any re-fetch.
     LaunchedEffect(Unit) {
-        CoverAspects.restore(container.appPreferences.coverShapes.first())
         snapshotFlow { CoverAspects.declaredSnapshot() }.drop(1).collectLatest { shapes ->
             delay(2_000)
-            container.appPreferences.setCoverShapes(shapes)
+            container.appPreferences.addCoverShapes(shapes)
         }
+    }
+    // Shapes also arrive from sync, so keep listening rather than loading once.
+    LaunchedEffect(Unit) {
+        container.appPreferences.coverShapes.collect { CoverAspects.restore(it) }
     }
     DexxiconTheme(
         darkTheme = darkTheme,

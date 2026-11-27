@@ -247,7 +247,10 @@ class AppContainer(
     )
 
     private val nativeProgressSync = NativeProgressSync(nativeProgressApi, bookOrbitBrowseApi, syncStateStore, io)
-    private val librarySeeder = LibrarySeeder(grimmoryBrowseApi, bookOrbitBrowseApi, komgaBrowseApi, kavitaSource, io)
+    private val librarySeeder = LibrarySeeder(
+        grimmoryBrowseApi, bookOrbitBrowseApi, komgaBrowseApi, kavitaSource, io,
+        onCoverShapes = { appPreferences.addCoverShapes(it) },
+    )
     /** Phase 4 Stage H (issue #145) — public so Settings' Reading sync section can call
      * [KoSyncRepository.verify] directly, the same shape [progressRepository] already has. */
     val koSyncRepository = KoSyncRepository(
