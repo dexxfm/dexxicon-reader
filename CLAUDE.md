@@ -26,6 +26,9 @@ this flow so every change stays traceable back to why it happened:
 4. **Verify before opening the PR**: `./gradlew :app:assembleDebug testDebugUnitTest` green
    at minimum; a live check on-device/emulator when the bug was behavioral (gesture, UI,
    playback), not just a compile check.
+   **Add unit tests whenever appropriate** — for new or fixed logic that can be tested without
+   a device (pure functions, state holders, mappers, repositories), include focused tests in
+   the same PR (extract logic out of composables if needed). Skip only for pure UI wiring.
 5. **Open the PR** with `gh pr create` — body includes `Closes #<issue#>`, so merging the
    PR auto-closes the issue. Include what the root cause turned out to be and how it was
    verified.
