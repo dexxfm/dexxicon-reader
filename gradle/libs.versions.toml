@@ -110,6 +110,7 @@ androidx-compose-material3-adaptive-navigation = { module = "androidx.compose.ma
 
 androidx-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
 # JetBrains' Kotlin Multiplatform fork of navigation-compose — same API, iOS-capable.
+compose-ui-backhandler = { module = "org.jetbrains.compose.ui:ui-backhandler", version.ref = "composeMultiplatform" }
 navigation-compose-multiplatform = { module = "org.jetbrains.androidx.navigation:navigation-compose", version = "2.9.2" }
 
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }

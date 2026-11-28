@@ -102,6 +102,17 @@ import androidx.compose.material3.OutlinedIconButton
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.IconButton
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.backhandler.BackHandler
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 
 /**
  * Phase 4 restructure (issue #126) — the one Book Detail render, replacing both platforms'
@@ -147,7 +158,9 @@ fun BookDetailContent(
     val saveCopy = SaveCopyAction(saving = state.savingCopy, destination = saveDestination, onClick = state::saveCopy)
         .takeIf { state.canSaveCopy }
 
-    Scaffold(modifier = modifier, snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
+    var showCover by remember { mutableStateOf(false) }
+    Box(modifier) {
+    Scaffold(modifier = Modifier.fillMaxSize(), snackbarHost = { SnackbarHost(snackbarHostState) }) { padding ->
         when {
             state.loading -> Box(Modifier.fillMaxSize().padding(padding), Alignment.Center) {
                 CircularProgressIndicator()
@@ -206,9 +219,57 @@ fun BookDetailContent(
                     onOpenBook = onOpenBook,
                     onOpenHighlights = { onOpenHighlights(detail.summary.title) },
                     saveCopy = saveCopy,
+                    onCoverClick = { if (detail.summary.coverUrl != null) showCover = true },
                     modifier = Modifier.padding(padding),
                 )
             }
+        }
+    }
+    val coverUrl = state.detail?.summary?.coverUrl
+    if (showCover && coverUrl != null) {
+        FullScreenCover(coverUrl = coverUrl, onClose = { showCover = false })
+    }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun FullScreenCover(coverUrl: String, onClose: () -> Unit) {
+    BackHandler(onBack = onClose)
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    BoxWithConstraints(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .pointerInput(Unit) {
+                detectTransformGestures { centroid, pan, zoom, _ ->
+                    val next = CoverTransform(scale, offset)
+                        .transformedBy(centroid, pan, zoom, Size(size.width.toFloat(), size.height.toFloat()))
+                    scale = next.scale
+                    offset = next.offset
+                }
+            },
+    ) {
+        val context = LocalPlatformContext.current
+        AsyncImage(
+            model = remember(coverUrl) { ImageRequest.Builder(context).data(coverUrl).build() },
+            contentDescription = "Book cover",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                },
+        )
+        IconButton(
+            onClick = onClose,
+            modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp),
+        ) {
+            Icon(Icons.Filled.Close, contentDescription = "Close", tint = Color.White)
         }
     }
 }
@@ -231,6 +292,7 @@ private fun DetailContent(
     onOpenBook: (serverId: String, bookId: String) -> Unit,
     onOpenHighlights: () -> Unit,
     saveCopy: SaveCopyAction?,
+    onCoverClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val seriesShelf: @Composable () -> Unit = {
@@ -259,7 +321,7 @@ private fun DetailContent(
                 ) {
                     BackPill(onBack)
                     Spacer(Modifier.height(12.dp))
-                    HeroBlock(detail, copies, onSetStatus, onSetRating, onOpenSeries, stacked = true)
+                    HeroBlock(detail, copies, onSetStatus, onSetRating, onOpenSeries, stacked = true, onCoverClick = onCoverClick)
                     Spacer(Modifier.height(16.dp))
                     ActionButtons(
                         detail, copies, download, progress, supportsDownloads,
@@ -289,7 +351,7 @@ private fun DetailContent(
                 ) {
                     BackPill(onBack)
                     Spacer(Modifier.height(12.dp))
-                    HeroBlock(detail, copies, onSetStatus, onSetRating, onOpenSeries, stacked = false)
+                    HeroBlock(detail, copies, onSetStatus, onSetRating, onOpenSeries, stacked = false, onCoverClick = onCoverClick)
                     Spacer(Modifier.height(20.dp))
                     ActionButtons(
                         detail, copies, download, progress, supportsDownloads,
@@ -366,6 +428,7 @@ private fun HeroBlock(
     onSetRating: (Int) -> Unit,
     onOpenSeries: (String) -> Unit,
     stacked: Boolean,
+    onCoverClick: () -> Unit,
 ) {
     val s = detail.summary
     val cover: @Composable (Modifier) -> Unit = { m ->
@@ -373,6 +436,7 @@ private fun HeroBlock(
             m
                 .aspectRatio(0.66f)
                 .clip(CoverShapeMedium)
+                .clickable(onClick = onCoverClick)
                 .background(MaterialTheme.colorScheme.surfaceVariant)
                 .border(1.dp, MaterialTheme.colorScheme.outlineVariant, CoverShapeMedium),
         ) {

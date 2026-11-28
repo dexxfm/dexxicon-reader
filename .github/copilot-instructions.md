@@ -62,6 +62,8 @@ with a connected API 33+ device or emulator: `./gradlew :app:generateBaselinePro
 - Release packaging requires the untracked `keystore.properties` and release keystore.
   `assembleRelease`/`bundleRelease` fail without them unless
   `-PallowUnsignedRelease` is explicitly supplied for a non-distributed local smoke build.
+- Add focused unit tests with every bug fix or feature whose logic is testable without a
+  device (extract it from composables if needed); skip only for pure UI wiring.
 - For a bug fix or product change, follow `CLAUDE.md`: open a GitHub issue first, branch from
   synced `main` as `fix/<issue>-...` or `feature/<issue>-...`, and make the PR close that
   issue.

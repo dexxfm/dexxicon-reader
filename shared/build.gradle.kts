@@ -26,6 +26,8 @@ kotlin {
         compileSdk = 37
         minSdk = 29
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+        // Plain unit tests live in src/androidHostTest (commonTest runs there too).
+        withHostTestBuilder {}.configure {}
     }
 
     val xcfName = "SharedKit"
@@ -33,6 +35,9 @@ kotlin {
     iosSimulatorArm64 { binaries.framework { baseName = xcfName; isStatic = true } }
 
     sourceSets {
+        commonTest.dependencies {
+            implementation(kotlin("test"))
+        }
         commonMain.dependencies {
             implementation(project(":core:model"))
             implementation(project(":core:common"))
@@ -60,6 +65,8 @@ kotlin {
             // Icons.AutoMirrored.Filled.LibraryBooks from, so both platforms render the
             // identical glyph.
             implementation(compose.materialIconsExtended)
+            // Common BackHandler (closes the full-screen cover viewer on both platforms).
+            implementation(libs.compose.ui.backhandler)
             implementation(libs.navigation.compose.multiplatform)
             implementation(libs.kotlinx.serialization.json)
             // issue #266 — the Highlights list's "Sep 20, 2026" dates, in the device's time zone.
