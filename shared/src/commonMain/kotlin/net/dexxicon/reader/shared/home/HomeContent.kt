@@ -31,6 +31,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.SnackbarHost
@@ -49,6 +50,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import net.dexxicon.reader.core.data.sync.ServerSyncFailure
 import net.dexxicon.reader.core.data.sync.SyncFailureReason
@@ -57,6 +59,7 @@ import net.dexxicon.reader.core.designsystem.component.EdgeFadeRow
 import net.dexxicon.reader.core.designsystem.component.CoverImage
 import net.dexxicon.reader.core.designsystem.nav.FloatingNavClearance
 import net.dexxicon.reader.core.model.ContentFormat
+import net.dexxicon.reader.core.model.BookGroup
 import net.dexxicon.reader.core.model.Download
 import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.HomeSection
@@ -92,6 +95,8 @@ fun HomeContent(
     state: HomeState,
     onOpenBook: (serverId: String, bookId: String) -> Unit,
     onOpenReader: OnOpenReader,
+    onOpenSection: (HomeSection) -> Unit,
+    onOpenGroup: (BookGroup) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by state.uiState.collectAsState()
@@ -198,7 +203,7 @@ fun HomeContent(
         // non-empty one should land on the empty state, not a blank screen.
         val empty = layout.visible.none { shelf ->
             when (shelf) {
-                is HomeShelf.Pinned -> pinned[shelf.key].orEmpty().isNotEmpty()
+                is HomeShelf.Pinned -> pinned[shelf.key]?.books.orEmpty().isNotEmpty()
                 is HomeShelf.Section -> when (shelf.section) {
                     HomeSection.CONTINUE_READING -> uiState.continueReading.isNotEmpty()
                     HomeSection.CONTINUE_LISTENING -> uiState.continueListening.isNotEmpty()
@@ -254,19 +259,24 @@ fun HomeContent(
                         layout.visible.forEach { shelf ->
                             when (shelf) {
                                 is HomeShelf.Pinned -> onDeckShelf(
-                                    shelf.title, pinned[shelf.key].orEmpty(), onOpenBook, ::onDeckActions,
+                                    shelf.title, pinned[shelf.key]?.books.orEmpty(), onOpenBook, ::onDeckActions,
+                                    count = pinned[shelf.key]?.count,
+                                    onSeeAll = { onOpenGroup(shelf.group) },
                                 )
                                 is HomeShelf.Section -> when (val section = shelf.section) {
                                     HomeSection.CONTINUE_READING -> continueShelf(
                                         section.title, uiState.continueReading, state, onOpenReader, ::continueActions,
+                                        onSeeAll = { onOpenSection(section) },
                                     )
                                     HomeSection.CONTINUE_LISTENING -> continueShelf(
                                         section.title, uiState.continueListening, state, onOpenReader, ::continueActions,
+                                        onSeeAll = { onOpenSection(section) },
                                     )
                                     HomeSection.ON_DECK -> onDeckShelf(
                                         section.title, uiState.onDeck, onOpenBook, ::onDeckActions, wantToRead = true,
+                                        onSeeAll = { onOpenSection(section) },
                                     )
-                                    HomeSection.DOWNLOADED -> downloadedShelf(uiState, onOpenBook, ::downloadActions)
+                                    HomeSection.DOWNLOADED -> downloadedShelf(uiState, onOpenBook, ::downloadActions) { onOpenSection(section) }
                                 }
                             }
                         }
@@ -297,9 +307,10 @@ private fun LazyGridScope.downloadedShelf(
     uiState: HomeUiState,
     onOpenBook: (String, String) -> Unit,
     actionsFor: (Download) -> HomeItemActions,
+    onSeeAll: () -> Unit,
 ) {
     if (uiState.downloads.isEmpty()) return
-    fullWidthItem { SectionHeader(HomeSection.DOWNLOADED.title) }
+    fullWidthItem { SectionHeader(HomeSection.DOWNLOADED.title, uiState.downloads.size, onSeeAll) }
     items(uiState.downloads, key = { it.key }) { download ->
         DownloadCard(
             download = download,
@@ -337,9 +348,11 @@ private fun LazyGridScope.onDeckShelf(
     actionsFor: (OnDeckItem) -> HomeItemActions,
     /** On Deck's books are ones the user flagged; a pinned shelf's books aren't. */
     wantToRead: Boolean = false,
+    count: Int? = items.size,
+    onSeeAll: () -> Unit,
 ) {
     if (items.isEmpty()) return
-    fullWidthItem { SectionHeader(title) }
+    fullWidthItem { SectionHeader(title, count, onSeeAll) }
     fullWidthItem {
         val listState = rememberLazyListState()
         EdgeFadeRow(listState) {
@@ -363,9 +376,10 @@ private fun LazyGridScope.continueShelf(
     state: HomeState,
     onOpenReader: OnOpenReader,
     actionsFor: (ContinueItem) -> HomeItemActions,
+    onSeeAll: () -> Unit,
 ) {
     if (items.isEmpty()) return
-    fullWidthItem { SectionHeader(title) }
+    fullWidthItem { SectionHeader(title, items.size, onSeeAll) }
     fullWidthItem {
         val listState = rememberLazyListState()
         EdgeFadeRow(listState) {
@@ -383,8 +397,12 @@ private fun LazyGridScope.continueShelf(
 }
 
 @Composable
-private fun SectionHeader(text: String) {
-    Text(text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 4.dp))
+private fun SectionHeader(text: String, count: Int?, onSeeAll: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(text, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold,
+            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        TextButton(onClick = onSeeAll) { Text(if (count == null) "See all >" else "See all $count >") }
+    }
 }
 
 @OptIn(ExperimentalFoundationApi::class)

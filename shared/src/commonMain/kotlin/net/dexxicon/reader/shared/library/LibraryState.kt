@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -26,6 +27,7 @@ import net.dexxicon.reader.core.model.AggregatedBook
 import net.dexxicon.reader.core.model.AggregatedBookPage
 import net.dexxicon.reader.core.model.BookGroup
 import net.dexxicon.reader.core.model.BookGroupKind
+import net.dexxicon.reader.core.model.HomeSection
 import net.dexxicon.reader.core.model.BookSort
 import net.dexxicon.reader.core.model.BookPage
 import net.dexxicon.reader.core.model.FacetGroup
@@ -36,6 +38,7 @@ import net.dexxicon.reader.core.model.DownloadStatus
 import net.dexxicon.reader.core.model.ReadingStatus
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.home.HomeState
 import net.dexxicon.reader.shared.openReader
 import net.dexxicon.reader.shared.toBookDetail
 
@@ -53,6 +56,8 @@ sealed interface LibraryScope {
     /** A series known only by name (opened from a book's series line), looked up on every
      *  server the first time it loads — see [net.dexxicon.reader.core.data.CatalogRepository.seriesNamed]. */
     data class SeriesNamed(val name: String) : LibraryScope
+
+    data class Home(val section: HomeSection) : LibraryScope
 
     /** Series come back in series order and can't be searched on every server, so screens
      *  hide their sort chip and search field. */
@@ -108,6 +113,7 @@ class LibraryState(
     private val container: AppContainer,
     private val scope: CoroutineScope,
     initialScope: LibraryScope = LibraryScope.All,
+    private val homeState: HomeState? = null,
 ) {
     private val _uiState = MutableStateFlow(LibraryUiState(scope = initialScope))
     val uiState: StateFlow<LibraryUiState> = _uiState.asStateFlow()
@@ -146,13 +152,28 @@ class LibraryState(
         }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), BookOverlays())
 
     private var nextPage = 0
+    private var autoPagesLeft = MAX_AUTO_PAGES
+    private var homeRequestId = 0
 
     private companion object {
         const val MAX_AUTO_PAGES = 12
     }
 
     init {
+        require(initialScope !is LibraryScope.Home || homeState != null)
         reload()
+        if (initialScope is LibraryScope.Home) {
+            scope.launch {
+                requireNotNull(homeState).uiState.map { state ->
+                    when (initialScope.section) {
+                        HomeSection.CONTINUE_READING -> state.continueReading
+                        HomeSection.CONTINUE_LISTENING -> state.continueListening
+                        HomeSection.ON_DECK -> state.onDeck
+                        HomeSection.DOWNLOADED -> state.downloads
+                    }
+                }.distinctUntilChanged().drop(1).collect { reload() }
+            }
+        }
         if (browsesAll) loadLibraries()
         scope.launch {
             container.appPreferences.preferences.map { it.browseView }.distinctUntilChanged().collect { mode ->
@@ -272,11 +293,8 @@ class LibraryState(
         }
     }
 
-    /** Auto-paging past filter-empty pages is capped so a filter with no matches can't
-     *  crawl an entire catalogue. */
-    private var autoPagesLeft = MAX_AUTO_PAGES
-
     fun reload() {
+        if (_uiState.value.scope is LibraryScope.Home) homeRequestId++
         nextPage = 0
         autoPagesLeft = MAX_AUTO_PAGES
         _uiState.update { it.copy(loading = true, error = null, books = emptyList(), endReached = false) }
@@ -285,6 +303,10 @@ class LibraryState(
 
     fun refresh() {
         if (_uiState.value.refreshing) return
+        if (_uiState.value.scope is LibraryScope.Home) {
+            homeRequestId++
+            requireNotNull(homeState).refresh()
+        }
         nextPage = 0
         autoPagesLeft = MAX_AUTO_PAGES
         _uiState.update { it.copy(refreshing = true, error = null, endReached = false) }
@@ -314,6 +336,7 @@ class LibraryState(
             is LibraryScope.Groups -> s.groups
             is LibraryScope.SeriesNamed -> resolvedSeries
                 ?: container.catalogRepository.seriesNamed(s.name).also { resolvedSeries = it }
+            is LibraryScope.Home -> return fetchHome(s.section, state)
         }
         return container.catalogRepository.groupBooks(
             groups = groups,
@@ -325,9 +348,18 @@ class LibraryState(
         )
     }
 
+    private suspend fun fetchHome(section: HomeSection, state: LibraryUiState): Outcome<AggregatedBookPage> {
+        val home = requireNotNull(homeState).uiState.first { !it.loading }
+        val servers = container.serverRepository.servers.first()
+        return Outcome.Success(AggregatedBookPage(homeShelfBooks(section, home, servers, state), hasMore = false))
+    }
+
     private fun fetchPage(replace: Boolean): Job = scope.launch {
         val state = _uiState.value
-        when (val result = fetch(state)) {
+        val requestId = homeRequestId
+        val result = fetch(state)
+        if (state.scope is LibraryScope.Home && requestId != homeRequestId) return@launch
+        when (result) {
             is Outcome.Success -> {
                 nextPage += 1
                 val endReached = !result.value.hasMore
@@ -355,6 +387,7 @@ class LibraryState(
                     _uiState.update { it.copy(loading = false) }
                 }
             }
+
             is Outcome.Failure -> _uiState.update {
                 it.copy(
                     loading = false,

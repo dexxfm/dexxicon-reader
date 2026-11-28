@@ -123,7 +123,8 @@ Your audiobook library, browsable and playable without touching your phone:
   both full CRUD). A bookmark you made in a server's web reader shows up in the app and
   jumps to its chapter.
 - "Continue reading", "Continue listening" and "On Deck" (your *Want to read* list) shelves
-  on the Home screen; `Settings →
+  on the Home screen. Use **See all** to browse a shelf in the Library's grid or list view;
+  `Settings →
   Reading sync` shows each server's channel and when it last synced.
 
 ### Settings

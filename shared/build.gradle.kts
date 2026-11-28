@@ -26,6 +26,7 @@ kotlin {
         compileSdk = 37
         minSdk = 29
         compilerOptions { jvmTarget.set(JvmTarget.JVM_17) }
+        withHostTestBuilder {}.configure {}
     }
 
     val xcfName = "SharedKit"
@@ -77,6 +78,10 @@ kotlin {
         }
         androidMain.dependencies {
             implementation(libs.ktor.client.okhttp)
+        }
+        getByName("androidHostTest").dependencies {
+            implementation(libs.junit)
+            implementation(libs.truth)
         }
         iosMain.dependencies {
             implementation(libs.ktor.client.darwin)

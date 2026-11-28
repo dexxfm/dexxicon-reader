@@ -102,6 +102,15 @@ class AggregateMergeTest {
         assertThat(merged.books.map { it.title }).containsExactly("X", "Z").inOrder()
     }
 
+    @Test
+    fun `total is available only for a single source`() {
+        val first = server("a", "A") to BookPage(emptyList(), page = 0, hasMore = true, total = 123)
+        val second = server("b", "B") to BookPage(emptyList(), page = 0, hasMore = false, total = 7)
+        assertThat(mergeAggregated(listOf(first), BookSort.RECENT).total).isEqualTo(123)
+        assertThat(mergeAggregated(listOf(first, second), BookSort.RECENT).total).isNull()
+        assertThat(mergeAggregated(listOf(first.first to first.second.copy(total = null)), BookSort.RECENT).total).isNull()
+    }
+
     private fun series(serverId: String, id: String, name: String, author: String, cover: String? = null) =
         BookGroup(serverId, BookGroupKind.SERIES, id, name, bookCount = 2, coverUrl = cover, authors = listOf(author))
 

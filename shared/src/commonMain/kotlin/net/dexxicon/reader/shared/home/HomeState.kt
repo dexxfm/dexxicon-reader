@@ -2,6 +2,7 @@ package net.dexxicon.reader.shared.home
 
 import net.dexxicon.reader.shared.detailForOpening
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -89,6 +90,9 @@ data class HomeUiState(
     val syncFailures: List<ServerSyncFailure> = emptyList(),
 )
 
+private data class PinnedBooks(val books: List<AggregatedBook>, val count: Int?)
+data class PinnedShelfItems(val books: List<OnDeckItem>, val count: Int?)
+
 /**
  * Phase 4 Stage C (issue #130) — the one Home state class, replacing native's Hilt
  * `LibraryViewModel` (native's `feature/library` module — the route class is named
@@ -164,16 +168,16 @@ class HomeState(
         .stateIn(scope, SharingStarted.WhileSubscribed(5_000), HomeLayout())
 
     /** issue #254 — each pinned group's books, keyed by [net.dexxicon.reader.core.model.HomeShelf.key]. */
-    private val pinnedBooks = MutableStateFlow<Map<String, List<AggregatedBook>>>(emptyMap())
+    private val pinnedBooks = MutableStateFlow<Map<String, PinnedBooks>>(emptyMap())
 
     /** issue #254 — the pinned shelves' cards, with the same download state as every other shelf. */
-    val pinnedShelves: StateFlow<Map<String, List<OnDeckItem>>> =
+    val pinnedShelves: StateFlow<Map<String, PinnedShelfItems>> =
         combine(pinnedBooks, container.downloadRepository.downloads) { byShelf, downloads ->
             val status = downloads.associate { it.key to it.status }
-            byShelf.mapValues { (_, books) ->
+            byShelf.mapValues { (_, shelf) ->
                 // issue #328 — a card standing for a whole series (Kavita) has no book to open
                 // from a Home shelf; the series stays reachable from the Library.
-                books.filter { it.opensGroup == null }.map { book ->
+                val items = shelf.books.filter { it.opensGroup == null }.map { book ->
                     val copy = book.primary
                     OnDeckItem(
                         serverId = copy.serverId,
@@ -186,12 +190,16 @@ class HomeState(
                         downloadStatus = status["${copy.serverId}::${copy.bookId}"],
                     )
                 }
+                PinnedShelfItems(items, shelf.count)
             }
         }.stateIn(scope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     /** Whether the offline/download shelf should show at all — same platform-capability
      * check [net.dexxicon.reader.shared.catalog.BookDetailState.supportsDownloads] uses. */
     val supportsDownloads: Boolean get() = container.downloadRepository.supportsDownloads
+
+    private val _message = MutableStateFlow<HomeMessage?>(null)
+    private var pinnedLoadJob: Job? = null
 
     init {
         // Reconcile progress with KOReader / other devices (both directions).
@@ -203,11 +211,9 @@ class HomeState(
                 .map { it.pinned }
                 .distinctUntilChanged { a, b -> a.map { it.key } == b.map { it.key } }
                 .drop(1)
-                .collect { loadPinned(it) }
+                .collect { requestPinned(it) }
         }
     }
-
-    private val _message = MutableStateFlow<HomeMessage?>(null)
 
     /** issue #251 — shown once by HomeContent's snackbar, then cleared via [messageShown]. */
     val message: StateFlow<HomeMessage?> = _message
@@ -219,7 +225,7 @@ class HomeState(
 
     fun refresh() {
         loadOnDeck()
-        scope.launch { loadPinned(container.liveHomeLayout().first().pinned) }
+        scope.launch { requestPinned(container.liveHomeLayout().first().pinned) }
         if (refreshing.value) return
         scope.launch {
             refreshing.value = true
@@ -257,6 +263,11 @@ class HomeState(
 
     /** issue #254 — the newest books in each pinned group. A group that fails to load keeps
      *  whatever it showed last rather than blanking. */
+    private fun requestPinned(groups: List<BookGroup>) {
+        pinnedLoadJob?.cancel()
+        pinnedLoadJob = scope.launch { loadPinned(groups) }
+    }
+
     private suspend fun loadPinned(groups: List<BookGroup>) {
         val loaded = coroutineScope {
             groups.map { group ->
@@ -264,12 +275,35 @@ class HomeState(
                     val result = container.catalogRepository.groupBooks(
                         listOf(group), query = null, sort = BookSort.RECENT, page = 0, pageSize = PINNED_SHELF_SIZE,
                     )
-                    net.dexxicon.reader.core.model.HomeShelf.Pinned(group).key to (result as? Outcome.Success)?.value?.books
+                    val first = (result as? Outcome.Success)?.value
+                    var count = first?.books?.size ?: 0
+                    var page = 1
+                    var more = first?.hasMore == true
+                    var failed = false
+                    while (first != null && first.total == null && more) {
+                        when (val next = container.catalogRepository.groupBooks(
+                            listOf(group), query = null, sort = BookSort.RECENT, page = page++, pageSize = PINNED_SHELF_SIZE,
+                        )) {
+                            is Outcome.Success -> {
+                                count += next.value.books.size
+                                more = next.value.hasMore
+                            }
+                            is Outcome.Failure -> {
+                                failed = true
+                                break
+                            }
+                        }
+                    }
+                    if (failed) {
+                        _message.value = HomeMessage("Couldn't count books in ${group.name}. Pull to refresh to retry.")
+                    }
+                    net.dexxicon.reader.core.model.HomeShelf.Pinned(group).key to
+                        first?.let { PinnedBooks(it.books, if (failed) null else it.total ?: count) }
                 }
             }.awaitAll()
         }
         val previous = pinnedBooks.value
-        pinnedBooks.value = loaded.associate { (key, books) -> key to (books ?: previous[key].orEmpty()) }
+        pinnedBooks.value = loaded.mapNotNull { (key, books) -> (books ?: previous[key])?.let { key to it } }.toMap()
     }
 
     private fun loadOnDeck() {
