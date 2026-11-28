@@ -26,6 +26,7 @@ import net.dexxicon.reader.core.model.BookGroup
 import net.dexxicon.reader.core.model.BookGroupKind
 import net.dexxicon.reader.shared.OnOpenReader
 import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.shared.home.HomeState
 
 /**
  * One library, collection, smart shelf or series as its own screen (issues #253, #254, #256):
@@ -43,9 +44,10 @@ fun BookGroupScreen(
     onOpenReader: OnOpenReader,
     /** The group Home would pin, or null where pinning isn't offered (series). */
     pinnable: BookGroup? = null,
+    homeState: HomeState? = null,
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val state = remember(scope) { LibraryState(container, coroutineScope, initialScope = scope) }
+    val state = remember(scope) { LibraryState(container, coroutineScope, initialScope = scope, homeState = homeState) }
     val pins = remember { HomePins(container, coroutineScope) }
     val layout by pins.layout.collectAsState()
 

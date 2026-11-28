@@ -110,6 +110,7 @@ import net.dexxicon.reader.core.model.AuthMode
 import net.dexxicon.reader.core.model.GlassIntensity
 import net.dexxicon.reader.core.model.BookGroup
 import net.dexxicon.reader.core.model.BookGroupKind
+import net.dexxicon.reader.core.model.HomeSection
 import net.dexxicon.reader.core.model.SeriesEntry
 import net.dexxicon.reader.core.model.Server
 import net.dexxicon.reader.shared.catalog.HighlightsScreen
@@ -117,6 +118,8 @@ import net.dexxicon.reader.shared.catalog.BookDetailScreen
 import net.dexxicon.reader.shared.catalog.BooksScreen
 import net.dexxicon.reader.shared.di.AppContainer
 import net.dexxicon.reader.shared.home.HomeScreen
+import net.dexxicon.reader.shared.home.HomeState
+import net.dexxicon.reader.shared.home.title
 import net.dexxicon.reader.shared.library.LibraryScreen
 import net.dexxicon.reader.shared.library.label
 import net.dexxicon.reader.shared.library.LibraryState
@@ -148,6 +151,7 @@ import net.dexxicon.reader.shared.sso.SsoWebViewScreen
 @Serializable private data class EditServerRoute(val serverId: String, val reauth: Boolean = false)
 @Serializable private object LibraryRoute
 @Serializable private object HomeRoute
+@Serializable private data class HomeSectionRoute(val section: String)
 @Serializable private object SettingsRoute
 @Serializable private object AudiobookDefaultsRoute
 @Serializable private object BookDefaultsRoute
@@ -235,6 +239,7 @@ fun App(
     // pane (see LibraryScreen's doc comment). Lazy so nothing loads until Library is opened.
     val appScope = rememberCoroutineScope()
     val libraryState = remember { lazy { LibraryState(container, appScope) } }
+    val homeState = remember { lazy { HomeState(container, appScope) } }
     // Issue #224 — shared between the pill nav's glass surface and this Box's own content as
     // its backdrop source (see below). GlassIntensity.OFF forces the library's own
     // zero-allocation Fallback tier regardless of what the device would otherwise auto-detect
@@ -362,9 +367,24 @@ fun App(
                     ) {
                         composable<HomeRoute> {
                             HomeScreen(
-                                container = container,
+                                state = homeState.value,
                                 onOpenBook = { serverId, bookId -> nav.navigate(BookDetailRoute(serverId, bookId)) },
                                 onOpenReader = onOpenReader,
+                                onOpenSection = { nav.navigate(HomeSectionRoute(it.name)) },
+                                onOpenGroup = openGroup,
+                            )
+                        }
+                        composable<HomeSectionRoute> { entry ->
+                            val section = HomeSection.valueOf(entry.toRoute<HomeSectionRoute>().section)
+                            BookGroupScreen(
+                                container = container,
+                                scope = LibraryScope.Home(section),
+                                title = section.title,
+                                subtitle = null,
+                                onBack = { nav.popBackStack() },
+                                onOpenBook = openLibraryBook,
+                                onOpenReader = onOpenReader,
+                                homeState = homeState.value,
                             )
                         }
                         composable<LibraryRoute> {

@@ -1,10 +1,9 @@
 package net.dexxicon.reader.shared.home
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import net.dexxicon.reader.shared.OnOpenReader
-import net.dexxicon.reader.shared.di.AppContainer
+import net.dexxicon.reader.core.model.BookGroup
+import net.dexxicon.reader.core.model.HomeSection
 
 /**
  * Phase 4 Stage C (issue #130) — thin platform entry point: [HomeState] + [HomeContent] hold
@@ -15,11 +14,12 @@ import net.dexxicon.reader.shared.di.AppContainer
  */
 @Composable
 fun HomeScreen(
-    container: AppContainer,
+    state: HomeState,
     onOpenBook: (serverId: String, bookId: String) -> Unit,
     onOpenReader: OnOpenReader,
+    onOpenSection: (HomeSection) -> Unit,
+    onOpenGroup: (BookGroup) -> Unit,
 ) {
-    val scope = rememberCoroutineScope()
-    val state = remember { HomeState(container, scope) }
-    HomeContent(state = state, onOpenBook = onOpenBook, onOpenReader = onOpenReader)
+    HomeContent(state = state, onOpenBook = onOpenBook, onOpenReader = onOpenReader,
+        onOpenSection = onOpenSection, onOpenGroup = onOpenGroup)
 }

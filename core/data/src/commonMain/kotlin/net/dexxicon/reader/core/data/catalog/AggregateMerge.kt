@@ -63,7 +63,7 @@ internal fun mergeAggregated(
             compareBy({ it.series?.lowercase() ?: "￿" }, { it.seriesIndex ?: Double.MAX_VALUE }),
         )
     }
-    return AggregatedBookPage(ordered, hasMore = pages.any { it.second.hasMore })
+    return AggregatedBookPage(ordered, hasMore = pages.any { it.second.hasMore }, total = pages.singleOrNull()?.second?.total)
 }
 
 /**

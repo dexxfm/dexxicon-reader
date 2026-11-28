@@ -99,6 +99,8 @@ data class AggregatedBookPage(
     val facets: List<FacetGroup> = emptyList(),
     /** See [BookPage.appSortApplies]. */
     val appSortApplies: Boolean = true,
+    /** Total reported by a single source, when available. */
+    val total: Int? = null,
 )
 
 /** A book/comic/audiobook as shown in a grid — enough to render a card and open detail. */
